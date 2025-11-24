@@ -37,31 +37,118 @@ def main():
         
         # Primary: User data directory selection
         st.markdown("**Select your simulation output folder:**")
+        
+        # Allow both absolute and relative paths
         user_dir = st.text_input(
             "Directory path:",
             value="",
-            help="Enter the path to your simulation output directory"
+            help="Enter absolute path or path relative to project root (e.g., examples/showcase/DNS/256)"
         )
         
-        if st.button("Load Data", type="primary"):
-            if user_dir and Path(user_dir).exists():
-                st.session_state.data_directory = user_dir
-                st.session_state.data_loaded = True
-                st.success(f"Data loaded from: {user_dir}")
-            else:
-                st.error("Directory not found. Please check the path.")
+        # Quick access to common locations
+        with st.expander("📂 Quick Access to Project Directories", expanded=False):
+            st.markdown("**Common locations:**")
+            quick_paths = [
+                ("examples/showcase/DNS/256", "examples/showcase/DNS/256"),
+                ("examples/showcase/DNS/512", "examples/showcase/DNS/512"),
+                ("examples/showcase/DNS/768", "examples/showcase/DNS/768"),
+                ("examples/showcase/LES/128", "examples/showcase/LES/128"),
+                ("examples/showcase", "examples/showcase"),
+            ]
+            for label, path in quick_paths:
+                full_path = project_root / path
+                if full_path.exists():
+                    if st.button(f"📁 {label}", key=f"quick_{path}", use_container_width=True):
+                        st.session_state.data_directory = str(full_path)
+                        st.session_state.data_loaded = True
+                        st.success(f"Loaded: APP/{path}")
+                        st.rerun()
         
-        # Optional: Example data
-        st.markdown("---")
-        st.markdown("**Or try example data:**")
-        if st.button("Try Example Data"):
-            example_dir = project_root / "examples" / "showcase"
-            if example_dir.exists():
-                st.session_state.data_directory = str(example_dir)
+        if st.button("Load Data", type="primary"):
+            # Try as absolute path first
+            if user_dir and Path(user_dir).exists() and Path(user_dir).is_dir():
+                abs_path = Path(user_dir).absolute()
+                st.session_state.data_directory = str(abs_path)
                 st.session_state.data_loaded = True
-                st.success("Example data loaded")
+                # Show relative path if within project, otherwise show input as-is
+                try:
+                    rel_path = abs_path.relative_to(project_root)
+                    st.success(f"Data loaded from: APP/{rel_path}")
+                except ValueError:
+                    st.success(f"Data loaded from: {user_dir}")
+            # Try as relative path from project root
+            elif user_dir:
+                relative_path = project_root / user_dir
+                if relative_path.exists() and relative_path.is_dir():
+                    st.session_state.data_directory = str(relative_path.absolute())
+                    st.session_state.data_loaded = True
+                    st.success(f"Data loaded from: APP/{user_dir}")
+                else:
+                    st.error(f"Directory not found: {user_dir}")
+                    st.info(f"💡 Tip: Use path relative to project root (e.g., examples/showcase/DNS/256)")
             else:
-                st.warning("Example data not available")
+                st.warning("Please enter a directory path.")
+        
+        # Optional: Browse project directories
+        st.markdown("---")
+        st.markdown("**Or browse project directories:**")
+        
+        # Find all data directories in the project
+        all_dirs = []
+        
+        # Search in examples/showcase
+        example_base = project_root / "examples" / "showcase"
+        if example_base.exists():
+            # Look for DNS subdirectories
+            dns_dir = example_base / "DNS"
+            if dns_dir.exists():
+                for subdir in sorted(dns_dir.iterdir()):
+                    if subdir.is_dir():
+                        all_dirs.append(("DNS/" + subdir.name, subdir))
+            # Check LES subdirectories
+            les_dir = example_base / "LES"
+            if les_dir.exists():
+                for subdir in sorted(les_dir.iterdir()):
+                    if subdir.is_dir():
+                        all_dirs.append(("LES/" + subdir.name, subdir))
+            # Also check direct subdirectories in showcase
+            for subdir in sorted(example_base.iterdir()):
+                if subdir.is_dir() and subdir.name not in ["DNS", "LES"]:
+                    all_dirs.append((subdir.name, subdir))
+        
+        # Search in other common locations (optional - can be expanded)
+        # You can add more search paths here if needed
+        
+        if all_dirs:
+            # Create user-friendly display names (relative to project root)
+            dir_options = {}
+            for name, path in all_dirs:
+                # Get relative path from project root
+                try:
+                    rel_path = path.relative_to(project_root)
+                    display_name = f"{name} (APP/{rel_path})"
+                except ValueError:
+                    # If path is not relative to project root, just use name
+                    display_name = name
+                dir_options[display_name] = str(path)
+            
+            selected_dir = st.selectbox(
+                "Select dataset directory:",
+                options=list(dir_options.keys()),
+                help="Choose a dataset directory from the project"
+            )
+            if st.button("Load Selected Directory", type="primary"):
+                selected_path = dir_options[selected_dir]
+                st.session_state.data_directory = selected_path
+                st.session_state.data_loaded = True
+                # Show relative path in success message
+                try:
+                    rel_path = Path(selected_path).relative_to(project_root)
+                    st.success(f"Data loaded from: APP/{rel_path}")
+                except ValueError:
+                    st.success(f"Data loaded from: {selected_path}")
+        else:
+            st.info("No data directories found. You can still load your own data using the directory path above.")
         
         # Navigation
         st.markdown("---")
@@ -106,7 +193,14 @@ def main():
         3. Navigate through the pages using the sidebar
         """)
     else:
-        st.success(f"✅ Data loaded from: `{st.session_state.data_directory}`")
+        # Show relative path in main content area
+        data_dir = Path(st.session_state.data_directory)
+        try:
+            rel_path = data_dir.relative_to(project_root)
+            display_path = f"APP/{rel_path}"
+        except ValueError:
+            display_path = str(data_dir)
+        st.success(f"✅ Data loaded from: `{display_path}`")
         st.info("Navigate through the pages using the sidebar menu.")
 
 if __name__ == "__main__":
