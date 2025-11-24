@@ -636,12 +636,6 @@ def _resolve_line_style(sim_prefix, idx, colors, ps, kind="raw"):
 def main():
     st.title("📈 Energy Spectra")
 
-    if "data_directory" not in st.session_state or not st.session_state.data_directory:
-        st.warning("Please select a data directory from the Overview page.")
-        return
-
-    data_dir = Path(st.session_state.data_directory)
-
     st.session_state.setdefault("spectrum_legend_names", {})
     st.session_state.setdefault("norm_legend_names", {})
     st.session_state.setdefault("axis_labels_raw", {"x": "Wavenumber $k$", "y": "Energy spectrum $E(k)$"})
@@ -650,25 +644,162 @@ def main():
         "y": "Normalized spectrum $E_{norm}(k\\eta)$",
     })
     st.session_state.setdefault("plot_style", _default_plot_style())
+    st.session_state.setdefault("file_selection_mode", "directory")
+    st.session_state.setdefault("custom_spectrum_files", [])
+    st.session_state.setdefault("custom_norm_files", [])
 
-    spectrum_files = sorted(glob.glob(str(data_dir / "spectrum*.dat")), key=natural_sort_key)
-    norm_files = sorted(glob.glob(str(data_dir / "norm*.dat")), key=natural_sort_key)
+    # File selection mode
+    st.sidebar.header("📁 File Selection")
+    file_mode = st.sidebar.radio(
+        "Selection Mode",
+        ["Directory (Auto-detect)", "Custom Files (Any location/name)"],
+        index=0 if st.session_state.file_selection_mode == "directory" else 1,
+        key="file_mode_radio"
+    )
+    st.session_state.file_selection_mode = "directory" if file_mode == "Directory (Auto-detect)" else "custom"
 
-    if not spectrum_files and not norm_files:
-        st.error("No spectrum*.dat or norm*.dat files found in the selected directory.")
-        return
+    spectrum_files = []
+    norm_files = []
 
-    sim_groups = group_files_by_simulation(
-        spectrum_files, r"(spectrum[_\w]*\d+)_\d+\.dat"
-    ) if spectrum_files else {}
-    norm_groups = group_files_by_simulation(
-        norm_files, r"(norm[_\w]*\d+)_\d+\.dat"
-    ) if norm_files else {}
+    if st.session_state.file_selection_mode == "directory":
+        # Original directory-based mode
+        if "data_directory" not in st.session_state or not st.session_state.data_directory:
+            st.warning("Please select a data directory from the Overview page.")
+            return
 
-    if not sim_groups and spectrum_files:
-        sim_groups = group_files_by_simulation(spectrum_files, r"(spectrum\d+)_\d+\.dat")
-    if not norm_groups and norm_files:
-        norm_groups = group_files_by_simulation(norm_files, r"(norm\d+)_\d+\.dat")
+        data_dir = Path(st.session_state.data_directory)
+        spectrum_files = sorted(glob.glob(str(data_dir / "spectrum*.dat")), key=natural_sort_key)
+        norm_files = sorted(glob.glob(str(data_dir / "norm*.dat")), key=natural_sort_key)
+
+        if not spectrum_files and not norm_files:
+            st.error("No spectrum*.dat or norm*.dat files found in the selected directory.")
+            st.info("💡 Switch to 'Custom Files' mode to select files from any location.")
+            return
+    else:
+        # Custom file selection mode
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Custom File Selection")
+        
+        st.sidebar.markdown("**Raw Spectrum Files** (k, E(k)):")
+        raw_file_input = st.sidebar.text_area(
+            "Enter file paths (one per line):",
+            value="\n".join(st.session_state.custom_spectrum_files),
+            height=100,
+            help="Enter full paths to spectrum files, one per line. Files can be from any directory."
+        )
+        
+        st.sidebar.markdown("**Normalized Spectrum Files** (kη, E_norm, E_pope):")
+        norm_file_input = st.sidebar.text_area(
+            "Enter file paths (one per line):",
+            value="\n".join(st.session_state.custom_norm_files),
+            height=100,
+            help="Enter full paths to normalized spectrum files, one per line."
+        )
+        
+        if st.sidebar.button("Load Custom Files", type="primary"):
+            raw_paths = [p.strip() for p in raw_file_input.strip().split("\n") if p.strip()]
+            norm_paths = [p.strip() for p in norm_file_input.strip().split("\n") if p.strip()]
+            
+            # Validate files exist
+            valid_raw = []
+            valid_norm = []
+            
+            for p in raw_paths:
+                path = Path(p)
+                if path.exists() and path.is_file():
+                    valid_raw.append(str(path.absolute()))
+                else:
+                    st.sidebar.warning(f"File not found: {p}")
+            
+            for p in norm_paths:
+                path = Path(p)
+                if path.exists() and path.is_file():
+                    valid_norm.append(str(path.absolute()))
+                else:
+                    st.sidebar.warning(f"File not found: {p}")
+            
+            st.session_state.custom_spectrum_files = valid_raw
+            st.session_state.custom_norm_files = valid_norm
+            
+            if valid_raw or valid_norm:
+                st.sidebar.success(f"Loaded {len(valid_raw)} raw + {len(valid_norm)} normalized files")
+            else:
+                st.sidebar.error("No valid files found. Check paths.")
+        
+        spectrum_files = [Path(f) for f in st.session_state.custom_spectrum_files if Path(f).exists()]
+        norm_files = [Path(f) for f in st.session_state.custom_norm_files if Path(f).exists()]
+        
+        if not spectrum_files and not norm_files:
+            st.info("👈 Use the sidebar to enter file paths, then click 'Load Custom Files'.")
+            return
+        
+        # For custom mode, use first file's directory as data_dir for metadata storage
+        if spectrum_files:
+            data_dir = Path(spectrum_files[0]).parent
+        elif norm_files:
+            data_dir = Path(norm_files[0]).parent
+        else:
+            data_dir = Path.cwd()
+
+    # Group files by simulation (try pattern matching, fallback to filename-based grouping)
+    if st.session_state.file_selection_mode == "directory":
+        sim_groups = group_files_by_simulation(
+            spectrum_files, r"(spectrum[_\w]*\d+)_\d+\.dat"
+        ) if spectrum_files else {}
+        norm_groups = group_files_by_simulation(
+            norm_files, r"(norm[_\w]*\d+)_\d+\.dat"
+        ) if norm_files else {}
+
+        if not sim_groups and spectrum_files:
+            sim_groups = group_files_by_simulation(spectrum_files, r"(spectrum\d+)_\d+\.dat")
+        if not norm_groups and norm_files:
+            norm_groups = group_files_by_simulation(norm_files, r"(norm\d+)_\d+\.dat")
+    else:
+        # Custom mode: group by filename stem (without extension) or directory
+        # This allows any filename pattern
+        sim_groups = {}
+        unique_dirs = set(Path(str(f)).parent for f in spectrum_files)
+        for f in spectrum_files:
+            fpath = Path(f)
+            # Use filename stem as group key, or directory name if files are from different dirs
+            if len(unique_dirs) > 1:
+                # Files from multiple directories: use directory name as group
+                group_key = fpath.parent.name
+            else:
+                # Files from same directory: use filename stem (without extension)
+                group_key = fpath.stem.rsplit("_", 1)[0] if "_" in fpath.stem else fpath.stem
+            
+            if group_key not in sim_groups:
+                sim_groups[group_key] = []
+            sim_groups[group_key].append(str(fpath))
+        
+        # Sort files within each group
+        for key in sim_groups:
+            sim_groups[key] = sorted(sim_groups[key], key=natural_sort_key)
+        
+        norm_groups = {}
+        for f in norm_files:
+            fpath = Path(f)
+            unique_dirs = set(Path(str(f)).parent for f in norm_files)
+            if len(unique_dirs) > 1:
+                group_key = fpath.parent.name
+            else:
+                stem = fpath.stem
+                if "_" in stem:
+                    parts = stem.rsplit("_", 1)
+                    if parts[1].isdigit():
+                        group_key = parts[0]
+                    else:
+                        group_key = stem
+                else:
+                    group_key = stem
+            
+            if group_key not in norm_groups:
+                norm_groups[group_key] = []
+            norm_groups[group_key].append(str(fpath))
+        
+        for key in norm_groups:
+            norm_groups[key] = sorted(norm_groups[key], key=natural_sort_key)
 
     if st.session_state.get("_last_legend_dir") != str(data_dir):
         _load_ui_metadata(data_dir)
