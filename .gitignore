@@ -1,0 +1,147 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+myenv/
+venv/
+ENV/
+env/
+.venv
+
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Fortran build artifacts
+*.mod
+*.o
+*.obj
+*.exe
+*.a
+*.so
+*.dylib
+*.dll
+*.pdb
+
+# Compiled files
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Large data files (use Git LFS instead)
+# Note: examples/showcase/ is tracked by Git LFS via .gitattributes
+# Uncomment if you want to exclude large files entirely:
+# examples/showcase/*.vti
+# examples/showcase/*.bin
+# examples/showcase/*.dat
+# examples/showcase/*.csv
+
+# User-specific data (optional - exclude if users shouldn't commit their data)
+# RUN/
+# user_data/
+
+# Cache directories
+.cache/
+*.cache
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Plot exports (optional - exclude if you don't want to track exported plots)
+# exports/
+# figures/
+# plots/
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+
+# Backup files
+*.backup
+*.old
+
+# Large binary files (if not using Git LFS)
+# *.vti
+# *.bin
+# *.h5
+# *.hdf5
+
+# Fortran source and simulation output directories
+SRC/
+RUN/
+
+# Alternative: Keep directory structure but ignore contents
+# SRC/*
+# !SRC/.gitkeep
+# RUN/*
+# !RUN/.gitkeep
+
