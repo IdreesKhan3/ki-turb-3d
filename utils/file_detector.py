@@ -34,6 +34,7 @@ def detect_simulation_files(directory: str) -> Dict[str, List[str]]:
         'flatness': [],
         'isotropy': [],
         'eps_validation': [],
+        'tau_analysis': [],
     }
     
     # Find CSV files
@@ -56,6 +57,9 @@ def detect_simulation_files(directory: str) -> Dict[str, List[str]]:
     
     # Find isotropy files
     files['isotropy'] = sorted(dir_path.glob('isotropy_coeff_*.dat'))
+    
+    # Find tau_analysis files (for LES effective relaxation time)
+    files['tau_analysis'] = sorted(dir_path.glob('tau_analysis_*.bin'), key=lambda f: natural_sort_key(str(f)))
     
     return files
 

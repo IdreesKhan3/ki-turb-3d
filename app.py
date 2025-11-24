@@ -76,7 +76,7 @@ def main():
         - [Comparison](#comparison)
         - [Reynolds Transition](#reynolds-transition)
         - [Theory & Equations](#theory-equations)
-        - [MRT vs SRT](#mrt-vs-srt)
+        - [Multi-Method Support](#multi-method-support)
         """)
     
     # Main content area
@@ -87,7 +87,8 @@ def main():
         st.markdown("""
         ### Welcome!
         
-        This dashboard allows you to analyze LBM-MRT DNS/LES turbulence simulation data.
+        This dashboard allows you to analyze LBM-based DNS/LES turbulence simulation data.
+        **Primary focus:** MRT (Multiple Relaxation Time) | **Also supports:** SRT (BGK)
         
         **Features:**
         - Interactive energy spectra visualization
@@ -97,6 +98,7 @@ def main():
         - LES metrics
         - Energy balance analysis
         - Multi-simulation comparison
+        - Multi-method support (MRT and SRT)
         
         **Getting Started:**
         1. Select your simulation output folder from the sidebar

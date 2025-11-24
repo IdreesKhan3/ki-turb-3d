@@ -139,6 +139,9 @@ docs/.doctrees/
 SRC/
 RUN/
 
+# Example data (temporarily ignored)
+examples/
+
 # Alternative: Keep directory structure but ignore contents
 # SRC/*
 # !SRC/.gitkeep
