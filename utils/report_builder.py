@@ -65,7 +65,7 @@ def generate_html_report(
         .toc a:hover { text-decoration: underline; }
         .metadata { color: #666; font-size: 0.9em; margin: 10px 0; }
     </style>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <!-- Plotly.js will be embedded inline in each plot for offline support -->
 </head>
 <body>
 """)
@@ -94,7 +94,9 @@ def generate_html_report(
         
         if section_type == "plot" and isinstance(content, go.Figure):
             # Embed Plotly figure as HTML
-            plot_html = content.to_html(include_plotlyjs='cdn', div_id=f"plot_{i}")
+            # Use 'inline' for offline support (embeds Plotly.js in the HTML file)
+            # Use 'cdn' for smaller file size but requires internet
+            plot_html = content.to_html(include_plotlyjs='inline', div_id=f"plot_{i}")
             html_parts.append(f'<div class="plot-container">{plot_html}</div>')
         
         elif section_type == "table" and isinstance(content, pd.DataFrame):

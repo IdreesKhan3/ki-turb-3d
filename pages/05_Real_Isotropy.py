@@ -36,7 +36,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from utils.file_detector import detect_simulation_files
-from utils.theme_config import inject_theme_css
+from utils.theme_config import inject_theme_css, template_selector
 from utils.report_builder import capture_button
 
 
@@ -55,8 +55,37 @@ def _load_ui_metadata(data_dir: Path):
         return
     try:
         meta = json.loads(path.read_text(encoding="utf-8"))
-        st.session_state.real_iso_legends = meta.get("real_iso_legends", {})
-        st.session_state.axis_labels_real_iso = meta.get("axis_labels_real_iso", {})
+        # Merge with defaults to ensure all required keys exist
+        default_legends = {
+            "Ex": "E<sub>x</sub>/E<sub>tot</sub>", 
+            "Ey": "E<sub>y</sub>/E<sub>tot</sub>", 
+            "Ez": "E<sub>z</sub>/E<sub>tot</sub>",
+            "b11": "b<sub>11</sub>", 
+            "b22": "b<sub>22</sub>", 
+            "b33": "b<sub>33</sub>",
+            "b12": "|b<sub>12</sub>|", 
+            "b13": "|b<sub>13</sub>|", 
+            "b23": "|b<sub>23</sub>|",
+            "anis": "Anisotropy index"
+        }
+        default_axis_labels = {
+            "time": "t/t₀", 
+            "energy_frac": "Energy fraction",
+            "bij": "Anisotropy tensor b<sub>ij</sub>",
+            "cross": "Cross-correlations / Anisotropy index",
+            "dev": "Absolute deviation",
+            "lumley_x": "ξ = (III<sub>b</sub>/2)<sup>1/3</sup>",
+            "lumley_y": "η = (-II<sub>b</sub>/3)<sup>1/2</sup>",
+        }
+        # Start with defaults, then update with saved values
+        loaded_legends = default_legends.copy()
+        loaded_legends.update(meta.get("real_iso_legends", {}))
+        st.session_state.real_iso_legends = loaded_legends
+        
+        loaded_axis_labels = default_axis_labels.copy()
+        loaded_axis_labels.update(meta.get("axis_labels_real_iso", {}))
+        st.session_state.axis_labels_real_iso = loaded_axis_labels
+        
         st.session_state.plot_style = meta.get("plot_style", st.session_state.get("plot_style", {}))
     except Exception:
         st.toast("legend_names.json exists but could not be read. Using defaults.", icon="⚠️")
@@ -276,9 +305,7 @@ def plot_style_sidebar(data_dir: Path, curves):
 
         st.markdown("---")
         st.markdown("**Theme**")
-        templates = ["plotly_white", "simple_white", "plotly_dark"]
-        ps["template"] = st.selectbox("Template", templates,
-                                      index=templates.index(ps.get("template", "plotly_white")))
+        template_selector(ps)
 
         st.markdown("---")
         st.markdown("**Per-curve overrides (optional)**")
@@ -523,31 +550,57 @@ def main():
         return
     data_dir = Path(data_dir)
 
-    st.session_state.setdefault("real_iso_legends", {
-        "Ex": "$E_x/E_{tot}$",
-        "Ey": "$E_y/E_{tot}$",
-        "Ez": "$E_z/E_{tot}$",
-        "b11": "$b_{11}$",
-        "b22": "$b_{22}$",
-        "b33": "$b_{33}$",
-        "b12": "$|b_{12}|$",
-        "b13": "$|b_{13}|$",
-        "b23": "$|b_{23}|$",
+    # Default values (using Unicode/HTML instead of LaTeX for Streamlit compatibility)
+    default_legends = {
+        "Ex": "E<sub>x</sub>/E<sub>tot</sub>",
+        "Ey": "E<sub>y</sub>/E<sub>tot</sub>",
+        "Ez": "E<sub>z</sub>/E<sub>tot</sub>",
+        "b11": "b<sub>11</sub>",
+        "b22": "b<sub>22</sub>",
+        "b33": "b<sub>33</sub>",
+        "b12": "|b<sub>12</sub>|",
+        "b13": "|b<sub>13</sub>|",
+        "b23": "|b<sub>23</sub>|",
         "anis": "Anisotropy index"
-    })
-    st.session_state.setdefault("axis_labels_real_iso", {
-        "time": r"$t/t_0$",
+    }
+    default_axis_labels = {
+        "time": "t/t₀",
         "energy_frac": "Energy fraction",
-        "bij": r"Anisotropy tensor $b_{ij}$",
+        "bij": "Anisotropy tensor b<sub>ij</sub>",
         "cross": "Cross-correlations / Anisotropy index",
         "dev": "Absolute deviation",
-        "lumley_x": r"$\xi = (III_b/2)^{1/3}$",
-        "lumley_y": r"$\eta = (-II_b/3)^{1/2}$",
-    })
+        "lumley_x": "ξ = (III<sub>b</sub>/2)<sup>1/3</sup>",
+        "lumley_y": "η = (-II<sub>b</sub>/3)<sup>1/2</sup>",
+    }
+    
+    # Initialize with defaults, then merge with any loaded data
+    if "real_iso_legends" not in st.session_state:
+        st.session_state.real_iso_legends = default_legends.copy()
+    else:
+        # Ensure all default keys exist (merge defaults with existing)
+        for key, value in default_legends.items():
+            if key not in st.session_state.real_iso_legends:
+                st.session_state.real_iso_legends[key] = value
+    
+    if "axis_labels_real_iso" not in st.session_state:
+        st.session_state.axis_labels_real_iso = default_axis_labels.copy()
+    else:
+        # Ensure all default keys exist
+        for key, value in default_axis_labels.items():
+            if key not in st.session_state.axis_labels_real_iso:
+                st.session_state.axis_labels_real_iso[key] = value
+    
     st.session_state.setdefault("plot_style", _default_plot_style())
 
     if st.session_state.get("_last_realiso_dir") != str(data_dir):
         _load_ui_metadata(data_dir)
+        # After loading, ensure all required keys are present
+        for key, value in default_legends.items():
+            if key not in st.session_state.real_iso_legends:
+                st.session_state.real_iso_legends[key] = value
+        for key, value in default_axis_labels.items():
+            if key not in st.session_state.axis_labels_real_iso:
+                st.session_state.axis_labels_real_iso[key] = value
         merged = _default_plot_style()
         merged.update(st.session_state.plot_style or {})
         st.session_state.plot_style = merged
@@ -556,15 +609,37 @@ def main():
     # locate required file
     files = detect_simulation_files(str(data_dir))
     eps_file = None
-    for f in files.get("eps_real", []):
-        if Path(f).name == "eps_real_validation.csv":
+    
+    # First, check files detected by file_detector (eps_validation key)
+    for f in files.get("eps_validation", []):
+        if Path(f).name == "eps_real_validation.csv" or Path(f).name.startswith("eps_real_validation"):
             eps_file = Path(f)
             break
+    
+    # If not found, check for exact filename in directory
     if eps_file is None:
-        # fallback
-        eps_file = data_dir / "eps_real_validation.csv"
-    if not eps_file.exists():
-        st.error("eps_real_validation.csv not found in dataset folder.")
+        exact_file = data_dir / "eps_real_validation.csv"
+        if exact_file.exists():
+            eps_file = exact_file
+    
+    # If still not found, check for any eps_real_validation*.csv file
+    if eps_file is None:
+        import glob
+        pattern = str(data_dir / "eps_real_validation*.csv")
+        matches = glob.glob(pattern)
+        if matches:
+            eps_file = Path(matches[0])  # Use first match
+    
+    if eps_file is None or not eps_file.exists():
+        st.error(f"eps_real_validation.csv not found in dataset folder: {data_dir}")
+        st.info(f"💡 Looking for files matching: eps_real_validation*.csv")
+        st.info(f"📂 Current directory: {data_dir}")
+        # Show what files are actually in the directory
+        csv_files = list(data_dir.glob("*.csv"))
+        if csv_files:
+            st.write("Available CSV files in directory:")
+            for f in csv_files:
+                st.write(f"  - {f.name}")
         return
 
     stress_file = data_dir / "reynolds_stress_validation.csv"
@@ -600,19 +675,25 @@ def main():
         with c2:
             if st.button("♻️ Reset labels/legends"):
                 st.session_state.real_iso_legends = {
-                    "Ex": "$E_x/E_{tot}$", "Ey": "$E_y/E_{tot}$", "Ez": "$E_z/E_{tot}$",
-                    "b11": "$b_{11}$", "b22": "$b_{22}$", "b33": "$b_{33}$",
-                    "b12": "$|b_{12}|$", "b13": "$|b_{13}|$", "b23": "$|b_{23}|$",
+                    "Ex": "E<sub>x</sub>/E<sub>tot</sub>", 
+                    "Ey": "E<sub>y</sub>/E<sub>tot</sub>", 
+                    "Ez": "E<sub>z</sub>/E<sub>tot</sub>",
+                    "b11": "b<sub>11</sub>", 
+                    "b22": "b<sub>22</sub>", 
+                    "b33": "b<sub>33</sub>",
+                    "b12": "|b<sub>12</sub>|", 
+                    "b13": "|b<sub>13</sub>|", 
+                    "b23": "|b<sub>23</sub>|",
                     "anis": "Anisotropy index"
                 }
                 st.session_state.axis_labels_real_iso = {
-                    "time": r"$t/t_0$",
+                    "time": "t/t₀",
                     "energy_frac": "Energy fraction",
-                    "bij": r"Anisotropy tensor $b_{ij}$",
+                    "bij": "Anisotropy tensor b<sub>ij</sub>",
                     "cross": "Cross-correlations / Anisotropy index",
                     "dev": "Absolute deviation",
-                    "lumley_x": r"$\xi = (III_b/2)^{1/3}$",
-                    "lumley_y": r"$\eta = (-II_b/3)^{1/2}$",
+                    "lumley_x": "ξ = (III<sub>b</sub>/2)<sup>1/3</sup>",
+                    "lumley_y": "η = (-II<sub>b</sub>/3)<sup>1/2</sup>",
                 }
                 _save_ui_metadata(data_dir)
                 st.toast("Reset + saved.", icon="♻️")
@@ -865,35 +946,21 @@ def main():
     )
 
     with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown(r"""
-Energy fractions:
-\[
-E_x/E_{tot},\; E_y/E_{tot},\; E_z/E_{tot}
-\]
-Isotropy implies each approaches \(1/3\).
-
-Reynolds stress anisotropy tensor:
-\[
-b_{ij} = \frac{R_{ij}}{2k} - \frac{1}{3}\delta_{ij}
-\]
-
-Invariants (Pope 2000):
-\[
-II_b = -\frac{1}{2}\mathrm{tr}(b^2), \qquad
-III_b = \frac{1}{3}\mathrm{tr}(b^3)
-\]
-
-Lumley coordinates:
-\[
-\eta = \left(-\frac{II_b}{3}\right)^{1/2},\quad
-\xi = \left(\frac{III_b}{2}\right)^{1/3}
-\]
-
-Anisotropy index:
-\[
-A = \sqrt{-2 II_b}
-\]
-        """)
+        st.markdown("**Energy fractions:**")
+        st.latex(r"E_x/E_{tot}, \quad E_y/E_{tot}, \quad E_z/E_{tot}")
+        st.markdown("Isotropy implies each approaches $1/3$.")
+        
+        st.markdown("**Reynolds stress anisotropy tensor:**")
+        st.latex(r"b_{ij} = \frac{R_{ij}}{2k} - \frac{1}{3}\delta_{ij}")
+        
+        st.markdown("**Invariants (Pope 2000):**")
+        st.latex(r"II_b = -\frac{1}{2}\mathrm{tr}(b^2), \qquad III_b = \frac{1}{3}\mathrm{tr}(b^3)")
+        
+        st.markdown("**Lumley coordinates:**")
+        st.latex(r"\eta = \left(-\frac{II_b}{3}\right)^{1/2}, \quad \xi = \left(\frac{III_b}{2}\right)^{1/3}")
+        
+        st.markdown("**Anisotropy index:**")
+        st.latex(r"A = \sqrt{-2 II_b}")
 
 
 if __name__ == "__main__":

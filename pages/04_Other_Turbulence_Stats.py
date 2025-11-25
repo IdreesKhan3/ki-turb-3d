@@ -32,7 +32,7 @@ sys.path.insert(0, str(project_root))
 
 from data_readers.csv_reader import read_csv_data
 from utils.file_detector import detect_simulation_files
-from utils.theme_config import apply_theme_to_plot_style, inject_theme_css
+from utils.theme_config import apply_theme_to_plot_style, inject_theme_css, template_selector
 from utils.report_builder import capture_button
 
 # ==========================================================
@@ -284,9 +284,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups):
 
         st.markdown("---")
         st.markdown("**Theme**")
-        templates = ["plotly_white", "simple_white", "plotly_dark"]
-        ps["template"] = st.selectbox("Template", templates,
-                                      index=templates.index(ps.get("template", "plotly_white")))
+        template_selector(ps)
 
         st.markdown("---")
         st.markdown("**Per-simulation overrides (optional)**")

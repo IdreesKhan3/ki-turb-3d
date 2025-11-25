@@ -32,7 +32,7 @@ sys.path.insert(0, str(project_root))
 from data_readers.spectrum_reader import read_spectrum_file
 from data_readers.norm_spectrum_reader import read_norm_spectrum_file
 from utils.file_detector import natural_sort_key, group_files_by_simulation
-from utils.theme_config import inject_theme_css
+from utils.theme_config import inject_theme_css, template_selector
 from utils.report_builder import capture_button
 
 
@@ -172,7 +172,7 @@ def _compute_time_avg_norm(files: tuple):
 
 
 def _add_kolmogorov_line(fig, k_vals, E_avg, kmin, kmax, ps,
-                         label="Kolmogorov $k^{-5/3}$"):
+                         label="Kolmogorov k<sup>-5/3</sup>"):
     """Add scaled -5/3 reference line on [kmin,kmax]."""
     mask = (k_vals >= kmin) & (k_vals <= kmax)
     k_fit = k_vals[mask]
@@ -517,10 +517,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups):
 
         st.markdown("---")
         st.markdown("**Theme**")
-        templates = ["plotly_white", "simple_white", "plotly_dark"]
-        ps["template"] = st.selectbox(
-            "Template", templates, index=templates.index(ps.get("template", "plotly_white"))
-        )
+        template_selector(ps)
 
         st.markdown("---")
         st.markdown("**Per-simulation line styles (optional)**")
@@ -643,10 +640,10 @@ def main():
 
     st.session_state.setdefault("spectrum_legend_names", {})
     st.session_state.setdefault("norm_legend_names", {})
-    st.session_state.setdefault("axis_labels_raw", {"x": "Wavenumber $k$", "y": "Energy spectrum $E(k)$"})
+    st.session_state.setdefault("axis_labels_raw", {"x": "Wavenumber k", "y": "Energy spectrum E(k)"})
     st.session_state.setdefault("axis_labels_norm", {
-        "x": "Normalized wavenumber $k\\eta$",
-        "y": "Normalized spectrum $E_{norm}(k\\eta)$",
+        "x": "Normalized wavenumber kη",
+        "y": "Normalized spectrum E<sub>norm</sub>(kη)",
     })
     st.session_state.setdefault("plot_style", _default_plot_style())
     st.session_state.setdefault("file_selection_mode", "directory")
@@ -688,7 +685,7 @@ def main():
                 dir_norm = sorted(glob.glob(str(data_dir / "norm*.dat")), key=natural_sort_key)
                 spectrum_files.extend(dir_spectrum)
                 norm_files.extend(dir_norm)
-        
+
         if not spectrum_files and not norm_files:
             st.error("No spectrum*.dat or norm*.dat files found in the selected directories.")
             st.info("💡 Switch to 'Custom Files' mode to select files from any location, or select multiple directories in the main app.")
@@ -901,24 +898,24 @@ def main():
             st.caption("Raw spectrum labels")
             st.session_state.axis_labels_raw["x"] = st.text_input(
                 "Raw x-axis label",
-                value=st.session_state.axis_labels_raw.get("x", "Wavenumber $k$"),
+                value=st.session_state.axis_labels_raw.get("x", "Wavenumber k"),
                 key="axis_raw_x"
             )
             st.session_state.axis_labels_raw["y"] = st.text_input(
                 "Raw y-axis label",
-                value=st.session_state.axis_labels_raw.get("y", "Energy spectrum $E(k)$"),
+                value=st.session_state.axis_labels_raw.get("y", "Energy spectrum E(k)"),
                 key="axis_raw_y"
             )
 
             st.caption("Normalized spectrum labels")
             st.session_state.axis_labels_norm["x"] = st.text_input(
                 "Norm x-axis label",
-                value=st.session_state.axis_labels_norm.get("x", "Normalized wavenumber $k\\eta$"),
+                value=st.session_state.axis_labels_norm.get("x", "Normalized wavenumber kη"),
                 key="axis_norm_x"
             )
             st.session_state.axis_labels_norm["y"] = st.text_input(
                 "Norm y-axis label",
-                value=st.session_state.axis_labels_norm.get("y", "Normalized spectrum $E_{norm}(k\\eta)$"),
+                value=st.session_state.axis_labels_norm.get("y", "Normalized spectrum E<sub>norm</sub>(kη)"),
                 key="axis_norm_y"
             )
 
@@ -932,10 +929,10 @@ def main():
                 if st.button("♻️ Reset labels/legends"):
                     st.session_state.spectrum_legend_names = {k: _default_labelify(k) for k in sim_groups.keys()}
                     st.session_state.norm_legend_names = {k: _default_labelify(k) for k in norm_groups.keys()}
-                    st.session_state.axis_labels_raw = {"x": "Wavenumber $k$", "y": "Energy spectrum $E(k)$"}
+                    st.session_state.axis_labels_raw = {"x": "Wavenumber k", "y": "Energy spectrum E(k)"}
                     st.session_state.axis_labels_norm = {
-                        "x": "Normalized wavenumber $k\\eta$",
-                        "y": "Normalized spectrum $E_{norm}(k\\eta)$",
+                        "x": "Normalized wavenumber kη",
+                        "y": "Normalized spectrum E<sub>norm</sub>(kη)",
                     }
                     _save_ui_metadata(data_dir)
                     st.toast("Reset + saved.", icon="♻️")
@@ -1184,30 +1181,18 @@ def main():
     # Theory / Equations
     # ======================================================
     with st.expander("Theory / Equations", expanded=False):
-        st.markdown(r"""
-**3D kinetic energy spectrum (Fourier space)**  
-\[
-E(\kappa)=\sum_{\kappa\le |\mathbf{k}|<\kappa+\Delta \kappa}
-\frac{1}{2}\left(|\hat{u}(\mathbf{k})|^2+|\hat{v}(\mathbf{k})|^2+|\hat{w}(\mathbf{k})|^2\right)
-\]
+        st.markdown("**3D kinetic energy spectrum (Fourier space)**")
+        st.latex(r"E(\kappa)=\sum_{\kappa\le |\mathbf{k}|<\kappa+\Delta \kappa} \frac{1}{2}\left(|\hat{u}(\mathbf{k})|^2+|\hat{v}(\mathbf{k})|^2+|\hat{w}(\mathbf{k})|^2\right)")
+        
+        st.markdown("**Total kinetic energy and RMS velocity**")
+        st.latex(r"\mathrm{TKE}=\sum_{\kappa}E(\kappa), \qquad u_{\mathrm{rms}}=\sqrt{\frac{2}{3}\mathrm{TKE}}")
 
-**Total kinetic energy and RMS velocity**  
-\[
-\mathrm{TKE}=\sum_{\kappa}E(\kappa), \qquad
-u_{\mathrm{rms}}=\sqrt{\frac{2}{3}\mathrm{TKE}}
-\]
+        st.markdown("**Kolmogorov inertial-range scaling**")
+        st.latex(r"E(\kappa)\propto \kappa^{-5/3}")
 
-**Kolmogorov inertial-range scaling**  
-\[
-E(\kappa)\propto \kappa^{-5/3}
-\]
-
-**Pope model spectrum (HIT validation)**  
-\[
-E_{\text{pope}}(\kappa)=C\,\varepsilon^{2/3}\kappa^{-5/3}f_L(\kappa L)f_\eta(\kappa\eta)
-\]
-with \(C=1.5\), \(c_L=6.78\), \(c_\eta=0.40\), \(\beta=5.2\).
-        """)
+        st.markdown("**Pope model spectrum (HIT validation)**")
+        st.latex(r"E_{\text{pope}}(\kappa)=C\,\varepsilon^{2/3}\kappa^{-5/3}f_L(\kappa L)f_\eta(\kappa\eta)")
+        st.markdown("with $C=1.5$, $c_L=6.78$, $c_\eta=0.40$, $\\beta=5.2$.")
 
 
 if __name__ == "__main__":

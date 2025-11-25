@@ -237,6 +237,35 @@ def _get_palette(ps):
     return mapping.get(ps.get("palette", "Plotly"), pc.qualitative.Plotly)
 
 
+def template_selector(ps):
+    """
+    Template selector with automatic background color updates.
+    
+    Args:
+        ps: Plot style dictionary (will be modified in place)
+        
+    Returns:
+        Selected template name
+    """
+    import streamlit as st
+    
+    templates = ["plotly_white", "simple_white", "plotly_dark"]
+    old_template = ps.get("template", "plotly_white")
+    ps["template"] = st.selectbox("Template", templates,
+                                  index=templates.index(old_template))
+    
+    # Auto-update backgrounds when template changes
+    if ps["template"] != old_template:
+        if ps["template"] == "plotly_dark":
+            ps["plot_bgcolor"] = "#1e1e1e"
+            ps["paper_bgcolor"] = "#1e1e1e"
+        else:  # plotly_white or simple_white
+            ps["plot_bgcolor"] = "#FFFFFF"
+            ps["paper_bgcolor"] = "#FFFFFF"
+    
+    return ps["template"]
+
+
 def inject_theme_css(theme_name: str = None):
     """
     Inject CSS for theme styling across all pages

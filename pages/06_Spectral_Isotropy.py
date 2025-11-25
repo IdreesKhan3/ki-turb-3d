@@ -37,7 +37,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from utils.file_detector import detect_simulation_files, natural_sort_key
-from utils.theme_config import inject_theme_css
+from utils.theme_config import inject_theme_css, template_selector
 from utils.report_builder import capture_button
 
 
@@ -56,8 +56,28 @@ def _load_ui_metadata(data_dir: Path):
         return
     try:
         meta = json.loads(path.read_text(encoding="utf-8"))
-        st.session_state.spec_iso_legends = meta.get("spec_iso_legends", {})
-        st.session_state.axis_labels_spec_iso = meta.get("axis_labels_spec_iso", {})
+        # Merge with defaults to ensure all required keys exist
+        default_legends = {
+            "IC": "IC(k) (time-avg)",
+            "IC_snap": "IC(k) snapshots",
+            "E11": "E<sub>11</sub>(k)",
+            "E22": "E<sub>22</sub>(k)",
+            "E33": "E<sub>33</sub>(k)",
+        }
+        default_axis_labels = {
+            "k": "k",
+            "ic": "IC(k)",
+            "ek": "E<sub>ii</sub>(k)",
+        }
+        # Start with defaults, then update with saved values
+        loaded_legends = default_legends.copy()
+        loaded_legends.update(meta.get("spec_iso_legends", {}))
+        st.session_state.spec_iso_legends = loaded_legends
+        
+        loaded_axis_labels = default_axis_labels.copy()
+        loaded_axis_labels.update(meta.get("axis_labels_spec_iso", {}))
+        st.session_state.axis_labels_spec_iso = loaded_axis_labels
+        
         st.session_state.plot_style = meta.get("plot_style", st.session_state.get("plot_style", {}))
     except Exception:
         st.toast("legend_names.json exists but could not be read. Using defaults.", icon="⚠️")
@@ -277,9 +297,7 @@ def plot_style_sidebar(data_dir: Path, curves):
 
         st.markdown("---")
         st.markdown("**Theme**")
-        templates = ["plotly_white", "simple_white", "plotly_dark"]
-        ps["template"] = st.selectbox("Template", templates,
-                                      index=templates.index(ps.get("template", "plotly_white")))
+        template_selector(ps)
 
         st.markdown("---")
         st.markdown("**Per-curve overrides (optional)**")
@@ -441,12 +459,16 @@ def _avg_isotropy_coeff(files):
         E22 = d[:, 2] if d.shape[1] > 2 else None
         E33 = d[:, 3] if d.shape[1] > 3 else None
 
+        # Use the derivative-based IC from Fortran (column 6, 0-indexed)
+        # Expected columns: k, E11, E22, E33, dE11/dk, IC_standard, IC_deriv
         if d.shape[1] >= 7:
-            IC = d[:, 6]   # derivative IC from Fortran
+            IC = d[:, 6]   # IC_deriv from Fortran (column 6, 0-indexed)
         else:
+            # Fallback to simple IC if derivative-based not available
             IC = np.divide(E22, E11, out=np.zeros_like(E22), where=E11 != 0)
 
-        valid = (k > 0) & np.isfinite(IC)
+        # Filter valid data (matching auxiliary script criteria)
+        valid = (k > 0.5) & np.isfinite(IC) & (E11 > 1e-15)
         if np.any(valid):
             all_k.append(k[valid])
             all_ic.append(IC[valid])
@@ -512,22 +534,47 @@ def main():
         return
     data_dir = Path(data_dir)
 
-    st.session_state.setdefault("spec_iso_legends", {
-        "IC": r"$IC(k)$ (time-avg)",
-        "IC_snap": r"$IC(k)$ snapshots",
-        "E11": r"$E_{11}(k)$",
-        "E22": r"$E_{22}(k)$",
-        "E33": r"$E_{33}(k)$",
-    })
-    st.session_state.setdefault("axis_labels_spec_iso", {
-        "k": r"$k$",
-        "ic": r"$IC(k)$",
-        "ek": r"$E_{ii}(k)$",
-    })
+    # Default values (using Unicode/HTML instead of LaTeX for Streamlit compatibility)
+    default_legends = {
+        "IC": "IC(k) (time-avg)",
+        "IC_snap": "IC(k) snapshots",
+        "E11": "E<sub>11</sub>(k)",
+        "E22": "E<sub>22</sub>(k)",
+        "E33": "E<sub>33</sub>(k)",
+    }
+    default_axis_labels = {
+        "k": "k",
+        "ic": "IC(k)",
+        "ek": "E<sub>ii</sub>(k)",
+    }
+    
+    # Initialize with defaults, then merge with any loaded data
+    if "spec_iso_legends" not in st.session_state:
+        st.session_state.spec_iso_legends = default_legends.copy()
+    else:
+        # Ensure all default keys exist (merge defaults with existing)
+        for key, value in default_legends.items():
+            if key not in st.session_state.spec_iso_legends:
+                st.session_state.spec_iso_legends[key] = value
+    
+    if "axis_labels_spec_iso" not in st.session_state:
+        st.session_state.axis_labels_spec_iso = default_axis_labels.copy()
+    else:
+        # Ensure all default keys exist
+        for key, value in default_axis_labels.items():
+            if key not in st.session_state.axis_labels_spec_iso:
+                st.session_state.axis_labels_spec_iso[key] = value
     st.session_state.setdefault("plot_style", _default_plot_style())
 
     if st.session_state.get("_last_speciso_dir") != str(data_dir):
         _load_ui_metadata(data_dir)
+        # After loading, ensure all required keys are present
+        for key, value in default_legends.items():
+            if key not in st.session_state.spec_iso_legends:
+                st.session_state.spec_iso_legends[key] = value
+        for key, value in default_axis_labels.items():
+            if key not in st.session_state.axis_labels_spec_iso:
+                st.session_state.axis_labels_spec_iso[key] = value
         merged = _default_plot_style()
         merged.update(st.session_state.plot_style or {})
         st.session_state.plot_style = merged
@@ -565,16 +612,16 @@ def main():
         with c2:
             if st.button("♻️ Reset labels/legends"):
                 st.session_state.spec_iso_legends = {
-                    "IC": r"$IC(k)$ (time-avg)",
-                    "IC_snap": r"$IC(k)$ snapshots",
-                    "E11": r"$E_{11}(k)$",
-                    "E22": r"$E_{22}(k)$",
-                    "E33": r"$E_{33}(k)$",
+                    "IC": "IC(k) (time-avg)",
+                    "IC_snap": "IC(k) snapshots",
+                    "E11": "E<sub>11</sub>(k)",
+                    "E22": "E<sub>22</sub>(k)",
+                    "E33": "E<sub>33</sub>(k)",
                 }
                 st.session_state.axis_labels_spec_iso = {
-                    "k": r"$k$",
-                    "ic": r"$IC(k)$",
-                    "ek": r"$E_{ii}(k)$",
+                    "k": "k",
+                    "ic": "IC(k)",
+                    "ek": "E<sub>ii</sub>(k)",
                 }
                 _save_ui_metadata(data_dir)
                 st.toast("Reset + saved.", icon="♻️")
@@ -718,17 +765,13 @@ def main():
         )
 
     with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown(r"""
-Isotropy coefficient in spectral space:
-\[
-IC(k)=\frac{E_{22}(k)}{E_{11}(k)}
-\]
-For isotropic turbulence:
-\[
-E_{11}(k)=E_{22}(k)=E_{33}(k) \;\Rightarrow\; IC(k)\approx 1
-\]
-Derivative-based IC from Fortran provides a more robust estimate when available.
-        """)
+        st.markdown("**Isotropy coefficient in spectral space:**")
+        st.latex(r"IC(k) = \frac{E_{22}(k)}{E_{11}(k)}")
+        
+        st.markdown("**For isotropic turbulence:**")
+        st.latex(r"E_{11}(k) = E_{22}(k) = E_{33}(k) \quad \Rightarrow \quad IC(k) \approx 1")
+        
+        st.markdown("**Note:** Derivative-based IC from Fortran provides a more robust estimate when available.")
 
 
 if __name__ == "__main__":

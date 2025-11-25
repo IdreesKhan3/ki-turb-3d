@@ -54,7 +54,7 @@ def main():
     for data_dir_path in data_dirs:
         data_dir = Path(data_dir_path)
         dir_name = data_dir.name if len(data_dirs) > 1 else "Simulation"
-        
+    
         # Detect available files
         files = detect_simulation_files(str(data_dir))
     
@@ -68,7 +68,7 @@ def main():
             'knudsen_number': None,
             'is_les': False,
         }
-        
+    
         # Load parameters
         if files['parameters']:
             params = read_parameters(str(files['parameters'][0]))
@@ -99,72 +99,72 @@ def main():
         if all_simulations_data[0]['params']:
             st.header("Simulation Parameters")
             formatted_params = all_simulations_data[0]['params']
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.subheader("Grid Parameters")
-                for label, info in formatted_params.items():
-                    if 'Grid' in label or 'Size' in label or 'Interval' in label or 'Tag' in label:
-                        st.text(f"{label}: {info['value']} {info['unit']}")
-            
-            with col2:
-                st.subheader("Physical Parameters")
-                for label, info in formatted_params.items():
-                    if 'Viscosity' in label or 'Velocity' in label or 'Relaxation' in label or 'Forcing' in label or 'Perturbation' in label:
-                        st.text(f"{label}: {info['value']} {info['unit']}")
-            
-            with col3:
-                st.subheader("LBM Parameters")
-                for label, info in formatted_params.items():
-                    if 'Lattice' in label or 'Speed' in label or 'Length' in label or 'Smagorinsky' in label:
-                        st.text(f"{label}: {info['value']} {info['unit']}")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.subheader("Grid Parameters")
+            for label, info in formatted_params.items():
+                if 'Grid' in label or 'Size' in label or 'Interval' in label or 'Tag' in label:
+                    st.text(f"{label}: {info['value']} {info['unit']}")
+        
+        with col2:
+            st.subheader("Physical Parameters")
+            for label, info in formatted_params.items():
+                if 'Viscosity' in label or 'Velocity' in label or 'Relaxation' in label or 'Forcing' in label or 'Perturbation' in label:
+                    st.text(f"{label}: {info['value']} {info['unit']}")
+        
+        with col3:
+            st.subheader("LBM Parameters")
+            for label, info in formatted_params.items():
+                if 'Lattice' in label or 'Speed' in label or 'Length' in label or 'Smagorinsky' in label:
+                    st.text(f"{label}: {info['value']} {info['unit']}")
     
     # Compute Mach and Knudsen numbers for each simulation
     for sim in all_simulations_data:
         files = sim['files']
-        mach_number = None
-        knudsen_number = None
-        
-        if files['eps_validation']:
-            # Load validation data for u_rms_real
-            val_df = read_eps_validation_csv(str(files['eps_validation'][0]))
-            if 'u_rms_real' in val_df.columns and len(val_df) > 0:
-                u_rms_latest = val_df['u_rms_real'].iloc[-1]
-                c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
-                mach_number = u_rms_latest / c_s
-        
-        # Compute Knudsen number (different for DNS vs LES)
+    mach_number = None
+    knudsen_number = None
+    
+    if files['eps_validation']:
+        # Load validation data for u_rms_real
+        val_df = read_eps_validation_csv(str(files['eps_validation'][0]))
+        if 'u_rms_real' in val_df.columns and len(val_df) > 0:
+            u_rms_latest = val_df['u_rms_real'].iloc[-1]
+            c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
+            mach_number = u_rms_latest / c_s
+    
+    # Compute Knudsen number (different for DNS vs LES)
         is_les = sim['is_les']
-        if files['parameters']:
-            params = read_parameters(str(files['parameters'][0]))
-            nu = params.get('nu', None)
-            if nu is not None:
-                c_s2 = 1.0 / 3.0
-                
-                if is_les:
-                    # LES: Kn_t = ((τ_e - 1/2) * √3 * Δx) / Δx = (τ_e - 1/2) * √3
-                    if files['tau_analysis'] and files['parameters']:
-                        params = read_parameters(str(files['parameters'][0]))
-                        nx = params.get('nx', None)
-                        ny = params.get('ny', None)
-                        nz = params.get('nz', None)
-                        
-                        if nx and ny and nz:
-                            tau_file = str(files['tau_analysis'][-1])
-                            try:
-                                tau_e = read_tau_analysis_file(tau_file, nx, ny, nz)
-                                dx = 1.0
-                                sqrt3 = np.sqrt(3.0)
-                                knudsen_number = ((tau_e - 0.5) * sqrt3 * dx) / dx
-                            except Exception:
-                                knudsen_number = None
-                else:
-                    # DNS: Kn = (c_s * (τ₀ - 1/2) * Δx) / Δx = c_s * (τ₀ - 1/2)
-                    tau_0 = nu / c_s2 + 0.5
-                    c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
-                    dx = 1.0  # Grid spacing in lattice units (Δx)
-                    knudsen_number = (c_s * (tau_0 - 0.5) * dx) / dx
+    if files['parameters']:
+        params = read_parameters(str(files['parameters'][0]))
+        nu = params.get('nu', None)
+        if nu is not None:
+            c_s2 = 1.0 / 3.0
+            
+            if is_les:
+                # LES: Kn_t = ((τ_e - 1/2) * √3 * Δx) / Δx = (τ_e - 1/2) * √3
+                if files['tau_analysis'] and files['parameters']:
+                    params = read_parameters(str(files['parameters'][0]))
+                    nx = params.get('nx', None)
+                    ny = params.get('ny', None)
+                    nz = params.get('nz', None)
+                    
+                    if nx and ny and nz:
+                        tau_file = str(files['tau_analysis'][-1])
+                        try:
+                            tau_e = read_tau_analysis_file(tau_file, nx, ny, nz)
+                            dx = 1.0
+                            sqrt3 = np.sqrt(3.0)
+                            knudsen_number = ((tau_e - 0.5) * sqrt3 * dx) / dx
+                        except Exception:
+                            knudsen_number = None
+            else:
+                # DNS: Kn = (c_s * (τ₀ - 1/2) * Δx) / Δx = c_s * (τ₀ - 1/2)
+                tau_0 = nu / c_s2 + 0.5
+                c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
+                dx = 1.0  # Grid spacing in lattice units (Δx)
+                knudsen_number = (c_s * (tau_0 - 0.5) * dx) / dx
         
         sim['mach_number'] = mach_number
         sim['knudsen_number'] = knudsen_number
@@ -213,58 +213,58 @@ def main():
             sim = all_simulations_data[0]
             mach_number = sim['mach_number']
             knudsen_number = sim['knudsen_number']
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if mach_number is not None:
-                    # Mach number traffic light logic
-                    if mach_number > 0.1:
-                        status_color = "🔴"
-                        status_text = "**Invalid:** Ma > 0.1"
-                        status_msg = "Compressibility effects are significant. LBM weakly compressible approximation may be invalid."
-                    elif mach_number > 0.05:
-                        status_color = "🟡"
-                        status_text = "**Warning:** 0.05 < Ma < 0.1"
-                        status_msg = "Approaching compressibility limit. Monitor for compressibility artifacts."
-                    else:
-                        status_color = "🟢"
-                        status_text = "**Valid:** Ma < 0.1"
-                        status_msg = "Incompressible flow regime. Navier-Stokes approximation is valid."
-                    
-                    st.metric(
-                        "Mach Number", 
-                        f"{mach_number:.4f}",
-                        delta=None,
-                        help="Ma = u_rms / c_s, where c_s = 1/√3 is the lattice sound speed"
-                    )
-                    st.markdown(f"{status_color} {status_text}")
-                    st.caption(status_msg)
-            
-            with col2:
-                if knudsen_number is not None:
-                    # Knudsen number traffic light logic
-                    if knudsen_number > 0.1:
-                        status_color = "🔴"
-                        status_text = "**Invalid:** Kn > 0.1"
-                        status_msg = "Transition regime. Boltzmann equation is not recovering Navier-Stokes hydrodynamics correctly for this scale."
-                    elif knudsen_number > 0.01:
-                        status_color = "🟡"
-                        status_text = "**Warning:** 0.01 < Kn < 0.1"
-                        status_msg = "Slip regime. Boundary conditions might be inaccurate; fine for some bulk flows but risky for DNS."
-                    else:
-                        status_color = "🟢"
-                        status_text = "**Valid:** Kn < 0.01"
-                        status_msg = "Continuum regime. Navier-Stokes valid."
-                    
-                    st.metric(
-                        "Knudsen Number", 
-                        f"{knudsen_number:.6f}",
-                        delta=None,
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if mach_number is not None:
+                # Mach number traffic light logic
+                if mach_number > 0.1:
+                    status_color = "🔴"
+                    status_text = "**Invalid:** Ma > 0.1"
+                    status_msg = "Compressibility effects are significant. LBM weakly compressible approximation may be invalid."
+                elif mach_number > 0.05:
+                    status_color = "🟡"
+                    status_text = "**Warning:** 0.05 < Ma < 0.1"
+                    status_msg = "Approaching compressibility limit. Monitor for compressibility artifacts."
+                else:
+                    status_color = "🟢"
+                    status_text = "**Valid:** Ma < 0.1"
+                    status_msg = "Incompressible flow regime. Navier-Stokes approximation is valid."
+                
+                st.metric(
+                    "Mach Number", 
+                    f"{mach_number:.4f}",
+                    delta=None,
+                    help="Ma = u_rms / c_s, where c_s = 1/√3 is the lattice sound speed"
+                )
+                st.markdown(f"{status_color} {status_text}")
+                st.caption(status_msg)
+        
+        with col2:
+            if knudsen_number is not None:
+                # Knudsen number traffic light logic
+                if knudsen_number > 0.1:
+                    status_color = "🔴"
+                    status_text = "**Invalid:** Kn > 0.1"
+                    status_msg = "Transition regime. Boltzmann equation is not recovering Navier-Stokes hydrodynamics correctly for this scale."
+                elif knudsen_number > 0.01:
+                    status_color = "🟡"
+                    status_text = "**Warning:** 0.01 < Kn < 0.1"
+                    status_msg = "Slip regime. Boundary conditions might be inaccurate; fine for some bulk flows but risky for DNS."
+                else:
+                    status_color = "🟢"
+                    status_text = "**Valid:** Kn < 0.01"
+                    status_msg = "Continuum regime. Navier-Stokes valid."
+                
+                st.metric(
+                    "Knudsen Number", 
+                    f"{knudsen_number:.6f}",
+                    delta=None,
                         help="Kn = (τ - 0.5) / L"
-                    )
-                    st.markdown(f"{status_color} {status_text}")
-                    st.caption(status_msg)
+                )
+                st.markdown(f"{status_color} {status_text}")
+                st.caption(status_msg)
     
     # File availability checklist
     st.header("Data Availability")
@@ -290,19 +290,19 @@ def main():
     else:
         # Single simulation - original checklist
         files = all_simulations_data[0]['files']
-        checklist = {
-            'CSV Statistics': len(files['csv']) > 0,
-            'Energy Spectra': len(files['spectrum']) > 0,
-            'Normalized Spectra': len(files['norm_spectrum']) > 0,
-            'Structure Functions': len(files['structure_functions_txt']) > 0 or len(files['structure_functions_bin']) > 0,
-            'Flatness': len(files['flatness']) > 0,
-            'Isotropy': len(files['isotropy']) > 0,
-            'Energy Balance Validation': len(files['eps_validation']) > 0,
-        }
-        
-        for item, available in checklist.items():
-            status = "✅" if available else "❌"
-            st.markdown(f"{status} {item}")
+    checklist = {
+        'CSV Statistics': len(files['csv']) > 0,
+        'Energy Spectra': len(files['spectrum']) > 0,
+        'Normalized Spectra': len(files['norm_spectrum']) > 0,
+        'Structure Functions': len(files['structure_functions_txt']) > 0 or len(files['structure_functions_bin']) > 0,
+        'Flatness': len(files['flatness']) > 0,
+        'Isotropy': len(files['isotropy']) > 0,
+        'Energy Balance Validation': len(files['eps_validation']) > 0,
+    }
+    
+    for item, available in checklist.items():
+        status = "✅" if available else "❌"
+        st.markdown(f"{status} {item}")
 
 if __name__ == "__main__":
     main()

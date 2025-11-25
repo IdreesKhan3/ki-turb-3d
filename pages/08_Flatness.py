@@ -40,7 +40,7 @@ sys.path.insert(0, str(project_root))
 
 from data_readers.text_reader import read_flatness_file
 from utils.file_detector import detect_simulation_files, group_files_by_simulation, natural_sort_key
-from utils.theme_config import inject_theme_css
+from utils.theme_config import inject_theme_css, template_selector
 from utils.report_builder import capture_button
 
 
@@ -455,9 +455,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups):
 
         st.markdown("---")
         st.markdown("**Theme**")
-        templates = ["plotly_white", "simple_white", "plotly_dark"]
-        ps["template"] = st.selectbox("Template", templates,
-                                      index=templates.index(ps.get("template", "plotly_white")))
+        template_selector(ps)
 
         st.markdown("---")
         st.markdown("**Per-simulation line styles (optional)**")
@@ -517,6 +515,20 @@ def plot_style_sidebar(data_dir: Path, sim_groups):
 
     st.session_state.plot_style = ps
 
+
+def _color_to_rgb_tuple(color):
+    """Convert color to RGB tuple, handling both hex and RGB string formats."""
+    if color.startswith("rgb("):
+        # Parse RGB string like "rgb(27, 158, 119)"
+        match = re.match(r"rgb\((\d+),\s*(\d+),\s*(\d+)\)", color)
+        if match:
+            return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    # Try hex format
+    try:
+        return hex_to_rgb(color)
+    except (ValueError, TypeError):
+        # Fallback to default if conversion fails
+        return (0, 0, 0)
 
 def _resolve_line_style(sim_prefix, idx, colors, ps):
     default_color = colors[idx % len(colors)]
@@ -603,29 +615,67 @@ def main():
         # Multiple directories: group by directory name + simulation pattern
         sim_groups = {}
         for data_dir_path in data_dirs:
-            data_dir_obj = Path(data_dir_path)
+            data_dir_obj = Path(data_dir_path).resolve()
             dir_name = data_dir_obj.name  # e.g., "768", "512", "128"
             
-            # Get files from this directory
-            dir_flatness = [f for f in all_flatness_files if Path(f).parent == data_dir_obj]
+            # Get files from this directory - use string comparison for robustness
+            data_dir_str = str(data_dir_obj)
+            dir_flatness = [f for f in all_flatness_files if str(Path(f).resolve().parent) == data_dir_str]
+            
+            # If no files found, re-check this directory directly
+            if not dir_flatness:
+                files_dict = detect_simulation_files(str(data_dir_obj))
+                dir_flatness = [str(f) for f in files_dict.get("flatness", [])]
             
             if dir_flatness:
-                # Group files from this directory
+                # Try pattern with data: flatness_data1_t*.txt
                 dir_sim_groups = group_files_by_simulation(
-                    [str(f) for f in dir_flatness],
-                    r"(flatness_data\d+)_\d+\.txt"
+                    sorted([str(f) for f in dir_flatness], key=natural_sort_key),
+                    r"(flatness_data\d+)_t\d+\.txt"
                 )
+                # If that fails, try pattern without underscore: flatness_data1_t*.txt (alternative format)
+                if not dir_sim_groups:
+                    dir_sim_groups = group_files_by_simulation(
+                        sorted([str(f) for f in dir_flatness], key=natural_sort_key),
+                        r"(flatness_data\d+)_\d+\.txt"
+                    )
+                # If that fails, try pattern with just number: flatness1_t*.txt
+                if not dir_sim_groups:
+                    dir_sim_groups = group_files_by_simulation(
+                        sorted([str(f) for f in dir_flatness], key=natural_sort_key),
+                        r"(flatness\d+)_t\d+\.txt"
+                    )
                 
-                # Add directory prefix to group keys
-                for key, files in dir_sim_groups.items():
-                    new_key = f"{dir_name}_{key}" if key else dir_name
-                    sim_groups[new_key] = files
+                if dir_sim_groups:
+                    # Files matched pattern - use pattern-based grouping
+                    for key, files in dir_sim_groups.items():
+                        new_key = f"{dir_name}_{key}" if key else dir_name
+                        sim_groups[new_key] = files
+                else:
+                    # Files didn't match pattern - treat entire directory as one simulation
+                    sim_groups[dir_name] = sorted([str(f) for f in dir_flatness], key=natural_sort_key)
     else:
-        # Single directory - original behavior
+        # Single directory - group by simulation prefix
         sim_groups = group_files_by_simulation(
-            [str(f) for f in all_flatness_files],
-            r"(flatness_data\d+)_\d+\.txt"
-        )
+            sorted([str(f) for f in all_flatness_files], key=natural_sort_key),
+            r"(flatness_data\d+)_t\d+\.txt"
+        ) if all_flatness_files else {}
+        # If that fails, try pattern without underscore: flatness_data1_t*.txt
+        if not sim_groups and all_flatness_files:
+            sim_groups = group_files_by_simulation(
+                sorted([str(f) for f in all_flatness_files], key=natural_sort_key),
+                r"(flatness_data\d+)_\d+\.txt"
+            )
+        # If that fails, try pattern with just number: flatness1_t*.txt
+        if not sim_groups and all_flatness_files:
+            sim_groups = group_files_by_simulation(
+                sorted([str(f) for f in all_flatness_files], key=natural_sort_key),
+                r"(flatness\d+)_t\d+\.txt"
+            )
+        
+        # If grouping failed in single directory, treat all files as one simulation
+        if not sim_groups and all_flatness_files:
+            sim_groups["flatness"] = sorted([str(f) for f in all_flatness_files], key=natural_sort_key)
     
     if not sim_groups:
         st.warning("Could not group flatness files by simulation type.")
@@ -727,7 +777,7 @@ def main():
         ))
 
         if show_std and F_std is not None:
-            rgb = hex_to_rgb(color)
+            rgb = _color_to_rgb_tuple(color)
             fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps['std_alpha']})"
             fig.add_trace(go.Scatter(
                 x=np.concatenate([r_plot, r_plot[::-1]]),
@@ -772,22 +822,15 @@ def main():
 
     # Theory section
     with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown(r"""
-**Longitudinal Flatness Factor**
-
-The longitudinal flatness factor $F_L(r)$ measures intermittency of velocity increments:
-
-\[
-F_L(r) = \frac{\langle [\delta u_L(r)]^4 \rangle}{\langle [\delta u_L(r)]^2 \rangle^2}
-\]
-
-where $\delta u_L(r) = u_L(\mathbf{x}+r\mathbf{e}_L) - u_L(\mathbf{x})$.
-
-**Interpretation**
-- $F_L(r)=3$: Gaussian increments (no intermittency)
-- $F_L(r)>3$: intermittent, fat-tailed PDFs
-- $F_L(r)<3$: sub-Gaussian
-        """)
+        st.markdown("**Longitudinal Flatness Factor**")
+        st.markdown("The longitudinal flatness factor $F_L(r)$ measures intermittency of velocity increments:")
+        st.latex(r"F_L(r) = \frac{\langle [\delta u_L(r)]^4 \rangle}{\langle [\delta u_L(r)]^2 \rangle^2}")
+        st.markdown("where $\\delta u_L(r) = u_L(\\mathbf{x}+r\\mathbf{e}_L) - u_L(\\mathbf{x})$.")
+        
+        st.markdown("**Interpretation**")
+        st.markdown("- $F_L(r)=3$: Gaussian increments (no intermittency)")
+        st.markdown("- $F_L(r)>3$: intermittent, fat-tailed PDFs")
+        st.markdown("- $F_L(r)<3$: sub-Gaussian")
 
 
 if __name__ == "__main__":

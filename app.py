@@ -15,7 +15,7 @@ from utils.theme_config import get_theme_list, get_default_theme, inject_theme_c
 
 # Page configuration
 st.set_page_config(
-    page_title="LBM-MRT Turbulence Analysis Dashboard",
+    page_title="IK-TURB 3D",
     page_icon="🌊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -41,7 +41,17 @@ def main():
     
     # Sidebar - Data Selection
     with st.sidebar:
-        st.title("🌊 Turbulence Dashboard")
+        # Logo (if exists)
+        logo_path = project_root / "logo.png"
+        if logo_path.exists() and logo_path.stat().st_size > 0:
+            try:
+                st.image(str(logo_path), use_container_width=True)
+            except Exception:
+                st.title("🌊 IK-TURB 3D")
+                st.caption("Turbulence Visualization & Analysis Suite")
+        else:
+            st.title("🌊 IK-TURB 3D")
+            st.caption("Turbulence Visualization & Analysis Suite")
         st.markdown("---")
         
         # Theme Selector
@@ -134,7 +144,6 @@ def main():
                 ("DNS/256", "examples/showcase/DNS/256"),
                 ("DNS/128", "examples/showcase/DNS/128"),
                 ("LES/128", "examples/showcase/LES/128"),
-                ("LES/64", "examples/showcase/LES/64"),
             ]
             
             selected_quick = st.multiselect(
@@ -161,13 +170,13 @@ def main():
         else:
             # Single directory mode (original behavior)
             st.markdown("**Select your simulation output folder:**")
-            
-            # Allow both absolute and relative paths
-            user_dir = st.text_input(
-                "Directory path:",
-                value="",
-                help="Enter absolute path or path relative to project root (e.g., examples/showcase/DNS/256)"
-            )
+        
+        # Allow both absolute and relative paths
+        user_dir = st.text_input(
+            "Directory path:",
+            value="",
+            help="Enter absolute path or path relative to project root (e.g., examples/showcase/DNS/256)"
+        )
         
         # Quick access to common locations
         with st.expander("📂 Quick Access to Project Directories", expanded=False):
@@ -189,32 +198,32 @@ def main():
                         st.success(f"Loaded: APP/{path}")
                         st.rerun()
         
-            if st.button("Load Data", type="primary"):
-                # Try as absolute path first
-                if user_dir and Path(user_dir).exists() and Path(user_dir).is_dir():
-                    abs_path = Path(user_dir).absolute()
-                    st.session_state.data_directory = str(abs_path)
-                    st.session_state.data_directories = [str(abs_path)]  # Also set in list for compatibility
+        if st.button("Load Data", type="primary"):
+            # Try as absolute path first
+            if user_dir and Path(user_dir).exists() and Path(user_dir).is_dir():
+                abs_path = Path(user_dir).absolute()
+                st.session_state.data_directory = str(abs_path)
+                st.session_state.data_directories = [str(abs_path)]  # Also set in list for compatibility
+                st.session_state.data_loaded = True
+                # Show relative path if within project, otherwise show input as-is
+                try:
+                    rel_path = abs_path.relative_to(project_root)
+                    st.success(f"Data loaded from: APP/{rel_path}")
+                except ValueError:
+                    st.success(f"Data loaded from: {user_dir}")
+            # Try as relative path from project root
+            elif user_dir:
+                relative_path = project_root / user_dir
+                if relative_path.exists() and relative_path.is_dir():
+                    st.session_state.data_directory = str(relative_path.absolute())
+                    st.session_state.data_directories = [str(relative_path.absolute())]
                     st.session_state.data_loaded = True
-                    # Show relative path if within project, otherwise show input as-is
-                    try:
-                        rel_path = abs_path.relative_to(project_root)
-                        st.success(f"Data loaded from: APP/{rel_path}")
-                    except ValueError:
-                        st.success(f"Data loaded from: {user_dir}")
-                # Try as relative path from project root
-                elif user_dir:
-                    relative_path = project_root / user_dir
-                    if relative_path.exists() and relative_path.is_dir():
-                        st.session_state.data_directory = str(relative_path.absolute())
-                        st.session_state.data_directories = [str(relative_path.absolute())]
-                        st.session_state.data_loaded = True
-                        st.success(f"Data loaded from: APP/{user_dir}")
-                    else:
-                        st.error(f"Directory not found: {user_dir}")
-                        st.info(f"💡 Tip: Use path relative to project root (e.g., examples/showcase/DNS/256)")
+                    st.success(f"Data loaded from: APP/{user_dir}")
                 else:
-                    st.warning("Please enter a directory path.")
+                    st.error(f"Directory not found: {user_dir}")
+                    st.info(f"💡 Tip: Use path relative to project root (e.g., examples/showcase/DNS/256)")
+            else:
+                st.warning("Please enter a directory path.")
         
         # Optional: Browse project directories
         st.markdown("---")
@@ -295,7 +304,17 @@ def main():
         """)
     
     # Main content area
-    st.title("🌊 LBM-MRT Turbulence Analysis Dashboard")
+    # Logo at top (if exists), otherwise text title
+    logo_path = project_root / "logo.png"
+    if logo_path.exists() and logo_path.stat().st_size > 0:
+        try:
+            st.image(str(logo_path), use_container_width=True)
+        except Exception:
+            st.title("🌊 IK-TURB 3D")
+            st.caption("Turbulence Visualization & Analysis Suite")
+    else:
+        st.title("🌊 IK-TURB 3D")
+        st.caption("Turbulence Visualization & Analysis Suite")
     
     if not st.session_state.data_loaded:
         st.info("👈 Please select a data directory from the sidebar to begin analysis.")
@@ -342,7 +361,7 @@ def main():
             except ValueError:
                 display_path = str(data_dir)
             st.success(f"✅ Data loaded from: `{display_path}`")
-        st.info("Navigate through the pages using the sidebar menu.")
+            st.info("Navigate through the pages using the sidebar menu.")
 
 if __name__ == "__main__":
     main()

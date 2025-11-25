@@ -41,7 +41,7 @@ import glob
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from utils.theme_config import inject_theme_css
+from utils.theme_config import inject_theme_css, template_selector
 from utils.file_detector import (
     detect_simulation_files,
     group_files_by_simulation,
@@ -133,17 +133,23 @@ def _extract_iter(fname: str):
 def _compute_time_avg_structure(files: tuple, kind: str):
     """
     Time-average structure functions over selected files.
+    Matches auxiliary script approach: sum S_p, r, u_rms then divide by num_files.
+    Assumes all files from same simulation have same r grid (physically correct).
     kind: "bin" or "txt".
     Returns r, S_p_mean dict, S_p_std dict, u_rms_mean, ps(list)
     """
-    Rs = []
-    Sp_list = []
-    urms_list = []
+    sum_sp = None
+    sum_r = None
+    total_u_rms = 0.0
+    num_files = 0
+    ps = None
+    max_dr = None
 
     for f in files:
         try:
             data = _read_structure_bin_cached(str(f)) if kind == "bin" else _read_structure_txt_cached(str(f))
-        except Exception:
+        except Exception as e:
+            # Silently skip files that can't be read (may be corrupted or wrong format)
             continue
 
         r = np.asarray(data.get("r", []), float)
@@ -151,29 +157,54 @@ def _compute_time_avg_structure(files: tuple, kind: str):
         if r.size == 0 or not S_p:
             continue
 
-        ps = sorted(S_p.keys())
-        Sp_mat = np.vstack([np.asarray(S_p[p], float) for p in ps])
+        # Initialize on first file (assumes all files have same structure)
+        if sum_sp is None:
+            max_dr = len(r)
+            ps = sorted(S_p.keys())
+            sum_sp = {p: np.zeros(max_dr, dtype=float) for p in ps}
+            sum_r = np.zeros(max_dr, dtype=float)
 
-        Rs.append(r)
-        Sp_list.append(Sp_mat)
-        urms_list.append(float(data.get("u_rms", np.nan)))
+        # Sum S_p and r (matching auxiliary script approach)
+        for p in ps:
+            if p in S_p:
+                sp_arr = np.asarray(S_p[p], float)
+                min_len = min(len(sum_sp[p]), len(sp_arr))
+                sum_sp[p][:min_len] += sp_arr[:min_len]
+        
+        min_r_len = min(len(sum_r), len(r))
+        sum_r[:min_r_len] += r[:min_r_len]
+        total_u_rms += float(data.get("u_rms", 0.0))
+        num_files += 1
 
-    if not Sp_list:
+    if num_files == 0 or sum_sp is None:
         return None, None, None, None, None
 
-    min_len = min(mat.shape[1] for mat in Sp_list)
-    r0 = Rs[0][:min_len]
-    Sp_arr = np.stack([mat[:, :min_len] for mat in Sp_list], axis=0)
+    # Average by dividing by num_files (matching auxiliary script)
+    r_mean = sum_r / num_files
+    Sp_mean_dict = {p: sum_sp[p] / num_files for p in ps}
+    u_rms_mean = total_u_rms / num_files
 
-    Sp_mean = np.mean(Sp_arr, axis=0)
-    Sp_std = np.std(Sp_arr, axis=0)
+    # Compute std for error bars (not in auxiliary script, but useful for Streamlit)
+    # Re-read files to compute std
+    Sp_list = []
+    for f in files:
+        try:
+            data = _read_structure_bin_cached(str(f)) if kind == "bin" else _read_structure_txt_cached(str(f))
+            S_p = data.get("S_p", {})
+            if S_p:
+                Sp_mat = np.vstack([np.asarray(S_p[p], float)[:max_dr] for p in ps])
+                Sp_list.append(Sp_mat)
+        except Exception:
+            continue
+    
+    if Sp_list:
+        Sp_arr = np.stack(Sp_list, axis=0)
+        Sp_std = np.std(Sp_arr, axis=0)
+        Sp_std_dict = {p: Sp_std[p-1, :] for p in ps}
+    else:
+        Sp_std_dict = {p: np.zeros(max_dr) for p in ps}
 
-    ps = list(range(1, Sp_mean.shape[0] + 1))
-    Sp_mean_dict = {p: Sp_mean[p-1, :] for p in ps}
-    Sp_std_dict = {p: Sp_std[p-1, :] for p in ps}
-
-    u_rms_mean = np.nanmean(urms_list) if urms_list else np.nan
-    return r0, Sp_mean_dict, Sp_std_dict, u_rms_mean, ps
+    return r_mean, Sp_mean_dict, Sp_std_dict, u_rms_mean, list(ps)
 
 
 # ==========================================================
@@ -454,9 +485,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups):
 
         st.markdown("---")
         st.markdown("**Theme**")
-        templates = ["plotly_white", "simple_white", "plotly_dark"]
-        ps["template"] = st.selectbox("Template", templates,
-                                      index=templates.index(ps.get("template", "plotly_white")))
+        template_selector(ps)
 
         st.markdown("---")
         st.markdown("**Per-simulation overrides (optional)**")
@@ -515,6 +544,20 @@ def plot_style_sidebar(data_dir: Path, sim_groups):
 
     st.session_state.plot_style = ps
 
+
+def _color_to_rgb_tuple(color):
+    """Convert color to RGB tuple, handling both hex and RGB string formats."""
+    if color.startswith("rgb("):
+        # Parse RGB string like "rgb(27, 158, 119)"
+        match = re.match(r"rgb\((\d+),\s*(\d+),\s*(\d+)\)", color)
+        if match:
+            return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    # Try hex format
+    try:
+        return hex_to_rgb(color)
+    except (ValueError, TypeError):
+        # Fallback to default if conversion fails
+        return (0, 0, 0)
 
 def _resolve_line_style(sim_prefix, idx, colors, ps):
     default_color = colors[idx % len(colors)]
@@ -581,7 +624,7 @@ def main():
 
     ps = st.session_state.plot_style
 
-    # Detect files from all directories
+    # Collect files from all directories
     all_bin_files = []
     all_txt_files = []
     
@@ -589,76 +632,94 @@ def main():
         data_dir_obj = Path(data_dir_path)
         if data_dir_obj.exists():
             files_dict = detect_simulation_files(str(data_dir_obj))
-            
-            # Binary files
-            dir_bin = files_dict.get("structure_bin", [])
-            if not dir_bin:
-                dir_bin = glob.glob(str(data_dir_obj / "structure_funcs*_t*.bin"))
-            all_bin_files.extend(dir_bin)
-            
-            # Text files
-            dir_txt = files_dict.get("structure_txt", [])
-            if not dir_txt and read_structure_function_txt is not None:
-                dir_txt = glob.glob(str(data_dir_obj / "structure_functions*_t*.txt"))
-            all_txt_files.extend(dir_txt)
-
-    if not all_bin_files and not all_txt_files:
-        st.info("No structure function files found. Expected `structure_funcs*_t*.bin`.")
-        return
+            dir_bin = files_dict.get("structure_functions_bin", [])
+            dir_txt = files_dict.get("structure_functions_txt", [])
+            all_bin_files.extend([str(f) for f in dir_bin])
+            all_txt_files.extend([str(f) for f in dir_txt])
     
-    # Use collected files
-    bin_files = all_bin_files
-    txt_files = all_txt_files
+    if not all_bin_files and not all_txt_files:
+        st.info("No structure function files found. Expected `structure_funcs*_t*.bin` or `structure_functions*_t*.txt`.")
+        return
 
-    # Grouping - handle multiple directories
+    # Group by simulation prefix, with directory name when multiple directories
     if len(data_dirs) > 1:
         # Multiple directories: group by directory name + simulation pattern
         sim_groups_bin = {}
         sim_groups_txt = {}
         
         for data_dir_path in data_dirs:
-            data_dir_obj = Path(data_dir_path)
-            dir_name = data_dir_obj.name  # e.g., "768", "512", "128"
+            data_dir_obj = Path(data_dir_path).resolve()
+            dir_name = data_dir_obj.name
             
-            # Get files from this directory
-            dir_bin = [f for f in bin_files if Path(f).parent == data_dir_obj]
-            dir_txt = [f for f in txt_files if Path(f).parent == data_dir_obj]
+            # Get files from this directory - use string comparison for robustness
+            data_dir_str = str(data_dir_obj)
+            dir_bin = [f for f in all_bin_files if str(Path(f).resolve().parent) == data_dir_str]
+            dir_txt = [f for f in all_txt_files if str(Path(f).resolve().parent) == data_dir_str]
             
-            # Group binary files from this directory
+            # If no files found, re-check this directory directly (in case they weren't in all_bin_files)
+            if not dir_bin and not dir_txt:
+                files_dict = detect_simulation_files(str(data_dir_obj))
+                dir_bin = [str(f) for f in files_dict.get("structure_functions_bin", [])]
+                dir_txt = [str(f) for f in files_dict.get("structure_functions_txt", [])]
+            
             if dir_bin:
+                # Try pattern with number: structure_funcs1_t*.bin
                 dir_sim_groups_bin = group_files_by_simulation(
                     sorted([str(f) for f in dir_bin], key=natural_sort_key),
                     r"(structure_funcs\d+)_t\d+\.bin"
                 )
-                # Add directory prefix to group keys
-                for key, files in dir_sim_groups_bin.items():
-                    new_key = f"{dir_name}_{key}" if key else dir_name
-                    sim_groups_bin[new_key] = files
+                # If that fails, try pattern with data: structure_funcs_data4_t*.bin
+                if not dir_sim_groups_bin:
+                    dir_sim_groups_bin = group_files_by_simulation(
+                        sorted([str(f) for f in dir_bin], key=natural_sort_key),
+                        r"(structure_funcs_data\d+)_t\d+\.bin"
+                    )
+                if dir_sim_groups_bin:
+                    # Files matched pattern - use pattern-based grouping
+                    for key, files in dir_sim_groups_bin.items():
+                        new_key = f"{dir_name}_{key}" if key else dir_name
+                        sim_groups_bin[new_key] = files
+                else:
+                    # Files didn't match pattern - treat entire directory as one simulation
+                    sim_groups_bin[dir_name] = sorted([str(f) for f in dir_bin], key=natural_sort_key)
             
-            # Group text files from this directory
             if dir_txt:
                 dir_sim_groups_txt = group_files_by_simulation(
                     sorted([str(f) for f in dir_txt], key=natural_sort_key),
                     r"(structure_functions\d+)_t\d+\.txt"
                 )
-                # Add directory prefix to group keys
-                for key, files in dir_sim_groups_txt.items():
-                    new_key = f"{dir_name}_{key}" if key else dir_name
-                    sim_groups_txt[new_key] = files
+                if dir_sim_groups_txt:
+                    # Files matched pattern - use pattern-based grouping
+                    for key, files in dir_sim_groups_txt.items():
+                        new_key = f"{dir_name}_{key}" if key else dir_name
+                        sim_groups_txt[new_key] = files
+                else:
+                    # Files didn't match pattern - treat entire directory as one simulation
+                    sim_groups_txt[dir_name] = sorted([str(f) for f in dir_txt], key=natural_sort_key)
     else:
-        # Single directory - original behavior
+        # Single directory - group by simulation prefix
         sim_groups_bin = group_files_by_simulation(
-            sorted([str(f) for f in bin_files], key=natural_sort_key),
+            sorted([str(f) for f in all_bin_files], key=natural_sort_key),
             r"(structure_funcs\d+)_t\d+\.bin"
-        ) if bin_files else {}
-
-        sim_groups_txt = {}
-        if txt_files:
-            # relaxed pattern to catch more text variants
-            sim_groups_txt = group_files_by_simulation(
-                sorted([str(f) for f in txt_files], key=natural_sort_key),
-                r"(structure_functions\w*\d+)_t\d+\.txt"
+        ) if all_bin_files else {}
+        # If that fails, try pattern with data: structure_funcs_data4_t*.bin
+        if not sim_groups_bin and all_bin_files:
+            sim_groups_bin = group_files_by_simulation(
+                sorted([str(f) for f in all_bin_files], key=natural_sort_key),
+                r"(structure_funcs_data\d+)_t\d+\.bin"
             )
+        
+        sim_groups_txt = group_files_by_simulation(
+            sorted([str(f) for f in all_txt_files], key=natural_sort_key),
+            r"(structure_functions\d+)_t\d+\.txt"
+        ) if all_txt_files else {}
+        
+        # If grouping failed in single directory, treat all files as one simulation
+        if not sim_groups_bin and not sim_groups_txt:
+            if all_bin_files:
+                sim_groups_bin["structure_funcs"] = sorted([str(f) for f in all_bin_files], key=natural_sort_key)
+            elif all_txt_files:
+                sim_groups_txt["structure_funcs"] = sorted([str(f) for f in all_txt_files], key=natural_sort_key)
 
     # Combine binary and text groups
     sim_groups = {}
@@ -667,9 +728,9 @@ def main():
     for k, v in sim_groups_txt.items():
         if k not in sim_groups:
             sim_groups[k] = {"kind": "txt", "files": v}
-
+    
     if not sim_groups:
-        st.warning("Could not group structure files by simulation prefix.")
+        st.error("No structure function files found or could not group files.")
         return
 
     # Sidebar legends + axis labels (persistent)
@@ -686,19 +747,19 @@ def main():
         st.markdown("---")
         st.markdown("### Axis labels")
         st.session_state.axis_labels_structure["x_r"] = st.text_input(
-            "S_p plot x-label", st.session_state.axis_labels_structure["x_r"], key="ax_struct_xr"
+            "S_p plot x-label", st.session_state.axis_labels_structure.get("x_r", "Separation distance $r$"), key="ax_struct_xr"
         )
         st.session_state.axis_labels_structure["y_sp"] = st.text_input(
-            "S_p plot y-label", st.session_state.axis_labels_structure["y_sp"], key="ax_struct_ysp"
+            "S_p plot y-label", st.session_state.axis_labels_structure.get("y_sp", "Structure functions $S_p(r)$"), key="ax_struct_ysp"
         )
         st.session_state.axis_labels_structure["x_ess"] = st.text_input(
-            "ESS x-label", st.session_state.axis_labels_structure["x_ess"], key="ax_struct_xess"
+            "ESS x-label", st.session_state.axis_labels_structure.get("x_ess", r"$S_3(r)$"), key="ax_struct_xess"
         )
         st.session_state.axis_labels_structure["y_ess"] = st.text_input(
-            "ESS y-label", st.session_state.axis_labels_structure["y_ess"], key="ax_struct_yess"
+            "ESS y-label", st.session_state.axis_labels_structure.get("y_ess", r"$S_p(r)$"), key="ax_struct_yess"
         )
         st.session_state.axis_labels_structure["y_anom"] = st.text_input(
-            "Anomaly y-label", st.session_state.axis_labels_structure["y_anom"], key="ax_struct_yanom"
+            "Anomaly y-label", st.session_state.axis_labels_structure.get("y_anom", r"$\xi_p - p/3$"), key="ax_struct_yanom"
         )
 
         b1, b2 = st.columns(2)
@@ -721,7 +782,19 @@ def main():
 
     # Sidebar time window
     st.sidebar.subheader("Time Window")
-    min_len = min(len(v["files"]) for v in sim_groups.values())
+    file_lengths = {k: len(v["files"]) for k, v in sim_groups.items()}
+    if not file_lengths:
+        st.error("No files found in any simulation group.")
+        return
+    min_len = min(file_lengths.values())
+    
+    # Show file counts per simulation (helpful for debugging)
+    if len(sim_groups) > 1:
+        with st.sidebar.expander("📊 File counts", expanded=False):
+            for sim_prefix in sorted(file_lengths.keys()):
+                count = file_lengths[sim_prefix]
+                st.text(f"{sim_prefix}: {count} files")
+    
     start_idx = st.sidebar.slider("Start file index", 1, min_len, 1)
     end_idx = st.sidebar.slider("End file index", start_idx, min_len, min_len)
 
@@ -781,8 +854,15 @@ def main():
         for idx, sim_prefix in enumerate(sorted(sim_groups.keys())):
             kind = sim_groups[sim_prefix]["kind"]
             files = sim_groups[sim_prefix]["files"][start_idx-1:end_idx]
+            if not files:
+                st.warning(f"No files found for {sim_prefix} in selected time range.")
+                continue
             r, Sp_mean, Sp_std, urms, ps_here = _compute_time_avg_structure(tuple(files), kind)
             if r is None:
+                st.warning(f"Could not read structure function data for {sim_prefix}. Check file format.")
+                continue
+            if not Sp_mean:
+                st.warning(f"No structure function data found for {sim_prefix}.")
                 continue
 
             legend_base = st.session_state.structure_legend_names.get(sim_prefix, _default_labelify(sim_prefix))
@@ -814,7 +894,7 @@ def main():
                 ))
 
                 if show_std_band and ystd is not None:
-                    rgb = hex_to_rgb(line_color)
+                    rgb = _color_to_rgb_tuple(line_color)
                     fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps['std_alpha']})"
                     fig_sp.add_trace(go.Scatter(
                         x=np.concatenate([r, r[::-1]]),
@@ -830,8 +910,8 @@ def main():
             st.info("No valid structure function data in selected range.")
         else:
             fig_sp.update_layout(
-                xaxis_title=st.session_state.axis_labels_structure["x_r"],
-                yaxis_title=st.session_state.axis_labels_structure["y_sp"],
+                xaxis_title=st.session_state.axis_labels_structure.get("x_r", "Separation distance $r$"),
+                yaxis_title=st.session_state.axis_labels_structure.get("y_sp", "Structure functions $S_p(r)$"),
                 xaxis_type="log",
                 yaxis_type="log",
                 legend_title="Simulation / Order",
@@ -858,8 +938,13 @@ def main():
         for idx, sim_prefix in enumerate(sorted(sim_groups.keys())):
             kind = sim_groups[sim_prefix]["kind"]
             files = sim_groups[sim_prefix]["files"][start_idx-1:end_idx]
+            if not files:
+                continue
             r, Sp_mean, Sp_std, urms, ps_here = _compute_time_avg_structure(tuple(files), kind)
-            if r is None or ref_p not in Sp_mean:
+            if r is None:
+                continue
+            if ref_p not in Sp_mean:
+                st.warning(f"Reference order p={ref_p} not available for {sim_prefix}. Available orders: {sorted(Sp_mean.keys()) if Sp_mean else 'none'}")
                 continue
 
             legend_base = st.session_state.structure_legend_names.get(sim_prefix, _default_labelify(sim_prefix))
@@ -919,8 +1004,8 @@ def main():
             st.info("No valid ESS data to plot.")
         else:
             fig_ess.update_layout(
-                xaxis_title=st.session_state.axis_labels_structure["x_ess"],
-                yaxis_title=st.session_state.axis_labels_structure["y_ess"],
+                xaxis_title=st.session_state.axis_labels_structure.get("x_ess", r"$S_3(r)$"),
+                yaxis_title=st.session_state.axis_labels_structure.get("y_ess", r"$S_p(r)$"),
                 xaxis_type="log",
                 yaxis_type="log",
                 legend_title="Simulation / Order",
@@ -975,7 +1060,7 @@ def main():
 
             fig_anom.update_layout(
                 xaxis_title=r"$p$",
-                yaxis_title=st.session_state.axis_labels_structure["y_anom"],
+                yaxis_title=st.session_state.axis_labels_structure.get("y_anom", r"$\xi_p - p/3$"),
                 height=360,
                 margin=dict(l=50, r=20, t=30, b=50),
                 legend_title="",
@@ -998,51 +1083,81 @@ def main():
         if not xi_all:
             st.info("Run ESS tab first to populate exponents.")
         else:
-            rows = []
-            for sim_prefix, xi_dict in xi_all.items():
-                for p, xi in xi_dict.items():
-                    rows.append({
-                        "simulation": st.session_state.structure_legend_names.get(sim_prefix, sim_prefix),
-                        "p": p,
-                        "xi_p": xi,
-                        "stderr": xi_err_all.get(sim_prefix, {}).get(p, np.nan),
-                        "xi_p - p/3": xi - p/3,
-                        "She–Leveque ζ_p": zeta_p_she_leveque(p),
-                        "xi_p - ζ_p": xi - zeta_p_she_leveque(p),
-                    })
             import pandas as pd
-            df = pd.DataFrame(rows).sort_values(["simulation", "p"])
-            st.dataframe(df, use_container_width=True)
-            st.download_button(
-                "Download exponents CSV",
-                df.to_csv(index=False).encode("utf-8"),
-                file_name="ess_scaling_exponents.csv",
-                mime="text/csv"
-            )
+            
+            # Get all available simulations
+            all_simulations = sorted(xi_all.keys())
+            
+            # Interactive selector for which simulations to show
+            if len(all_simulations) > 1:
+                selected_sims = st.multiselect(
+                    "Select simulations to display:",
+                    options=all_simulations,
+                    default=all_simulations,
+                    key="table_sim_selector"
+                )
+            else:
+                selected_sims = all_simulations
+            
+            if not selected_sims:
+                st.info("Please select at least one simulation to display.")
+            else:
+                rows = []
+                for sim_prefix in selected_sims:
+                    if sim_prefix not in xi_all:
+                        continue
+                    xi_dict = xi_all[sim_prefix]
+                    for p, xi in xi_dict.items():
+                        rows.append({
+                            "simulation": st.session_state.structure_legend_names.get(sim_prefix, sim_prefix),
+                            "p": p,
+                            "xi_p": f"{xi:.6f}",
+                            "stderr": f"{xi_err_all.get(sim_prefix, {}).get(p, np.nan):.6f}",
+                            "xi_p - p/3": f"{xi - p/3:.6f}",
+                            "She–Leveque ζ_p": f"{zeta_p_she_leveque(p):.6f}",
+                            "xi_p - ζ_p": f"{xi - zeta_p_she_leveque(p):.6f}",
+                        })
+                
+                if rows:
+                    df = pd.DataFrame(rows).sort_values(["simulation", "p"])
+                    
+                    # Display table with better formatting
+                    st.dataframe(
+                        df,
+                        use_container_width=True,
+                        hide_index=True,
+                        height=min(400, 50 + len(df) * 35)  # Dynamic height based on rows
+                    )
+                    
+                    # Download button
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        st.download_button(
+                            "📥 Download CSV",
+                            df.to_csv(index=False).encode("utf-8"),
+                            file_name="ess_scaling_exponents.csv",
+                            mime="text/csv",
+                            key="download_ess_table"
+                        )
+                    with col2:
+                        st.caption(f"Showing {len(selected_sims)} simulation(s) with {len(df)} total rows")
+                else:
+                    st.warning("No data available for selected simulations.")
 
     # ============================================
     # Theory section
     # ============================================
     with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown(r"""
-**Structure functions**
-\[
-S_p(r)=\langle |\delta u_L(r)|^p\rangle
-\]
-
-**Extended Self-Similarity (ESS)**
-\[
-S_p(r)\propto S_3(r)^{\xi_p}
-\]
-
-So \(\xi_p\) is obtained from the slope of \(\log S_p\) vs \(\log S_3\).
-
-**She–Leveque 1994 scaling**
-\[
-\zeta_p=\frac{p}{9}+2\left(1-\left(\frac{2}{3}\right)^{p/3}\right)
-\]
-Anomalies are plotted as \(\xi_p - p/3\).
-        """)
+        st.markdown("**Structure functions**")
+        st.latex(r"S_p(r)=\langle |\delta u_L(r)|^p\rangle")
+        
+        st.markdown("**Extended Self-Similarity (ESS)**")
+        st.latex(r"S_p(r)\propto S_3(r)^{\xi_p}")
+        st.markdown("So $\\xi_p$ is obtained from the slope of $\\log S_p$ vs $\\log S_3$.")
+        
+        st.markdown("**She–Leveque 1994 scaling**")
+        st.latex(r"\zeta_p=\frac{p}{9}+2\left(1-\left(\frac{2}{3}\right)^{p/3}\right)")
+        st.markdown("Anomalies are plotted as $\\xi_p - p/3$.")
 
 
 if __name__ == "__main__":
