@@ -33,6 +33,7 @@ sys.path.insert(0, str(project_root))
 from data_readers.csv_reader import read_csv_data
 from utils.file_detector import detect_simulation_files
 from utils.theme_config import apply_theme_to_plot_style, inject_theme_css
+from utils.report_builder import capture_button
 
 # ==========================================================
 # JSON persistence (dataset-local)
@@ -422,11 +423,32 @@ def main():
     
     st.title("📊 Other Turbulence Stats")
 
-    data_dir = st.session_state.get("data_directory", None)
-    if not data_dir:
+    # Get data directories from session state (support multiple directories)
+    data_dirs = st.session_state.get("data_directories", [])
+    if not data_dirs and st.session_state.get("data_directory"):
+        # Fallback to single directory for backward compatibility
+        data_dirs = [st.session_state.data_directory]
+    
+    if not data_dirs:
         st.warning("Please select a data directory from the Overview page.")
         return
-    data_dir = Path(data_dir)
+
+    # Use first directory for metadata storage
+    data_dir = Path(data_dirs[0])
+    
+    # Show which directories are loaded
+    if len(data_dirs) > 1:
+        st.info(f"📁 **Multiple simulations loaded:** {len(data_dirs)} directories")
+        with st.expander("View loaded directories", expanded=False):
+            project_root = Path(__file__).parent.parent
+            for i, data_dir_path in enumerate(data_dirs, 1):
+                data_dir_obj = Path(data_dir_path)
+                try:
+                    rel_path = data_dir_obj.relative_to(project_root)
+                    st.markdown(f"**{i}.** `APP/{rel_path}`")
+                except ValueError:
+                    st.markdown(f"**{i}.** `{data_dir_path}`")
+        st.markdown("---")
     
     # Apply theme to plot style on page load
     current_theme = st.session_state.get("theme", "Light Scientific")
@@ -439,45 +461,152 @@ def main():
         current_theme
     )
 
-    # Detect available files
-    files = detect_simulation_files(str(data_dir))
+    # Detect available files from all directories
+    all_files_dict = {}
+    for data_dir_path in data_dirs:
+        data_dir_obj = Path(data_dir_path)
+        if data_dir_obj.exists():
+            dir_files = detect_simulation_files(str(data_dir_obj))
+            # Merge files from all directories
+            for file_type, file_list in dir_files.items():
+                if file_type not in all_files_dict:
+                    all_files_dict[file_type] = []
+                # Convert Path objects to strings for consistency
+                all_files_dict[file_type].extend([str(f) if isinstance(f, Path) else f for f in file_list])
+    
+    files = all_files_dict
 
     # Collect all available dataframes
     all_dataframes = {}
     available_columns = {}
     
-    # Load turbulence_stats CSV
-    if files['csv']:
-        df_stats = read_csv_data(str(files['csv'][0]))
-        all_dataframes['turbulence_stats'] = df_stats
-        available_columns['turbulence_stats'] = list(df_stats.columns)
-        
-        st.header("Turbulence Statistics")
-        
-        # Latest values table
-        st.subheader("Latest Values")
-        latest = df_stats.iloc[-1]
-        st.dataframe(latest.to_frame().T, use_container_width=True)
-        
-        # Full time series table
-        st.subheader("Time Series Data")
-        st.dataframe(df_stats, use_container_width=True, height=400)
-        
-        st.markdown("---")
+    # Load turbulence_stats CSV from all directories
+    csv_files = files.get('csv', [])
+    
+    # Debug info (temporary - can help diagnose)
+    if len(data_dirs) > 1:
+        if csv_files:
+            st.caption(f"🔍 Debug: Found {len(csv_files)} turbulence_stats CSV files")
+        else:
+            st.caption(f"⚠️ Debug: No turbulence_stats*.csv files found in {len(data_dirs)} directories")
+    
+    if csv_files:
+        if len(data_dirs) > 1:
+            # Multiple directories: load and display each separately
+            st.header("Turbulence Statistics")
+            
+            for csv_file in csv_files:
+                csv_path = Path(csv_file).resolve()  # Make absolute
+                # Find which directory this file belongs to
+                dir_name = None
+                for data_dir_path in data_dirs:
+                    data_dir_obj = Path(data_dir_path).resolve()  # Make absolute
+                    try:
+                        if csv_path.is_relative_to(data_dir_obj):
+                            dir_name = Path(data_dir_path).name
+                            break
+                    except (ValueError, AttributeError):
+                        # Try string comparison as fallback
+                        csv_str = str(csv_path)
+                        dir_str = str(data_dir_obj)
+                        if csv_str.startswith(dir_str):
+                            dir_name = Path(data_dir_path).name
+                            break
+                
+                if not dir_name:
+                    dir_name = csv_path.parent.name
+                
+                try:
+                    df_stats = read_csv_data(str(csv_file))
+                    key = f"turbulence_stats_{dir_name}"
+                    all_dataframes[key] = df_stats
+                    available_columns[key] = list(df_stats.columns)
+                    
+                    st.subheader(f"📁 {dir_name}")
+                    
+                    # Latest values table
+                    st.markdown("**Latest Values:**")
+                    latest = df_stats.iloc[-1]
+                    latest_df = latest.to_frame().T
+                    st.dataframe(latest_df, use_container_width=True)
+                    capture_button(df=latest_df, title=f"Latest Values - {dir_name}", source_page="Other Turbulence Stats")
+                    
+                    # Full time series table
+                    st.markdown("**Time Series Data:**")
+                    st.dataframe(df_stats, use_container_width=True, height=300)
+                    capture_button(df=df_stats, title=f"Time Series - {dir_name}", source_page="Other Turbulence Stats")
+                    st.markdown("---")
+                except Exception as e:
+                    st.warning(f"Could not load {csv_path.name}: {e}")
+                    continue
+        else:
+            # Single directory: original behavior
+            df_stats = read_csv_data(str(files['csv'][0]))
+            all_dataframes['turbulence_stats'] = df_stats
+            available_columns['turbulence_stats'] = list(df_stats.columns)
+            
+            st.header("Turbulence Statistics")
+            
+            # Latest values table
+            st.subheader("Latest Values")
+            latest = df_stats.iloc[-1]
+            latest_df = latest.to_frame().T
+            st.dataframe(latest_df, use_container_width=True)
+            capture_button(df=latest_df, title="Latest Values", source_page="Other Turbulence Stats")
+            
+            # Full time series table
+            st.subheader("Time Series Data")
+            st.dataframe(df_stats, use_container_width=True, height=400)
+            capture_button(df=df_stats, title="Time Series Data", source_page="Other Turbulence Stats")
+            
+            st.markdown("---")
 
-    # Load eps_real_validation CSV files
+    # Load eps_real_validation CSV files from all directories
     eps_files = files.get("eps_validation", [])
     if not eps_files:
+        # Fallback: search in first directory
         eps_files = glob.glob(str(data_dir / "eps_real_validation*.csv"))
     
     if eps_files:
-        # Load first validation file for column info
-        try:
-            df_val = pd.read_csv(str(eps_files[0]))
-            all_dataframes['eps_validation'] = df_val
-            available_columns['eps_validation'] = list(df_val.columns)
-        except Exception:
-            pass
+        if len(data_dirs) > 1:
+            # Multiple directories: load all and store with directory labels
+            for eps_file in eps_files:
+                eps_path = Path(eps_file).resolve()  # Make absolute
+                # Find which directory this file belongs to
+                dir_name = None
+                for data_dir_path in data_dirs:
+                    data_dir_obj = Path(data_dir_path).resolve()  # Make absolute
+                    try:
+                        if eps_path.is_relative_to(data_dir_obj):
+                            dir_name = Path(data_dir_path).name
+                            break
+                    except (ValueError, AttributeError):
+                        # Try string comparison as fallback
+                        eps_str = str(eps_path)
+                        dir_str = str(data_dir_obj)
+                        if eps_str.startswith(dir_str):
+                            dir_name = Path(data_dir_path).name
+                            break
+                
+                if not dir_name:
+                    dir_name = eps_path.parent.name
+                
+                try:
+                    df_val = pd.read_csv(str(eps_file))
+                    key = f"eps_validation_{dir_name}"
+                    all_dataframes[key] = df_val
+                    available_columns[key] = list(df_val.columns)
+                except Exception as e:
+                    st.warning(f"Could not load {eps_path.name} from {dir_name}: {e}")
+                    continue
+        else:
+            # Single directory: original behavior
+            try:
+                df_val = pd.read_csv(str(eps_files[0]))
+                all_dataframes['eps_validation'] = df_val
+                available_columns['eps_validation'] = list(df_val.columns)
+            except Exception:
+                pass
 
     # Custom Plotting Section
     st.header("📈 Custom Plotting")
@@ -619,6 +748,7 @@ def main():
     )
     
     st.plotly_chart(fig, use_container_width=True)
+    capture_button(fig, title=f"Custom Plot: {y_col} vs {x_col}", source_page="Other Turbulence Stats")
     
     # Summary statistics
     st.subheader("Summary Statistics")

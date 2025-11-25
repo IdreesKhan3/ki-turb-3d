@@ -41,6 +41,7 @@ sys.path.insert(0, str(project_root))
 from data_readers.text_reader import read_flatness_file
 from utils.file_detector import detect_simulation_files, group_files_by_simulation, natural_sort_key
 from utils.theme_config import inject_theme_css
+from utils.report_builder import capture_button
 
 
 # ==========================================================
@@ -548,12 +549,18 @@ def main():
     
     st.title("📉 Flatness Factors")
 
-    # Get data directory from session state
-    data_dir = st.session_state.get("data_directory", None)
-    if not data_dir:
+    # Get data directories from session state (support multiple directories)
+    data_dirs = st.session_state.get("data_directories", [])
+    if not data_dirs and st.session_state.get("data_directory"):
+        # Fallback to single directory for backward compatibility
+        data_dirs = [st.session_state.data_directory]
+    
+    if not data_dirs:
         st.warning("Please select a data directory from the Overview page.")
         return
-    data_dir = Path(data_dir)
+
+    # Use first directory for metadata storage
+    data_dir = Path(data_dirs[0])
 
     # Defaults (session)
     st.session_state.setdefault("flatness_legend_names", {})
@@ -578,18 +585,48 @@ def main():
 
     ps = st.session_state.plot_style
 
-    # Detect flatness files
-    files_dict = detect_simulation_files(str(data_dir))
-    flatness_files = files_dict.get("flatness", [])
-    if not flatness_files:
+    # Detect flatness files from all directories
+    all_flatness_files = []
+    for data_dir_path in data_dirs:
+        data_dir_obj = Path(data_dir_path)
+        if data_dir_obj.exists():
+            files_dict = detect_simulation_files(str(data_dir_obj))
+            dir_flatness = files_dict.get("flatness", [])
+            all_flatness_files.extend(dir_flatness)
+    
+    if not all_flatness_files:
         st.info("No flatness files found. Expected format: `flatness_data*_*.txt`")
         return
 
-    # Group by simulation prefix
-    sim_groups = group_files_by_simulation(
-        [str(f) for f in flatness_files],
-        r"(flatness_data\d+)_\d+\.txt"
-    )
+    # Group by simulation prefix, with directory name when multiple directories
+    if len(data_dirs) > 1:
+        # Multiple directories: group by directory name + simulation pattern
+        sim_groups = {}
+        for data_dir_path in data_dirs:
+            data_dir_obj = Path(data_dir_path)
+            dir_name = data_dir_obj.name  # e.g., "768", "512", "128"
+            
+            # Get files from this directory
+            dir_flatness = [f for f in all_flatness_files if Path(f).parent == data_dir_obj]
+            
+            if dir_flatness:
+                # Group files from this directory
+                dir_sim_groups = group_files_by_simulation(
+                    [str(f) for f in dir_flatness],
+                    r"(flatness_data\d+)_\d+\.txt"
+                )
+                
+                # Add directory prefix to group keys
+                for key, files in dir_sim_groups.items():
+                    new_key = f"{dir_name}_{key}" if key else dir_name
+                    sim_groups[new_key] = files
+    else:
+        # Single directory - original behavior
+        sim_groups = group_files_by_simulation(
+            [str(f) for f in all_flatness_files],
+            r"(flatness_data\d+)_\d+\.txt"
+        )
+    
     if not sim_groups:
         st.warning("Could not group flatness files by simulation type.")
         return
@@ -725,6 +762,7 @@ def main():
         fig = apply_plot_style(fig, ps)
 
         st.plotly_chart(fig, use_container_width=True)
+        capture_button(fig, title="Flatness Factors", source_page="Flatness")
 
         st.subheader("Export Figure")
         export_panel(fig, data_dir, base_name="flatness_factors")

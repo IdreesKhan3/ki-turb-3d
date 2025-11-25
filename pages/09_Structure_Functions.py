@@ -47,6 +47,7 @@ from utils.file_detector import (
     group_files_by_simulation,
     natural_sort_key
 )
+from utils.report_builder import capture_button
 
 # Binary/text readers (binary is required by plan, text is optional)
 from data_readers.binary_reader import read_structure_function_file
@@ -546,11 +547,18 @@ def main():
     
     st.title("📊 Structure Functions")
 
-    data_dir = st.session_state.get("data_directory", None)
-    if not data_dir:
+    # Get data directories from session state (support multiple directories)
+    data_dirs = st.session_state.get("data_directories", [])
+    if not data_dirs and st.session_state.get("data_directory"):
+        # Fallback to single directory for backward compatibility
+        data_dirs = [st.session_state.data_directory]
+    
+    if not data_dirs:
         st.warning("Please select a data directory from the Overview page.")
         return
-    data_dir = Path(data_dir)
+
+    # Use first directory for metadata storage
+    data_dir = Path(data_dirs[0])
 
     # Defaults
     st.session_state.setdefault("structure_legend_names", {})
@@ -573,36 +581,86 @@ def main():
 
     ps = st.session_state.plot_style
 
-    # Detect files
-    files_dict = detect_simulation_files(str(data_dir))
+    # Detect files from all directories
+    all_bin_files = []
+    all_txt_files = []
+    
+    for data_dir_path in data_dirs:
+        data_dir_obj = Path(data_dir_path)
+        if data_dir_obj.exists():
+            files_dict = detect_simulation_files(str(data_dir_obj))
+            
+            # Binary files
+            dir_bin = files_dict.get("structure_bin", [])
+            if not dir_bin:
+                dir_bin = glob.glob(str(data_dir_obj / "structure_funcs*_t*.bin"))
+            all_bin_files.extend(dir_bin)
+            
+            # Text files
+            dir_txt = files_dict.get("structure_txt", [])
+            if not dir_txt and read_structure_function_txt is not None:
+                dir_txt = glob.glob(str(data_dir_obj / "structure_functions*_t*.txt"))
+            all_txt_files.extend(dir_txt)
 
-    # Primary binary list (your naming)
-    bin_files = files_dict.get("structure_bin", [])
-    if not bin_files:
-        bin_files = glob.glob(str(data_dir / "structure_funcs*_t*.bin"))
-
-    txt_files = files_dict.get("structure_txt", [])
-    if not txt_files and read_structure_function_txt is not None:
-        txt_files = glob.glob(str(data_dir / "structure_functions*_t*.txt"))
-
-    if not bin_files and not txt_files:
+    if not all_bin_files and not all_txt_files:
         st.info("No structure function files found. Expected `structure_funcs*_t*.bin`.")
         return
+    
+    # Use collected files
+    bin_files = all_bin_files
+    txt_files = all_txt_files
 
-    # Grouping
-    sim_groups_bin = group_files_by_simulation(
-        sorted([str(f) for f in bin_files], key=natural_sort_key),
-        r"(structure_funcs\d+)_t\d+\.bin"
-    ) if bin_files else {}
+    # Grouping - handle multiple directories
+    if len(data_dirs) > 1:
+        # Multiple directories: group by directory name + simulation pattern
+        sim_groups_bin = {}
+        sim_groups_txt = {}
+        
+        for data_dir_path in data_dirs:
+            data_dir_obj = Path(data_dir_path)
+            dir_name = data_dir_obj.name  # e.g., "768", "512", "128"
+            
+            # Get files from this directory
+            dir_bin = [f for f in bin_files if Path(f).parent == data_dir_obj]
+            dir_txt = [f for f in txt_files if Path(f).parent == data_dir_obj]
+            
+            # Group binary files from this directory
+            if dir_bin:
+                dir_sim_groups_bin = group_files_by_simulation(
+                    sorted([str(f) for f in dir_bin], key=natural_sort_key),
+                    r"(structure_funcs\d+)_t\d+\.bin"
+                )
+                # Add directory prefix to group keys
+                for key, files in dir_sim_groups_bin.items():
+                    new_key = f"{dir_name}_{key}" if key else dir_name
+                    sim_groups_bin[new_key] = files
+            
+            # Group text files from this directory
+            if dir_txt:
+                dir_sim_groups_txt = group_files_by_simulation(
+                    sorted([str(f) for f in dir_txt], key=natural_sort_key),
+                    r"(structure_functions\d+)_t\d+\.txt"
+                )
+                # Add directory prefix to group keys
+                for key, files in dir_sim_groups_txt.items():
+                    new_key = f"{dir_name}_{key}" if key else dir_name
+                    sim_groups_txt[new_key] = files
+    else:
+        # Single directory - original behavior
+        sim_groups_bin = group_files_by_simulation(
+            sorted([str(f) for f in bin_files], key=natural_sort_key),
+            r"(structure_funcs\d+)_t\d+\.bin"
+        ) if bin_files else {}
 
-    sim_groups_txt = {}
-    if txt_files:
-        # relaxed pattern to catch more text variants
-        sim_groups_txt = group_files_by_simulation(
-            sorted([str(f) for f in txt_files], key=natural_sort_key),
-            r"(structure_functions\w*\d+)_t\d+\.txt"
-        )
+        sim_groups_txt = {}
+        if txt_files:
+            # relaxed pattern to catch more text variants
+            sim_groups_txt = group_files_by_simulation(
+                sorted([str(f) for f in txt_files], key=natural_sort_key),
+                r"(structure_functions\w*\d+)_t\d+\.txt"
+            )
 
+    # Combine binary and text groups
     sim_groups = {}
     for k, v in sim_groups_bin.items():
         sim_groups[k] = {"kind": "bin", "files": v}
@@ -782,6 +840,7 @@ def main():
             )
             fig_sp = apply_plot_style(fig_sp, ps)
             st.plotly_chart(fig_sp, use_container_width=True)
+            capture_button(fig_sp, title="Structure Functions S_p(r)", source_page="Structure Functions")
             export_panel(fig_sp, data_dir, base_name="structure_functions_sp")
 
     # ============================================
@@ -870,6 +929,7 @@ def main():
             )
             fig_ess = apply_plot_style(fig_ess, ps)
             st.plotly_chart(fig_ess, use_container_width=True)
+            capture_button(fig_ess, title="Structure Functions ESS", source_page="Structure Functions")
             export_panel(fig_ess, data_dir, base_name="structure_functions_ess")
 
             st.markdown("#### Anomalies (ξₚ − p/3)")

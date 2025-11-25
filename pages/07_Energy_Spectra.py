@@ -33,6 +33,7 @@ from data_readers.spectrum_reader import read_spectrum_file
 from data_readers.norm_spectrum_reader import read_norm_spectrum_file
 from utils.file_detector import natural_sort_key, group_files_by_simulation
 from utils.theme_config import inject_theme_css
+from utils.report_builder import capture_button
 
 
 # ==========================================================
@@ -666,19 +667,35 @@ def main():
     norm_files = []
 
     if st.session_state.file_selection_mode == "directory":
-        # Original directory-based mode
-        if "data_directory" not in st.session_state or not st.session_state.data_directory:
+        # Check for multiple directories mode
+        data_dirs = st.session_state.get("data_directories", [])
+        if not data_dirs and st.session_state.get("data_directory"):
+            # Fallback to single directory for backward compatibility
+            data_dirs = [st.session_state.data_directory]
+        
+        if not data_dirs:
             st.warning("Please select a data directory from the Overview page.")
             return
 
-        data_dir = Path(st.session_state.data_directory)
-        spectrum_files = sorted(glob.glob(str(data_dir / "spectrum*.dat")), key=natural_sort_key)
-        norm_files = sorted(glob.glob(str(data_dir / "norm*.dat")), key=natural_sort_key)
-
+        # Load files from all directories
+        spectrum_files = []
+        norm_files = []
+        
+        for data_dir_path in data_dirs:
+            data_dir = Path(data_dir_path)
+            if data_dir.exists():
+                dir_spectrum = sorted(glob.glob(str(data_dir / "spectrum*.dat")), key=natural_sort_key)
+                dir_norm = sorted(glob.glob(str(data_dir / "norm*.dat")), key=natural_sort_key)
+                spectrum_files.extend(dir_spectrum)
+                norm_files.extend(dir_norm)
+        
         if not spectrum_files and not norm_files:
-            st.error("No spectrum*.dat or norm*.dat files found in the selected directory.")
-            st.info("💡 Switch to 'Custom Files' mode to select files from any location.")
+            st.error("No spectrum*.dat or norm*.dat files found in the selected directories.")
+            st.info("💡 Switch to 'Custom Files' mode to select files from any location, or select multiple directories in the main app.")
             return
+        
+        # Use first directory for metadata storage
+        data_dir = Path(data_dirs[0])
     else:
         # Custom file selection mode
         st.sidebar.markdown("---")
@@ -747,17 +764,55 @@ def main():
 
     # Group files by simulation (try pattern matching, fallback to filename-based grouping)
     if st.session_state.file_selection_mode == "directory":
-        sim_groups = group_files_by_simulation(
-            spectrum_files, r"(spectrum[_\w]*\d+)_\d+\.dat"
-        ) if spectrum_files else {}
-        norm_groups = group_files_by_simulation(
-            norm_files, r"(norm[_\w]*\d+)_\d+\.dat"
-        ) if norm_files else {}
+        # When multiple directories are loaded, include directory name in grouping
+        if len(data_dirs) > 1:
+            # Group by directory name + simulation pattern
+            sim_groups = {}
+            norm_groups = {}
+            
+            for data_dir_path in data_dirs:
+                data_dir = Path(data_dir_path)
+                dir_name = data_dir.name  # e.g., "768", "512", "128"
+                
+                # Get files from this directory
+                dir_spectrum = [f for f in spectrum_files if Path(f).parent == data_dir]
+                dir_norm = [f for f in norm_files if Path(f).parent == data_dir]
+                
+                # Group files from this directory
+                dir_sim_groups = group_files_by_simulation(
+                    dir_spectrum, r"(spectrum[_\w]*\d+)_\d+\.dat"
+                ) if dir_spectrum else {}
+                dir_norm_groups = group_files_by_simulation(
+                    dir_norm, r"(norm[_\w]*\d+)_\d+\.dat"
+                ) if dir_norm else {}
+                
+                # Fallback patterns
+                if not dir_sim_groups and dir_spectrum:
+                    dir_sim_groups = group_files_by_simulation(dir_spectrum, r"(spectrum\d+)_\d+\.dat")
+                if not dir_norm_groups and dir_norm:
+                    dir_norm_groups = group_files_by_simulation(dir_norm, r"(norm\d+)_\d+\.dat")
+                
+                # Add directory prefix to group keys to distinguish simulations from different directories
+                for key, files in dir_sim_groups.items():
+                    new_key = f"{dir_name}_{key}" if key else dir_name
+                    sim_groups[new_key] = files
+                
+                for key, files in dir_norm_groups.items():
+                    new_key = f"{dir_name}_{key}" if key else dir_name
+                    norm_groups[new_key] = files
+        else:
+            # Single directory - original behavior
+            sim_groups = group_files_by_simulation(
+                spectrum_files, r"(spectrum[_\w]*\d+)_\d+\.dat"
+            ) if spectrum_files else {}
+            norm_groups = group_files_by_simulation(
+                norm_files, r"(norm[_\w]*\d+)_\d+\.dat"
+            ) if norm_files else {}
 
-        if not sim_groups and spectrum_files:
-            sim_groups = group_files_by_simulation(spectrum_files, r"(spectrum\d+)_\d+\.dat")
-        if not norm_groups and norm_files:
-            norm_groups = group_files_by_simulation(norm_files, r"(norm\d+)_\d+\.dat")
+            if not sim_groups and spectrum_files:
+                sim_groups = group_files_by_simulation(spectrum_files, r"(spectrum\d+)_\d+\.dat")
+            if not norm_groups and norm_files:
+                norm_groups = group_files_by_simulation(norm_files, r"(norm\d+)_\d+\.dat")
     else:
         # Custom mode: group by filename stem (without extension) or directory
         # This allows any filename pattern
@@ -1024,11 +1079,14 @@ def main():
             with colL:
                 st.markdown("### Raw Energy Spectrum")
                 st.plotly_chart(fig_raw, use_container_width=True)
+                capture_button(fig_raw, title="Energy Spectra (Raw)", source_page="Energy Spectra")
             with colR:
                 st.markdown("### Normalized (Collapsed) Spectrum")
                 st.plotly_chart(fig_norm, use_container_width=True)
+                capture_button(fig_norm, title="Energy Spectra (Normalized)", source_page="Energy Spectra")
         else:
             st.plotly_chart(fig_raw, use_container_width=True)
+            capture_button(fig_raw, title="Energy Spectra", source_page="Energy Spectra")
 
         st.subheader("Export")
         export_panel(fig_raw, data_dir, "energy_spectra_raw")
@@ -1117,6 +1175,7 @@ def main():
         figE = apply_plot_style(figE, ps)
 
         st.plotly_chart(figE, use_container_width=True)
+        capture_button(figE, title=f"Energy Spectra Time Evolution - {sim_sel}", source_page="Energy Spectra")
 
         st.subheader("Export time evolution figure")
         export_panel(figE, data_dir, f"energy_spectra_time_evolution_{sim_sel}")

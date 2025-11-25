@@ -24,6 +24,10 @@ st.set_page_config(
 # Initialize session state
 if 'data_directory' not in st.session_state:
     st.session_state.data_directory = None
+if 'data_directories' not in st.session_state:
+    st.session_state.data_directories = []  # List of multiple directories
+if 'multi_directory_mode' not in st.session_state:
+    st.session_state.multi_directory_mode = False
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = False
 if 'theme' not in st.session_state:
@@ -69,15 +73,101 @@ def main():
         
         st.subheader("📁 Data Selection")
         
-        # Primary: User data directory selection
-        st.markdown("**Select your simulation output folder:**")
-        
-        # Allow both absolute and relative paths
-        user_dir = st.text_input(
-            "Directory path:",
-            value="",
-            help="Enter absolute path or path relative to project root (e.g., examples/showcase/DNS/256)"
+        # Mode selection: Single or Multiple directories
+        selection_mode = st.radio(
+            "Selection Mode:",
+            ["Single Simulation", "Multiple Simulations (Comparison)"],
+            help="Choose single directory for standard analysis, or multiple directories to compare simulations"
         )
+        st.session_state.multi_directory_mode = (selection_mode == "Multiple Simulations (Comparison)")
+        
+        if st.session_state.multi_directory_mode:
+            # Multiple directory mode
+            st.markdown("**Select multiple simulation directories to compare:**")
+            
+            # Text area for multiple paths
+            dirs_input = st.text_area(
+                "Directory paths (one per line):",
+                value="\n".join(st.session_state.data_directories) if st.session_state.data_directories else "",
+                height=150,
+                help="Enter absolute paths or paths relative to project root, one per line.\nExample:\nexamples/showcase/DNS/768\nexamples/showcase/DNS/512\nexamples/showcase/LES/128"
+            )
+            
+            if st.button("Load Multiple Directories", type="primary"):
+                dir_paths = [p.strip() for p in dirs_input.strip().split("\n") if p.strip()]
+                valid_dirs = []
+                
+                for dir_path in dir_paths:
+                    # Try as absolute path first
+                    if Path(dir_path).exists() and Path(dir_path).is_dir():
+                        valid_dirs.append(str(Path(dir_path).absolute()))
+                    # Try as relative path from project root
+                    else:
+                        relative_path = project_root / dir_path
+                        if relative_path.exists() and relative_path.is_dir():
+                            valid_dirs.append(str(relative_path.absolute()))
+                        else:
+                            st.warning(f"Directory not found: {dir_path}")
+                
+                if valid_dirs:
+                    st.session_state.data_directories = valid_dirs
+                    # For backward compatibility, set first directory as primary
+                    st.session_state.data_directory = valid_dirs[0]
+                    st.session_state.data_loaded = True
+                    st.success(f"✅ Loaded {len(valid_dirs)} directories")
+                    for i, d in enumerate(valid_dirs, 1):
+                        try:
+                            rel_path = Path(d).relative_to(project_root)
+                            st.caption(f"  {i}. APP/{rel_path}")
+                        except ValueError:
+                            st.caption(f"  {i}. {d}")
+                    st.rerun()
+                else:
+                    st.error("No valid directories found. Please check your paths.")
+            
+            # Quick multi-select from common locations
+            st.markdown("---")
+            st.markdown("**Quick Multi-Select:**")
+            quick_dirs = [
+                ("DNS/768", "examples/showcase/DNS/768"),
+                ("DNS/512", "examples/showcase/DNS/512"),
+                ("DNS/256", "examples/showcase/DNS/256"),
+                ("DNS/128", "examples/showcase/DNS/128"),
+                ("LES/128", "examples/showcase/LES/128"),
+                ("LES/64", "examples/showcase/LES/64"),
+            ]
+            
+            selected_quick = st.multiselect(
+                "Select directories:",
+                options=[label for label, _ in quick_dirs],
+                help="Select multiple directories to load at once"
+            )
+            
+            if st.button("Load Selected", key="load_quick_multi"):
+                selected_paths = [path for label, path in quick_dirs if label in selected_quick]
+                valid_dirs = []
+                for rel_path in selected_paths:
+                    full_path = project_root / rel_path
+                    if full_path.exists() and full_path.is_dir():
+                        valid_dirs.append(str(full_path.absolute()))
+                
+                if valid_dirs:
+                    st.session_state.data_directories = valid_dirs
+                    st.session_state.data_directory = valid_dirs[0]
+                    st.session_state.data_loaded = True
+                    st.success(f"✅ Loaded {len(valid_dirs)} directories")
+                    st.rerun()
+        
+        else:
+            # Single directory mode (original behavior)
+            st.markdown("**Select your simulation output folder:**")
+            
+            # Allow both absolute and relative paths
+            user_dir = st.text_input(
+                "Directory path:",
+                value="",
+                help="Enter absolute path or path relative to project root (e.g., examples/showcase/DNS/256)"
+            )
         
         # Quick access to common locations
         with st.expander("📂 Quick Access to Project Directories", expanded=False):
@@ -94,34 +184,37 @@ def main():
                 if full_path.exists():
                     if st.button(f"📁 {label}", key=f"quick_{path}", use_container_width=True):
                         st.session_state.data_directory = str(full_path)
+                        st.session_state.data_directories = [str(full_path)]
                         st.session_state.data_loaded = True
                         st.success(f"Loaded: APP/{path}")
                         st.rerun()
         
-        if st.button("Load Data", type="primary"):
-            # Try as absolute path first
-            if user_dir and Path(user_dir).exists() and Path(user_dir).is_dir():
-                abs_path = Path(user_dir).absolute()
-                st.session_state.data_directory = str(abs_path)
-                st.session_state.data_loaded = True
-                # Show relative path if within project, otherwise show input as-is
-                try:
-                    rel_path = abs_path.relative_to(project_root)
-                    st.success(f"Data loaded from: APP/{rel_path}")
-                except ValueError:
-                    st.success(f"Data loaded from: {user_dir}")
-            # Try as relative path from project root
-            elif user_dir:
-                relative_path = project_root / user_dir
-                if relative_path.exists() and relative_path.is_dir():
-                    st.session_state.data_directory = str(relative_path.absolute())
+            if st.button("Load Data", type="primary"):
+                # Try as absolute path first
+                if user_dir and Path(user_dir).exists() and Path(user_dir).is_dir():
+                    abs_path = Path(user_dir).absolute()
+                    st.session_state.data_directory = str(abs_path)
+                    st.session_state.data_directories = [str(abs_path)]  # Also set in list for compatibility
                     st.session_state.data_loaded = True
-                    st.success(f"Data loaded from: APP/{user_dir}")
+                    # Show relative path if within project, otherwise show input as-is
+                    try:
+                        rel_path = abs_path.relative_to(project_root)
+                        st.success(f"Data loaded from: APP/{rel_path}")
+                    except ValueError:
+                        st.success(f"Data loaded from: {user_dir}")
+                # Try as relative path from project root
+                elif user_dir:
+                    relative_path = project_root / user_dir
+                    if relative_path.exists() and relative_path.is_dir():
+                        st.session_state.data_directory = str(relative_path.absolute())
+                        st.session_state.data_directories = [str(relative_path.absolute())]
+                        st.session_state.data_loaded = True
+                        st.success(f"Data loaded from: APP/{user_dir}")
+                    else:
+                        st.error(f"Directory not found: {user_dir}")
+                        st.info(f"💡 Tip: Use path relative to project root (e.g., examples/showcase/DNS/256)")
                 else:
-                    st.error(f"Directory not found: {user_dir}")
-                    st.info(f"💡 Tip: Use path relative to project root (e.g., examples/showcase/DNS/256)")
-            else:
-                st.warning("Please enter a directory path.")
+                    st.warning("Please enter a directory path.")
         
         # Optional: Browse project directories
         st.markdown("---")
@@ -174,6 +267,7 @@ def main():
             if st.button("Load Selected Directory", type="primary"):
                 selected_path = dir_options[selected_dir]
                 st.session_state.data_directory = selected_path
+                st.session_state.data_directories = [selected_path]
                 st.session_state.data_loaded = True
                 # Show relative path in success message
                 try:
@@ -227,14 +321,27 @@ def main():
         3. Navigate through the pages using the sidebar
         """)
     else:
-        # Show relative path in main content area
-        data_dir = Path(st.session_state.data_directory)
-        try:
-            rel_path = data_dir.relative_to(project_root)
-            display_path = f"APP/{rel_path}"
-        except ValueError:
-            display_path = str(data_dir)
-        st.success(f"✅ Data loaded from: `{display_path}`")
+        # Show loaded directories in main content area
+        if st.session_state.multi_directory_mode and st.session_state.data_directories:
+            st.success(f"✅ Loaded {len(st.session_state.data_directories)} simulation directories:")
+            for i, data_dir_path in enumerate(st.session_state.data_directories, 1):
+                data_dir = Path(data_dir_path)
+                try:
+                    rel_path = data_dir.relative_to(project_root)
+                    display_path = f"APP/{rel_path}"
+                except ValueError:
+                    display_path = str(data_dir)
+                st.markdown(f"  **{i}.** `{display_path}`")
+            st.info("💡 Pages will automatically load files from all selected directories for comparison.")
+        else:
+            # Single directory mode
+            data_dir = Path(st.session_state.data_directory)
+            try:
+                rel_path = data_dir.relative_to(project_root)
+                display_path = f"APP/{rel_path}"
+            except ValueError:
+                display_path = str(data_dir)
+            st.success(f"✅ Data loaded from: `{display_path}`")
         st.info("Navigate through the pages using the sidebar menu.")
 
 if __name__ == "__main__":

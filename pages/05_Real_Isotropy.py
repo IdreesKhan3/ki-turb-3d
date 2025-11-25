@@ -37,6 +37,7 @@ sys.path.insert(0, str(project_root))
 
 from utils.file_detector import detect_simulation_files
 from utils.theme_config import inject_theme_css
+from utils.report_builder import capture_button
 
 
 # ==========================================================
@@ -680,6 +681,7 @@ def main():
         )
         fig_a = apply_plot_style(fig_a, ps)
         st.plotly_chart(fig_a, use_container_width=True)
+        capture_button(fig_a, title="Real-Space Isotropy Analysis (Part A)", source_page="Real Isotropy")
         export_panel(fig_a, data_dir, "real_iso_energy_fractions")
 
     # ======================================================
@@ -720,6 +722,7 @@ def main():
         )
         fig_b = apply_plot_style(fig_b, ps)
         st.plotly_chart(fig_b, use_container_width=True)
+        capture_button(fig_b, title="Real-Space Isotropy Analysis (Part B)", source_page="Real Isotropy")
         export_panel(fig_b, data_dir, "real_iso_lumley_triangle")
 
 

@@ -38,6 +38,7 @@ sys.path.insert(0, str(project_root))
 
 from utils.file_detector import detect_simulation_files, natural_sort_key
 from utils.theme_config import inject_theme_css
+from utils.report_builder import capture_button
 
 
 # ==========================================================
@@ -662,6 +663,7 @@ def main():
         )
         fig_ic = apply_plot_style(fig_ic, ps)
         st.plotly_chart(fig_ic, use_container_width=True)
+        capture_button(fig_ic, title="Spectral Isotropy (IC)", source_page="Spectral Isotropy")
         export_panel(fig_ic, data_dir, "spectral_isotropy_IC")
 
     # ======================================================
@@ -692,6 +694,7 @@ def main():
             )
             fig_eii = apply_plot_style(fig_eii, ps)
             st.plotly_chart(fig_eii, use_container_width=True)
+            capture_button(fig_eii, title="Spectral Isotropy (E_ii)", source_page="Spectral Isotropy")
             export_panel(fig_eii, data_dir, "spectral_isotropy_Eii")
 
     # ======================================================
