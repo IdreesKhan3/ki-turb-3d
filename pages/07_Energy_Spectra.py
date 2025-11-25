@@ -32,6 +32,7 @@ sys.path.insert(0, str(project_root))
 from data_readers.spectrum_reader import read_spectrum_file
 from data_readers.norm_spectrum_reader import read_norm_spectrum_file
 from utils.file_detector import natural_sort_key, group_files_by_simulation
+from utils.theme_config import inject_theme_css
 
 
 # ==========================================================
@@ -634,6 +635,9 @@ def _resolve_line_style(sim_prefix, idx, colors, ps, kind="raw"):
 # Main
 # ==========================================================
 def main():
+    # Apply theme CSS (persists across pages)
+    inject_theme_css()
+    
     st.title("📈 Energy Spectra")
 
     st.session_state.setdefault("spectrum_legend_names", {})

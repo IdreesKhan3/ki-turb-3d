@@ -13,13 +13,16 @@ import sys
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from data_readers.csv_reader import read_csv_data, read_eps_validation_csv
+from data_readers.csv_reader import read_eps_validation_csv
 from data_readers.parameter_reader import read_parameters, format_parameters_for_display
 from data_readers.binary_reader import read_tau_analysis_file
 from utils.file_detector import detect_simulation_files
-from visualizations.time_series import plot_time_series
+from utils.theme_config import inject_theme_css
 
 def main():
+    # Apply theme CSS (persists across pages)
+    inject_theme_css()
+    
     st.title("📊 Overview")
     
     if 'data_directory' not in st.session_state or not st.session_state.data_directory:
@@ -192,36 +195,6 @@ def main():
                     st.caption(f"*{knudsen_type} formulation*")
                 st.markdown(f"{status_color} {status_text}")
                 st.caption(status_msg)
-    
-    # Load CSV data
-    if files['csv']:
-        df = read_csv_data(str(files['csv'][0]))
-        
-        st.header("Turbulence Statistics")
-        
-        # Latest values table
-        st.subheader("Latest Values")
-        latest = df.iloc[-1]
-        st.dataframe(latest.to_frame().T, use_container_width=True)
-        
-        # Full time series table
-        st.subheader("Time Series Data")
-        st.dataframe(df, use_container_width=True, height=400)
-        
-        # Time series plots
-        st.subheader("Time Evolution")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if 'TKE' in df.columns:
-                fig = plot_time_series(df['iter'].values, df['TKE'].values, "TKE", "blue", "TKE")
-                st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            if 'u_rms' in df.columns:
-                fig = plot_time_series(df['iter'].values, df['u_rms'].values, "u_rms", "green", "u_rms")
-                st.plotly_chart(fig, use_container_width=True)
     
     # File availability checklist
     st.header("Data Availability")

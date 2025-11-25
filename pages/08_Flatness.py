@@ -40,6 +40,7 @@ sys.path.insert(0, str(project_root))
 
 from data_readers.text_reader import read_flatness_file
 from utils.file_detector import detect_simulation_files, group_files_by_simulation, natural_sort_key
+from utils.theme_config import inject_theme_css
 
 
 # ==========================================================
@@ -542,6 +543,9 @@ def _resolve_line_style(sim_prefix, idx, colors, ps):
 # Main
 # ==========================================================
 def main():
+    # Apply theme CSS (persists across pages)
+    inject_theme_css()
+    
     st.title("📉 Flatness Factors")
 
     # Get data directory from session state

@@ -41,6 +41,7 @@ import glob
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from utils.theme_config import inject_theme_css
 from utils.file_detector import (
     detect_simulation_files,
     group_files_by_simulation,
@@ -540,6 +541,9 @@ def _resolve_line_style(sim_prefix, idx, colors, ps):
 # Page main
 # ==========================================================
 def main():
+    # Apply theme CSS (persists across pages)
+    inject_theme_css()
+    
     st.title("📊 Structure Functions")
 
     data_dir = st.session_state.get("data_directory", None)

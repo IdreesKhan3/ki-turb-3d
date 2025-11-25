@@ -1,10 +1,9 @@
 """
-Energy Balance / Residual Error Page (Streamlit)
+Other Turbulence Stats Page (Streamlit)
 
-High-standard features:
-- Reads eps_real_validation CSV files from multiple simulations
-- Groups by simulation prefix (eps_real_validation_data1, data2, ...)
-- Plots energy_balance_ratio residual error vs t/t0
+Features:
+- Turbulence statistics from turbulence_stats*.csv files
+- Energy balance residual from eps_real_validation*.csv files
 - Full persistent UI controls:
     * Legend names, axis labels
     * Fonts, tick style, major/minor grids, background colors, theme
@@ -31,11 +30,9 @@ import glob
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from utils.file_detector import (
-    detect_simulation_files,
-    group_files_by_simulation,
-    natural_sort_key
-)
+from data_readers.csv_reader import read_csv_data
+from utils.file_detector import detect_simulation_files
+from utils.theme_config import apply_theme_to_plot_style, inject_theme_css
 
 # ==========================================================
 # JSON persistence (dataset-local)
@@ -421,227 +418,224 @@ def export_panel(fig, out_dir: Path, base_name: str):
 # Page main
 # ==========================================================
 def main():
-    st.title("⚡ Energy Balance / Residual Error")
+    inject_theme_css()
+    
+    st.title("📊 Other Turbulence Stats")
 
     data_dir = st.session_state.get("data_directory", None)
     if not data_dir:
         st.warning("Please select a data directory from the Overview page.")
         return
     data_dir = Path(data_dir)
+    
+    # Apply theme to plot style on page load
+    current_theme = st.session_state.get("theme", "Light Scientific")
+    if 'plot_style' not in st.session_state:
+        st.session_state.plot_style = _default_plot_style()
+    
+    # Always apply current theme (in case theme changed)
+    st.session_state.plot_style = apply_theme_to_plot_style(
+        st.session_state.plot_style, 
+        current_theme
+    )
 
-    # Defaults
-    st.session_state.setdefault("energy_legend_names", {})
-    st.session_state.setdefault("axis_labels_energy", {
-        "x": r"$t/t_0$",
-        "y": r"$\left| \frac{\varepsilon}{-dE_k/dt + \langle f\cdot u \rangle} - 1 \right|$",
-        "title": "Energy balance residual",
-    })
-    st.session_state.setdefault("plot_style", _default_plot_style())
+    # Detect available files
+    files = detect_simulation_files(str(data_dir))
 
-    # Load json once per dataset change
-    if st.session_state.get("_last_energy_dir") != str(data_dir):
-        _load_ui_metadata(data_dir)
-        merged = _default_plot_style()
-        merged.update(st.session_state.plot_style or {})
-        st.session_state.plot_style = merged
-        st.session_state["_last_energy_dir"] = str(data_dir)
+    # Collect all available dataframes
+    all_dataframes = {}
+    available_columns = {}
+    
+    # Load turbulence_stats CSV
+    if files['csv']:
+        df_stats = read_csv_data(str(files['csv'][0]))
+        all_dataframes['turbulence_stats'] = df_stats
+        available_columns['turbulence_stats'] = list(df_stats.columns)
+        
+        st.header("Turbulence Statistics")
+        
+        # Latest values table
+        st.subheader("Latest Values")
+        latest = df_stats.iloc[-1]
+        st.dataframe(latest.to_frame().T, use_container_width=True)
+        
+        # Full time series table
+        st.subheader("Time Series Data")
+        st.dataframe(df_stats, use_container_width=True, height=400)
+        
+        st.markdown("---")
 
-    ps = st.session_state.plot_style
-
-    # Detect files
-    files_dict = detect_simulation_files(str(data_dir))
-    eps_files = files_dict.get("eps_real", [])
+    # Load eps_real_validation CSV files
+    eps_files = files.get("eps_validation", [])
     if not eps_files:
         eps_files = glob.glob(str(data_dir / "eps_real_validation*.csv"))
+    
+    if eps_files:
+        # Load first validation file for column info
+        try:
+            df_val = pd.read_csv(str(eps_files[0]))
+            all_dataframes['eps_validation'] = df_val
+            available_columns['eps_validation'] = list(df_val.columns)
+        except Exception:
+            pass
 
-    if not eps_files:
-        st.info("No eps_real_validation*.csv found.")
+    # Custom Plotting Section
+    st.header("📈 Custom Plotting")
+    
+    if not all_dataframes:
+        st.info("No CSV files found. Please load data from the Overview page.")
         return
-
-    # Group by simulation name
-    sim_groups = group_files_by_simulation(
-        sorted([str(f) for f in eps_files], key=natural_sort_key),
-        r"(eps_real_validation[_\w]*\d+)\.csv"
-    )
-
-    if not sim_groups:
-        # fallback: treat each file as its own sim
-        sim_groups = {Path(f).stem: [f] for f in eps_files}
-
-    # Sidebar legends + axis labels (persistent)
-    with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
-        st.markdown("### Legend names")
-        for sim_prefix in sorted(sim_groups.keys()):
-            st.session_state.energy_legend_names.setdefault(sim_prefix, _default_labelify(sim_prefix))
-            st.session_state.energy_legend_names[sim_prefix] = st.text_input(
-                f"Name for `{sim_prefix}`",
-                value=st.session_state.energy_legend_names[sim_prefix],
-                key=f"legend_energy_{sim_prefix}"
-            )
-
-        st.markdown("---")
-        st.markdown("### Axis labels")
-        st.session_state.axis_labels_energy["x"] = st.text_input(
-            "x-label", st.session_state.axis_labels_energy["x"], key="ax_energy_x"
+    
+    # Column selection in main area (more visible)
+    st.subheader("Select Columns to Plot")
+    
+    col1, col2, col3 = st.columns([2, 2, 1])
+    
+    with col1:
+        # Select data source
+        data_source = st.selectbox(
+            "📁 Data Source",
+            options=list(all_dataframes.keys()),
+            help="Select which CSV file to plot from",
+            key="plot_data_source"
         )
-        st.session_state.axis_labels_energy["y"] = st.text_input(
-            "y-label", st.session_state.axis_labels_energy["y"], key="ax_energy_y"
+    
+    df_plot = all_dataframes[data_source]
+    numeric_cols = [col for col in df_plot.columns if pd.api.types.is_numeric_dtype(df_plot[col])]
+    
+    if len(numeric_cols) < 2:
+        st.warning(f"Not enough numeric columns in {data_source} for plotting.")
+        return
+    
+    with col2:
+        # X-axis column selection
+        x_col = st.selectbox(
+            "X-axis Column",
+            options=numeric_cols,
+            index=0 if 'iter' in numeric_cols else 0,
+            help="Select column for X-axis (e.g., iter, time)",
+            key="plot_x_col"
         )
-        st.session_state.axis_labels_energy["title"] = st.text_input(
-            "plot title", st.session_state.axis_labels_energy["title"], key="ax_energy_title"
+    
+    with col3:
+        # Y-axis column selection
+        y_col = st.selectbox(
+            "Y-axis Column",
+            options=[c for c in numeric_cols if c != x_col],
+            index=0 if 'TKE' in [c for c in numeric_cols if c != x_col] else 0,
+            help="Select column for Y-axis (e.g., TKE, u_rms)",
+            key="plot_y_col"
         )
-
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button("💾 Save labels/legends"):
-                _save_ui_metadata(data_dir)
-                st.success("Saved to legend_names.json")
-        with b2:
-            if st.button("♻️ Reset labels/legends"):
-                st.session_state.energy_legend_names = {k: _default_labelify(k) for k in sim_groups.keys()}
-                st.session_state.axis_labels_energy.update({
-                    "x": r"$t/t_0$",
-                    "y": r"$\left| \frac{\varepsilon}{-dE_k/dt + \langle f\cdot u \rangle} - 1 \right|$",
-                    "title": "Energy balance residual",
-                })
-                _save_ui_metadata(data_dir)
-                st.toast("Reset + saved.", icon="♻️")
-
-    # Sidebar time normalization & window
-    st.sidebar.subheader("Time / Window")
-    T0 = st.sidebar.number_input("t₀ normalization constant", value=1000.0, min_value=1.0, step=100.0)
-
-    # Determine max common length for window indexing
-    min_len = min(len(v) for v in sim_groups.values())
-    start_idx = st.sidebar.slider("Start file index", 1, min_len, 1)
-    end_idx = st.sidebar.slider("End file index", start_idx, min_len, min_len)
-
+    
+    st.markdown("---")
+    
+    # Sidebar: Plot options
     st.sidebar.subheader("Plot Options")
-    y_max = st.sidebar.slider("Y max", 0.05, 2.0, 0.5, 0.05)
-    show_abs = st.sidebar.checkbox("Use absolute residual", value=True)
-    smooth_win = st.sidebar.slider("Optional moving average window (0=off)", 0, 500, 0, 10)
-
-    # Full style sidebar
-    plot_style_sidebar(data_dir, sim_groups)
-    ps = st.session_state.plot_style
-    colors = _get_palette(ps)
-
-    # Main plot
-    st.subheader("Residual error across simulations")
-
-    fig = go.Figure()
-    plotted_any = False
-
-    summary_rows = []
-
-    for idx, sim_prefix in enumerate(sorted(sim_groups.keys())):
-        files = sim_groups[sim_prefix][start_idx-1:end_idx]
-        if not files:
-            continue
-
-        # load & concat in time
-        frames = []
-        for f in files:
-            try:
-                df = pd.read_csv(f)
-            except Exception:
-                continue
-            frames.append(df)
-        if not frames:
-            continue
-
-        df_all = pd.concat(frames, ignore_index=True)
-
-        # robust numeric conversion
-        for col in ["iter", "energy_balance_ratio"]:
-            if col in df_all.columns:
-                df_all[col] = pd.to_numeric(df_all[col], errors="coerce")
-
-        if "iter" not in df_all.columns or "energy_balance_ratio" not in df_all.columns:
-            continue
-
-        df_all = df_all.dropna(subset=["iter", "energy_balance_ratio"])
-        if df_all.empty:
-            continue
-
-        t = df_all["iter"].values / float(T0)
-        y = df_all["energy_balance_ratio"].values
-        if show_abs:
-            y = np.abs(y)
-
-        # smoothing
-        if smooth_win and smooth_win > 1 and len(y) > smooth_win:
-            kernel = np.ones(int(smooth_win)) / int(smooth_win)
-            y_sm = np.convolve(y, kernel, mode="valid")
-            t_sm = t[int(smooth_win)//2: int(smooth_win)//2 + len(y_sm)]
-            t_plot, y_plot = t_sm, y_sm
-        else:
-            t_plot, y_plot = t, y
-
-        legend = st.session_state.energy_legend_names.get(sim_prefix, _default_labelify(sim_prefix))
-        c, lw, dash = _resolve_line_style(sim_prefix, idx, colors, ps)
-
-        fig.add_trace(go.Scatter(
-            x=t_plot, y=y_plot,
-            mode="lines",
-            name=legend,
-            line=dict(color=c, width=lw, dash=dash),
-            hovertemplate="t/t0=%{x:.4g}<br>residual=%{y:.4g}<extra></extra>"
-        ))
-        plotted_any = True
-
-        summary_rows.append({
-            "simulation": legend,
-            "mean_residual": float(np.mean(y_plot)),
-            "std_residual": float(np.std(y_plot)),
-            "final_residual": float(y_plot[-1]),
-        })
-
-    if not plotted_any:
-        st.info("No valid energy balance data could be plotted.")
+    use_abs = st.sidebar.checkbox("Use absolute value (Y-axis)", value=False)
+    smooth_window = st.sidebar.slider("Moving average window (0=off)", 0, 500, 0, 10)
+    
+    # Normalization
+    normalize_x = st.sidebar.checkbox("Normalize X-axis", value=False)
+    x_norm = st.sidebar.number_input("X normalization constant", value=1000.0, min_value=1.0, step=100.0, disabled=not normalize_x)
+    
+    # Create plot
+    x_data = df_plot[x_col].values
+    y_data = df_plot[y_col].values
+    
+    # Convert to numeric and remove NaN
+    x_data = pd.to_numeric(x_data, errors='coerce')
+    y_data = pd.to_numeric(y_data, errors='coerce')
+    valid_mask = ~(np.isnan(x_data) | np.isnan(y_data))
+    x_data = x_data[valid_mask]
+    y_data = y_data[valid_mask]
+    
+    if len(x_data) == 0 or len(y_data) == 0:
+        st.warning("No valid data points to plot.")
         return
-
+    
+    # Apply normalization
+    if normalize_x:
+        x_data = x_data / float(x_norm)
+    
+    # Apply absolute value
+    if use_abs:
+        y_data = np.abs(y_data)
+    
+    # Apply smoothing
+    if smooth_window > 1 and len(y_data) > smooth_window:
+        kernel = np.ones(int(smooth_window)) / int(smooth_window)
+        y_smooth = np.convolve(y_data, kernel, mode="valid")
+        x_smooth = x_data[int(smooth_window)//2: int(smooth_window)//2 + len(y_smooth)]
+        x_plot, y_plot = x_smooth, y_smooth
+    else:
+        x_plot, y_plot = x_data, y_data
+    
+    # Create figure with theme styling
+    ps = st.session_state.get("plot_style", _default_plot_style())
+    colors = _get_palette(ps)
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=x_plot,
+        y=y_plot,
+        mode="lines",
+        name=f"{y_col} vs {x_col}",
+        line=dict(width=ps.get("line_width", 2.2), color=colors[0] if colors else "#1f77b4"),
+        hovertemplate=f"{x_col}=%{{x:.4g}}<br>{y_col}=%{{y:.4g}}<extra></extra>"
+    ))
+    
+    x_label = f"{x_col}" + (f" / {x_norm}" if normalize_x else "")
+    y_label = f"{y_col}" + (" (abs)" if use_abs else "")
+    
+    # Apply theme styling
     fig.update_layout(
-        title=st.session_state.axis_labels_energy["title"],
-        xaxis_title=st.session_state.axis_labels_energy["x"],
-        yaxis_title=st.session_state.axis_labels_energy["y"],
-        height=620,
+        title=f"{y_col} vs {x_label}",
+        xaxis_title=x_label,
+        yaxis_title=y_label,
+        height=600,
         margin=dict(l=60, r=20, t=40, b=55),
-        legend_title="Simulation",
+        hovermode="x unified",
+        template=ps.get("template", "plotly_white"),
+        font=dict(family=ps.get("font_family", "Arial"), size=ps.get("font_size", 14)),
+        plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
+        paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
     )
-    fig.update_yaxes(range=[0, y_max])
-    fig.update_xaxes(range=[0, None])
-
-    fig = apply_plot_style(fig, ps)
+    
+    # Apply grid styling from theme
+    from plotly.colors import hex_to_rgb
+    grid_color = ps.get("grid_color", "#B0B0B0")
+    grid_opacity = ps.get("grid_opacity", 0.6)
+    grid_rgba = f"rgba{hex_to_rgb(grid_color) + (grid_opacity,)}"
+    
+    fig.update_xaxes(
+        showgrid=ps.get("show_grid", True) and ps.get("grid_on_x", True),
+        gridcolor=grid_rgba,
+        gridwidth=ps.get("grid_w", 0.6),
+    )
+    fig.update_yaxes(
+        showgrid=ps.get("show_grid", True) and ps.get("grid_on_y", True),
+        gridcolor=grid_rgba,
+        gridwidth=ps.get("grid_w", 0.6),
+    )
+    
     st.plotly_chart(fig, use_container_width=True)
-
-    export_panel(fig, data_dir, base_name="energy_balance_residual")
-
-    # Summary table
-    st.markdown("### Summary (selected window)")
-    if summary_rows:
-        df_sum = pd.DataFrame(summary_rows).sort_values("mean_residual")
-        st.dataframe(df_sum, use_container_width=True)
-
-        st.download_button(
-            "Download summary CSV",
-            df_sum.to_csv(index=False).encode("utf-8"),
-            file_name="energy_balance_summary.csv",
-            mime="text/csv"
-        )
-
-    # Theory section
-    with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown(r"""
-Energy balance residual is defined as:
-
-\[
-\mathrm{Res}(t) = \left| \frac{\varepsilon}{-dE_k/dt + \langle f\cdot u \rangle} - 1 \right|
-\]
-
-For statistically stationary forced HIT, the denominator should balance the dissipation, so
-\(\mathrm{Res}(t)\to 0\) as stationarity and resolution improve.
-        """)
+    
+    # Summary statistics
+    st.subheader("Summary Statistics")
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Mean", f"{np.mean(y_plot):.6f}")
+    with col2:
+        st.metric("Std Dev", f"{np.std(y_plot):.6f}")
+    with col3:
+        st.metric("Min", f"{np.min(y_plot):.6f}")
+    with col4:
+        st.metric("Max", f"{np.max(y_plot):.6f}")
+    
+    st.markdown("---")
+    
+    # Export panel for custom plot
+    export_panel(fig, data_dir, base_name=f"custom_plot_{x_col}_vs_{y_col}")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 """
 CSV file reader for turbulence statistics
-Reads turbulence_stats1.csv and eps_real_validation_*.csv files
+Reads turbulence_stats*.csv and eps_real_validation_*.csv files
 """
 
 import pandas as pd
@@ -14,13 +14,17 @@ def read_csv_data(filepath: str) -> pd.DataFrame:
     Read CSV file containing turbulence statistics
     
     Args:
-        filepath: Path to CSV file (e.g., turbulence_stats1.csv)
+        filepath: Path to CSV file (e.g., turbulence_stats*.csv)
         
     Returns:
         DataFrame with turbulence statistics
     """
     try:
-        df = pd.read_csv(filepath)
+        # skipinitialspace=True handles leading spaces from Fortran formatting
+        df = pd.read_csv(filepath, skipinitialspace=True)
+        # Ensure iter column is numeric (Fortran may write with spaces)
+        if 'iter' in df.columns:
+            df['iter'] = pd.to_numeric(df['iter'], errors='coerce')
         return df
     except Exception as e:
         raise ValueError(f"Error reading CSV file {filepath}: {e}")

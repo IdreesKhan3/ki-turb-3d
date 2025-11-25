@@ -37,6 +37,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from utils.file_detector import detect_simulation_files, natural_sort_key
+from utils.theme_config import inject_theme_css
 
 
 # ==========================================================
@@ -500,6 +501,8 @@ def _avg_isotropy_coeff(files):
 # Page main
 # ==========================================================
 def main():
+    # Apply theme CSS (persists across pages)
+    inject_theme_css()
     st.title("📈 Isotropy Validation — Spectral")
 
     data_dir = st.session_state.get("data_directory", None)

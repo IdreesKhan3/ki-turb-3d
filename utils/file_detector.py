@@ -38,7 +38,7 @@ def detect_simulation_files(directory: str) -> Dict[str, List[str]]:
     }
     
     # Find CSV files
-    files['csv'] = list(dir_path.glob('turbulence_stats1.csv'))
+    files['csv'] = sorted(dir_path.glob('turbulence_stats*.csv'), key=lambda f: natural_sort_key(str(f)))
     files['eps_validation'] = list(dir_path.glob('eps_real_validation_*.csv'))
     
     # Find parameter file

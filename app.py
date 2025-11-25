@@ -11,6 +11,8 @@ import sys
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
+from utils.theme_config import get_theme_list, get_default_theme, inject_theme_css
+
 # Page configuration
 st.set_page_config(
     page_title="LBM-MRT Turbulence Analysis Dashboard",
@@ -24,13 +26,45 @@ if 'data_directory' not in st.session_state:
     st.session_state.data_directory = None
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = False
+if 'theme' not in st.session_state:
+    st.session_state.theme = "Light Scientific"
 
 def main():
     """Main application entry point"""
     
+    # Apply theme CSS globally (must be first to apply to all pages)
+    inject_theme_css()
+    
     # Sidebar - Data Selection
     with st.sidebar:
         st.title("🌊 Turbulence Dashboard")
+        st.markdown("---")
+        
+        # Theme Selector
+        st.subheader("🎨 Theme")
+        available_themes = get_theme_list()
+        default_idx = available_themes.index(st.session_state.theme) if st.session_state.theme in available_themes else 0
+        
+        selected_theme = st.selectbox(
+            "Select Theme",
+            options=available_themes,
+            index=default_idx,
+            help="Choose a visualization theme optimized for different use cases",
+            key="theme_selector"
+        )
+        
+        if selected_theme != st.session_state.theme:
+            st.session_state.theme = selected_theme
+            # Clear plot_style to force reapplication of theme
+            if 'plot_style' in st.session_state:
+                del st.session_state.plot_style
+            st.rerun()
+        
+        # Show theme description
+        from utils.theme_config import get_theme
+        theme_info = get_theme(selected_theme)
+        st.caption(f"💡 {theme_info['description']}")
+        
         st.markdown("---")
         
         st.subheader("📁 Data Selection")
@@ -183,9 +217,9 @@ def main():
         - Flatness factors
         - Isotropy validation (spectral and real-space)
         - LES metrics
-        - Energy balance analysis
+        - Other turbulence statistics and energy balance analysis
         - Multi-simulation comparison
-        - Multi-method support (MRT and SRT)
+        - Multi-method support (MRT and SRT).
         
         **Getting Started:**
         1. Select your simulation output folder from the sidebar
