@@ -48,6 +48,7 @@ from utils.file_detector import (
     natural_sort_key
 )
 from utils.report_builder import capture_button
+from utils.plot_style import resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
 
 # Binary/text readers (binary is required by plan, text is optional)
 from data_readers.binary_reader import read_structure_function_file
@@ -316,6 +317,19 @@ def _default_plot_style():
 
         "enable_per_sim_style": False,
         "per_sim_style_structure": {},
+        
+        # Axis limits
+        "enable_x_limits": False,
+        "x_min": None,
+        "x_max": None,
+        "enable_y_limits": False,
+        "y_min": None,
+        "y_max": None,
+        
+        # Figure size
+        "enable_custom_size": False,
+        "figure_width": 800,
+        "figure_height": 500,
     }
 
 def _get_palette(ps):
@@ -348,7 +362,6 @@ def apply_plot_style(fig, ps):
         template=ps["template"],
         font=dict(family=ps["font_family"], size=ps["font_size"]),
         legend=dict(font=dict(size=ps["legend_size"])),
-        title=dict(font=dict(size=ps["title_size"])),
         hovermode="x unified",
         plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
         paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
@@ -488,49 +501,16 @@ def plot_style_sidebar(data_dir: Path, sim_groups):
         template_selector(ps)
 
         st.markdown("---")
-        st.markdown("**Per-simulation overrides (optional)**")
-        ps["enable_per_sim_style"] = st.checkbox("Enable per-simulation overrides",
-                                                 bool(ps.get("enable_per_sim_style", False)))
-
-        if ps["enable_per_sim_style"]:
-            dash_opts = ["solid", "dot", "dash", "dashdot", "longdash", "longdashdot"]
-            marker_opts = ["circle", "square", "diamond", "cross", "x", "triangle-up",
-                           "triangle-down", "star", "hexagon"]
-
-            with st.container(border=True):
-                for sim_prefix in sorted(sim_groups.keys()):
-                    s = ps["per_sim_style_structure"][sim_prefix]
-                    st.markdown(f"`{sim_prefix}`")
-                    c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
-                    with c1:
-                        s["enabled"] = st.checkbox("Override", value=s.get("enabled", False),
-                                                  key=f"struct_over_on_{sim_prefix}")
-                    with c2:
-                        s["color"] = st.color_picker("Color", value=s.get("color") or "#000000",
-                                                     key=f"struct_over_color_{sim_prefix}",
-                                                     disabled=not s["enabled"])
-                    with c3:
-                        s["width"] = st.slider("Width", 0.5, 8.0,
-                                               float(s.get("width") or ps["line_width"]),
-                                               key=f"struct_over_width_{sim_prefix}",
-                                               disabled=not s["enabled"])
-                    with c4:
-                        s["dash"] = st.selectbox("Dash", dash_opts,
-                                                 index=dash_opts.index(s.get("dash") or "solid"),
-                                                 key=f"struct_over_dash_{sim_prefix}",
-                                                 disabled=not s["enabled"])
-                    with c5:
-                        s["marker"] = st.selectbox("Marker", marker_opts,
-                                                   index=marker_opts.index(s.get("marker") or "circle"),
-                                                   key=f"struct_over_marker_{sim_prefix}",
-                                                   disabled=not s["enabled"])
-                    s["msize"] = st.slider("Marker size", 0, 18,
-                                           int(s.get("msize") or ps["marker_size"]),
-                                           key=f"struct_over_msize_{sim_prefix}",
-                                           disabled=not s["enabled"])
+        render_axis_limits_ui(ps, key_prefix="struct")
+        st.markdown("---")
+        render_figure_size_ui(ps, key_prefix="struct")
+        st.markdown("---")
+        render_per_sim_style_ui(ps, sim_groups, style_key="per_sim_style_structure", 
+                                key_prefix="struct", include_marker=True)
 
         st.markdown("---")
         b1, b2 = st.columns(2)
+        reset_pressed = False
         with b1:
             if st.button("💾 Save Plot Style"):
                 st.session_state.plot_style = ps
@@ -541,8 +521,12 @@ def plot_style_sidebar(data_dir: Path, sim_groups):
                 st.session_state.plot_style = _default_plot_style()
                 _save_ui_metadata(data_dir)
                 st.toast("Reset + saved.", icon="♻️")
+                reset_pressed = True
+                st.rerun()  # Rerun to update sidebar with default values
 
-    st.session_state.plot_style = ps
+    # Auto-save plot style changes (applies immediately) - but not if reset was pressed
+    if not reset_pressed:
+        st.session_state.plot_style = ps
 
 
 def _color_to_rgb_tuple(color):
@@ -733,6 +717,69 @@ def main():
         st.error("No structure function files found or could not group files.")
         return
 
+    # Sidebar time window
+    st.sidebar.subheader("Time Window")
+    file_lengths = {k: len(v["files"]) for k, v in sim_groups.items()}
+    if not file_lengths:
+        st.error("No files found in any simulation group.")
+        return
+    min_len = min(file_lengths.values())
+    
+    # Show file counts per simulation (helpful for debugging)
+    if len(sim_groups) > 1:
+        with st.sidebar.expander("📊 File counts", expanded=False):
+            for sim_prefix in sorted(file_lengths.keys()):
+                count = file_lengths[sim_prefix]
+                st.text(f"{sim_prefix}: {count} files")
+    
+    start_idx = st.sidebar.slider("Start file index", 1, min_len, 1)
+    end_idx = st.sidebar.slider("End file index", start_idx, min_len, min_len)
+
+    # Sidebar data options
+    st.sidebar.subheader("Orders / Normalization")
+    sample_key = sorted(sim_groups.keys())[0]
+    sample_files = tuple(sim_groups[sample_key]["files"][start_idx-1:end_idx])
+    r_s, Sp_m_s, Sp_sd_s, urms_s, ps_list = _compute_time_avg_structure(sample_files, sim_groups[sample_key]["kind"])
+    if ps_list is None:
+        st.error("Could not read structure function data from the selected range.")
+        return
+
+    max_p = max(ps_list)
+    selected_ps = st.sidebar.multiselect(
+        "Orders p to plot (S_p and ESS)",
+        options=list(range(1, max_p + 1)),
+        default=list(range(1, min(7, max_p + 1)))
+    )
+    ref_p = st.sidebar.selectbox(
+        "ESS reference order (x-axis)",
+        options=ps_list,
+        index=ps_list.index(3) if 3 in ps_list else 0
+    )
+    normalize_by_urms = st.sidebar.checkbox("Normalize S_p by u_rms^p", value=True)
+
+    st.sidebar.subheader("Error band / Theory")
+    error_display = st.sidebar.radio(
+        "Error display",
+        ["Shaded band", "Error bars", "Both", "None"],
+        index=0,
+        help="Choose how to display ±1σ uncertainty (applies to both S_p and ESS plots)"
+    )
+    show_std_band = error_display in ["Shaded band", "Both"]
+    show_error_bars = error_display in ["Error bars", "Both"]
+    show_sl_theory = st.sidebar.checkbox("Show She–Leveque anomalies", value=True)
+    show_exp_anom = st.sidebar.checkbox("Show experimental anomalies (B93)", value=True)
+
+    st.sidebar.subheader("Fit range for ESS exponents")
+    if r_s is not None and np.any(r_s > 0):
+        r_pos = r_s[r_s > 0]
+        r_min_default = float(np.percentile(r_pos, 10))
+        r_max_default = float(np.percentile(r_pos, 60))
+    else:
+        r_min_default, r_max_default = 1e-3, 1e-1
+
+    fit_rmin = st.sidebar.number_input("Fit r_min", value=r_min_default, min_value=0.0, format="%.6g")
+    fit_rmax = st.sidebar.number_input("Fit r_max", value=r_max_default, min_value=fit_rmin + 1e-12, format="%.6g")
+
     # Sidebar legends + axis labels (persistent)
     with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
         st.markdown("### Legend names")
@@ -779,62 +826,7 @@ def main():
                 })
                 _save_ui_metadata(data_dir)
                 st.toast("Reset + saved.", icon="♻️")
-
-    # Sidebar time window
-    st.sidebar.subheader("Time Window")
-    file_lengths = {k: len(v["files"]) for k, v in sim_groups.items()}
-    if not file_lengths:
-        st.error("No files found in any simulation group.")
-        return
-    min_len = min(file_lengths.values())
-    
-    # Show file counts per simulation (helpful for debugging)
-    if len(sim_groups) > 1:
-        with st.sidebar.expander("📊 File counts", expanded=False):
-            for sim_prefix in sorted(file_lengths.keys()):
-                count = file_lengths[sim_prefix]
-                st.text(f"{sim_prefix}: {count} files")
-    
-    start_idx = st.sidebar.slider("Start file index", 1, min_len, 1)
-    end_idx = st.sidebar.slider("End file index", start_idx, min_len, min_len)
-
-    # Sidebar data options
-    st.sidebar.subheader("Orders / Normalization")
-    sample_key = sorted(sim_groups.keys())[0]
-    sample_files = tuple(sim_groups[sample_key]["files"][start_idx-1:end_idx])
-    r_s, Sp_m_s, Sp_sd_s, urms_s, ps_list = _compute_time_avg_structure(sample_files, sim_groups[sample_key]["kind"])
-    if ps_list is None:
-        st.error("Could not read structure function data from the selected range.")
-        return
-
-    max_p = max(ps_list)
-    selected_ps = st.sidebar.multiselect(
-        "Orders p to plot (S_p and ESS)",
-        options=list(range(1, max_p + 1)),
-        default=list(range(1, min(7, max_p + 1)))
-    )
-    ref_p = st.sidebar.selectbox(
-        "ESS reference order (x-axis)",
-        options=ps_list,
-        index=ps_list.index(3) if 3 in ps_list else 0
-    )
-    normalize_by_urms = st.sidebar.checkbox("Normalize S_p by u_rms^p", value=True)
-
-    st.sidebar.subheader("Error band / Theory")
-    show_std_band = st.sidebar.checkbox("Show ±1σ band (S_p plot)", value=True)
-    show_sl_theory = st.sidebar.checkbox("Show She–Leveque anomalies", value=True)
-    show_exp_anom = st.sidebar.checkbox("Show experimental anomalies (B93)", value=True)
-
-    st.sidebar.subheader("Fit range for ESS exponents")
-    if r_s is not None and np.any(r_s > 0):
-        r_pos = r_s[r_s > 0]
-        r_min_default = float(np.percentile(r_pos, 10))
-        r_max_default = float(np.percentile(r_pos, 60))
-    else:
-        r_min_default, r_max_default = 1e-3, 1e-1
-
-    fit_rmin = st.sidebar.number_input("Fit r_min", value=r_min_default, min_value=0.0, format="%.6g")
-    fit_rmax = st.sidebar.number_input("Fit r_max", value=r_max_default, min_value=fit_rmin + 1e-12, format="%.6g")
+                st.rerun()
 
     # Full style sidebar
     plot_style_sidebar(data_dir, sim_groups)
@@ -866,8 +858,11 @@ def main():
                 continue
 
             legend_base = st.session_state.structure_legend_names.get(sim_prefix, _default_labelify(sim_prefix))
-            color_base, lw_base, dash_base, marker_base, msize_base, override_on = _resolve_line_style(
-                sim_prefix, idx, colors, ps
+            color_base, lw_base, dash_base, marker_base, msize_base, override_on = resolve_line_style(
+                sim_prefix, idx, colors, ps,
+                style_key="per_sim_style_structure",
+                include_marker=True,
+                default_marker="circle"
             )
             plotted_any = True
 
@@ -881,17 +876,35 @@ def main():
                     y = y / (urms ** p)
                     ystd = ystd / (urms ** p)
 
-                # Per-order color unless override is enabled
-                per_order_color = colors[(idx + j) % len(colors)]
-                line_color = color_base if override_on else per_order_color
+                # Use same color for all orders of the same simulation (like ESS plot)
+                line_color = color_base
+                
+                # Determine mode and marker based on override
+                if override_on and marker_base and msize_base > 0:
+                    mode = "lines+markers"
+                    marker_dict = dict(symbol=marker_base, size=msize_base)
+                else:
+                    mode = "lines"
+                    marker_dict = None
 
-                fig_sp.add_trace(go.Scatter(
+                trace_kwargs = dict(
                     x=r, y=y,
-                    mode="lines",
+                    mode=mode,
                     name=f"{legend_base}  (p={p})",
                     line=dict(color=line_color, width=lw_base, dash=dash_base),
                     hovertemplate="r=%{x:.3g}<br>S_p=%{y:.3g}<extra></extra>"
-                ))
+                )
+                if marker_dict:
+                    trace_kwargs["marker"] = marker_dict
+                if show_error_bars and ystd is not None:
+                    trace_kwargs["error_y"] = dict(
+                        type="data",
+                        array=ystd,
+                        visible=True,
+                        thickness=1,
+                        color=line_color
+                    )
+                fig_sp.add_trace(go.Scatter(**trace_kwargs))
 
                 if show_std_band and ystd is not None:
                     rgb = _color_to_rgb_tuple(line_color)
@@ -909,15 +922,18 @@ def main():
         if not plotted_any:
             st.info("No valid structure function data in selected range.")
         else:
-            fig_sp.update_layout(
+            layout_kwargs = dict(
                 xaxis_title=st.session_state.axis_labels_structure.get("x_r", "Separation distance $r$"),
                 yaxis_title=st.session_state.axis_labels_structure.get("y_sp", "Structure functions $S_p(r)$"),
                 xaxis_type="log",
                 yaxis_type="log",
                 legend_title="Simulation / Order",
-                height=620,
+                height=500,  # Default, will be overridden if custom size is enabled
                 margin=dict(l=50, r=20, t=30, b=50),
             )
+            layout_kwargs = apply_axis_limits(layout_kwargs, ps)
+            layout_kwargs = apply_figure_size(layout_kwargs, ps)
+            fig_sp.update_layout(**layout_kwargs)
             fig_sp = apply_plot_style(fig_sp, ps)
             st.plotly_chart(fig_sp, use_container_width=True)
             capture_button(fig_sp, title="Structure Functions S_p(r)", source_page="Structure Functions")
@@ -948,7 +964,12 @@ def main():
                 continue
 
             legend_base = st.session_state.structure_legend_names.get(sim_prefix, _default_labelify(sim_prefix))
-            color, lw, dash, marker, msize, override_on = _resolve_line_style(sim_prefix, idx, colors, ps)
+            color, lw, dash, marker, msize, override_on = resolve_line_style(
+                sim_prefix, idx, colors, ps,
+                style_key="per_sim_style_structure",
+                include_marker=True,
+                default_marker="circle"
+            )
             plotted_any = True
 
             xi_all[sim_prefix] = {}
@@ -967,6 +988,8 @@ def main():
                     continue
 
                 y = _norm(p, Sp_mean[p])
+                y_std = _norm(p, Sp_std[p]) if p in Sp_std else None
+                x_std = _norm(ref_p, Sp_std[ref_p]) if ref_p in Sp_std else None
 
                 # robust fit mask: r-range + positive finite x,y
                 rmask = (
@@ -975,14 +998,52 @@ def main():
                     np.isfinite(y) & (y > 0)
                 )
 
-                fig_ess.add_trace(go.Scatter(
+                trace_kwargs = dict(
                     x=x, y=y,
                     mode="lines+markers",
                     name=f"{legend_base} (p={p})",
                     line=dict(color=color, width=lw, dash=dash),
                     marker=dict(symbol=marker, size=msize),
                     hovertemplate=f"S_{ref_p}=%{{x:.3g}}<br>S_{p}=%{{y:.3g}}<extra></extra>"
-                ))
+                )
+                
+                # Add error bars if requested
+                if show_error_bars:
+                    error_dict = {}
+                    if x_std is not None:
+                        error_dict["error_x"] = dict(
+                            type="data",
+                            array=x_std,
+                            visible=True,
+                            thickness=1,
+                            color=color
+                        )
+                    if y_std is not None:
+                        error_dict["error_y"] = dict(
+                            type="data",
+                            array=y_std,
+                            visible=True,
+                            thickness=1,
+                            color=color
+                        )
+                    if error_dict:
+                        trace_kwargs.update(error_dict)
+                
+                fig_ess.add_trace(go.Scatter(**trace_kwargs))
+                
+                # Add shaded band if requested (for y-direction uncertainty)
+                if show_std_band and y_std is not None:
+                    rgb = _color_to_rgb_tuple(color)
+                    fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps['std_alpha']})"
+                    fig_ess.add_trace(go.Scatter(
+                        x=np.concatenate([x, x[::-1]]),
+                        y=np.concatenate([y - y_std, (y + y_std)[::-1]]),
+                        fill="toself",
+                        fillcolor=fill_rgba,
+                        line=dict(width=0),
+                        showlegend=False,
+                        hoverinfo="skip"
+                    ))
 
                 if np.count_nonzero(rmask) >= 3:
                     logx = np.log(x[rmask])
@@ -1003,15 +1064,18 @@ def main():
         if not plotted_any:
             st.info("No valid ESS data to plot.")
         else:
-            fig_ess.update_layout(
+            layout_kwargs = dict(
                 xaxis_title=st.session_state.axis_labels_structure.get("x_ess", r"$S_3(r)$"),
                 yaxis_title=st.session_state.axis_labels_structure.get("y_ess", r"$S_p(r)$"),
                 xaxis_type="log",
                 yaxis_type="log",
                 legend_title="Simulation / Order",
-                height=620,
+                height=500,  # Default, will be overridden if custom size is enabled
                 margin=dict(l=50, r=20, t=30, b=50),
             )
+            layout_kwargs = apply_axis_limits(layout_kwargs, ps)
+            layout_kwargs = apply_figure_size(layout_kwargs, ps)
+            fig_ess.update_layout(**layout_kwargs)
             fig_ess = apply_plot_style(fig_ess, ps)
             st.plotly_chart(fig_ess, use_container_width=True)
             capture_button(fig_ess, title="Structure Functions ESS", source_page="Structure Functions")

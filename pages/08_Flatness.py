@@ -42,6 +42,7 @@ from data_readers.text_reader import read_flatness_file
 from utils.file_detector import detect_simulation_files, group_files_by_simulation, natural_sort_key
 from utils.theme_config import inject_theme_css, template_selector
 from utils.report_builder import capture_button
+from utils.plot_style import resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
 
 
 # ==========================================================
@@ -273,6 +274,19 @@ def _default_plot_style():
         # Per-simulation overrides
         "enable_per_sim_style": False,
         "per_sim_style_flatness": {},  # {sim_prefix: {enabled,color,width,dash,marker,msize}}
+        
+        # Axis limits
+        "enable_x_limits": False,
+        "x_min": None,
+        "x_max": None,
+        "enable_y_limits": False,
+        "y_min": None,
+        "y_max": None,
+        
+        # Figure size
+        "enable_custom_size": False,
+        "figure_width": 800,
+        "figure_height": 500,
     }
 
 def _get_palette(ps):
@@ -305,7 +319,6 @@ def apply_plot_style(fig, ps):
         template=ps["template"],
         font=dict(family=ps["font_family"], size=ps["font_size"]),
         legend=dict(font=dict(size=ps["legend_size"])),
-        title=dict(font=dict(size=ps["title_size"])),
         hovermode="x unified",
         plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
         paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
@@ -458,50 +471,16 @@ def plot_style_sidebar(data_dir: Path, sim_groups):
         template_selector(ps)
 
         st.markdown("---")
-        st.markdown("**Per-simulation line styles (optional)**")
-        ps["enable_per_sim_style"] = st.checkbox("Enable per-simulation overrides",
-                                                 bool(ps.get("enable_per_sim_style", False)))
-
-        if ps["enable_per_sim_style"]:
-            dash_opts = ["solid", "dot", "dash", "dashdot", "longdash", "longdashdot"]
-            marker_opts = ["circle", "square", "diamond", "cross", "x", "triangle-up",
-                           "triangle-down", "star", "hexagon"]
-
-            with st.container(border=True):
-                for sim_prefix in sorted(sim_groups.keys()):
-                    s = ps["per_sim_style_flatness"][sim_prefix]
-                    st.markdown(f"`{sim_prefix}`")
-                    c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
-                    with c1:
-                        s["enabled"] = st.checkbox("Override", value=s.get("enabled", False),
-                                                  key=f"flat_over_on_{sim_prefix}")
-                    with c2:
-                        s["color"] = st.color_picker("Color",
-                                                     value=s.get("color") or "#000000",
-                                                     key=f"flat_over_color_{sim_prefix}",
-                                                     disabled=not s["enabled"])
-                    with c3:
-                        s["width"] = st.slider("Width", 0.5, 8.0,
-                                               float(s.get("width") or ps["line_width"]),
-                                               key=f"flat_over_width_{sim_prefix}",
-                                               disabled=not s["enabled"])
-                    with c4:
-                        s["dash"] = st.selectbox("Dash", dash_opts,
-                                                 index=dash_opts.index(s.get("dash") or "solid"),
-                                                 key=f"flat_over_dash_{sim_prefix}",
-                                                 disabled=not s["enabled"])
-                    with c5:
-                        s["marker"] = st.selectbox("Marker", marker_opts,
-                                                   index=marker_opts.index(s.get("marker") or "square"),
-                                                   key=f"flat_over_marker_{sim_prefix}",
-                                                   disabled=not s["enabled"])
-                    s["msize"] = st.slider("Marker size", 0, 18,
-                                           int(s.get("msize") or ps["marker_size"]),
-                                           key=f"flat_over_msize_{sim_prefix}",
-                                           disabled=not s["enabled"])
+        render_axis_limits_ui(ps, key_prefix="flat")
+        st.markdown("---")
+        render_figure_size_ui(ps, key_prefix="flat")
+        st.markdown("---")
+        render_per_sim_style_ui(ps, sim_groups, style_key="per_sim_style_flatness", 
+                                key_prefix="flat", include_marker=True)
 
         st.markdown("---")
         b1, b2 = st.columns(2)
+        reset_pressed = False
         with b1:
             if st.button("💾 Save Plot Style"):
                 st.session_state.plot_style = ps
@@ -512,8 +491,12 @@ def plot_style_sidebar(data_dir: Path, sim_groups):
                 st.session_state.plot_style = _default_plot_style()
                 _save_ui_metadata(data_dir)
                 st.toast("Reset + saved.", icon="♻️")
+                reset_pressed = True
+                st.rerun()  # Rerun to update sidebar with default values
 
-    st.session_state.plot_style = ps
+    # Auto-save plot style changes (applies immediately) - but not if reset was pressed
+    if not reset_pressed:
+        st.session_state.plot_style = ps
 
 
 def _color_to_rgb_tuple(color):
@@ -681,6 +664,26 @@ def main():
         st.warning("Could not group flatness files by simulation type.")
         return
 
+    # Sidebar: time window + physics options
+    st.sidebar.subheader("Time Window")
+    max_files = min(len(v) for v in sim_groups.values())
+    start_idx = st.sidebar.slider("Start file index", 1, max_files, 1)
+    end_idx = st.sidebar.slider("End file index", start_idx, max_files, max_files)
+
+    st.sidebar.subheader("Averaging / Error bars")
+    num_errorbars = st.sidebar.slider("Number of error bar points", 10, 80, 20)
+    error_display = st.sidebar.radio(
+        "Error display",
+        ["Shaded band", "Error bars", "Both", "None"],
+        index=0,
+        help="Choose how to display ±1σ uncertainty"
+    )
+    show_std = error_display in ["Shaded band", "Both"]
+    show_error_bars = error_display in ["Error bars", "Both"]
+
+    st.sidebar.subheader("Plot Options")
+    show_reference = st.sidebar.checkbox("Show Gaussian reference (F=3)", value=True)
+
     # Sidebar: legends + axis labels (persistent)
     with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
         st.markdown("### Legend names")
@@ -723,19 +726,7 @@ def main():
                 }
                 _save_ui_metadata(data_dir)
                 st.toast("Reset + saved.", icon="♻️")
-
-    # Sidebar: time window + physics options
-    st.sidebar.subheader("Time Window")
-    max_files = min(len(v) for v in sim_groups.values())
-    start_idx = st.sidebar.slider("Start file index", 1, max_files, 1)
-    end_idx = st.sidebar.slider("End file index", start_idx, max_files, max_files)
-
-    st.sidebar.subheader("Averaging / Error bars")
-    num_errorbars = st.sidebar.slider("Number of error bar points", 10, 80, 20)
-    show_std = st.sidebar.checkbox("Show ±1σ band", value=True)
-
-    st.sidebar.subheader("Plot Options")
-    show_reference = st.sidebar.checkbox("Show Gaussian reference (F=3)", value=True)
+                st.rerun()
 
     # Sidebar: full plot style (persistent)
     plot_style_sidebar(data_dir, sim_groups)
@@ -759,22 +750,38 @@ def main():
         if r_plot is None:
             continue
 
-        color, lw, dash, marker, msize = _resolve_line_style(sim_prefix, idx, colors, ps)
+        color, lw, dash, marker, msize, override_on = resolve_line_style(
+            sim_prefix, idx, colors, ps,
+            style_key="per_sim_style_flatness",
+            include_marker=True,
+            default_marker="square"
+        )
 
         legend_name = st.session_state.flatness_legend_names.get(
             sim_prefix, _format_legend_name(sim_prefix)
         )
         plotted_any = True
 
-        fig.add_trace(go.Scatter(
+        mode = "lines+markers" if (override_on and marker and msize > 0) else "lines"
+        trace_kwargs = dict(
             x=r_plot,
             y=F_mean,
-            mode="lines+markers",
+            mode=mode,
             name=legend_name,
             line=dict(color=color, width=lw, dash=dash),
-            marker=dict(size=msize, symbol=marker, line=dict(width=1, color=color)),
             hovertemplate="r=%{x:.3g}<br>F(r)=%{y:.3g}<extra></extra>"
-        ))
+        )
+        if override_on and marker and msize > 0:
+            trace_kwargs["marker"] = dict(size=msize, symbol=marker, line=dict(width=1, color=color))
+        if show_error_bars and F_std is not None:
+            trace_kwargs["error_y"] = dict(
+                type="data",
+                array=F_std,
+                visible=True,
+                thickness=1,
+                color=color
+            )
+        fig.add_trace(go.Scatter(**trace_kwargs))
 
         if show_std and F_std is not None:
             rgb = _color_to_rgb_tuple(color)
@@ -801,14 +808,17 @@ def main():
         )
 
     if plotted_any:
-        fig.update_layout(
+        layout_kwargs = dict(
             xaxis_title=st.session_state.axis_labels_flatness["x"],
             yaxis_title=st.session_state.axis_labels_flatness["y"],
             xaxis_type="log",
             legend_title="Simulation",
-            height=600,
+            height=500,  # Default, will be overridden if custom size is enabled
             margin=dict(l=50, r=30, t=30, b=50),
         )
+        layout_kwargs = apply_axis_limits(layout_kwargs, ps)
+        layout_kwargs = apply_figure_size(layout_kwargs, ps)
+        fig.update_layout(**layout_kwargs)
         fig = apply_plot_style(fig, ps)
 
         st.plotly_chart(fig, use_container_width=True)

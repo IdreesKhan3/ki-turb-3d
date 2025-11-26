@@ -36,8 +36,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from utils.file_detector import detect_simulation_files
-from utils.theme_config import inject_theme_css, template_selector
+from utils.theme_config import inject_theme_css
 from utils.report_builder import capture_button
+from utils.plot_style import render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
 
 
 # ==========================================================
@@ -86,7 +87,11 @@ def _load_ui_metadata(data_dir: Path):
         loaded_axis_labels.update(meta.get("axis_labels_real_iso", {}))
         st.session_state.axis_labels_real_iso = loaded_axis_labels
         
-        st.session_state.plot_style = meta.get("plot_style", st.session_state.get("plot_style", {}))
+        # Load plot-specific styles
+        st.session_state.plot_styles = meta.get("plot_styles", {})
+        # Backward compatibility: if plot_styles doesn't exist, use old plot_style
+        if not st.session_state.plot_styles and "plot_style" in meta:
+            st.session_state.plot_styles = {}
     except Exception:
         st.toast("legend_names.json exists but could not be read. Using defaults.", icon="⚠️")
 
@@ -102,7 +107,7 @@ def _save_ui_metadata(data_dir: Path):
     old.update({
         "real_iso_legends": st.session_state.get("real_iso_legends", {}),
         "axis_labels_real_iso": st.session_state.get("axis_labels_real_iso", {}),
-        "plot_style": st.session_state.get("plot_style", {}),
+        "plot_styles": st.session_state.get("plot_styles", {}),
     })
 
     try:
@@ -153,7 +158,25 @@ def _default_plot_style():
         "template": "plotly_white",
 
         "enable_per_curve_style": False,
-        "per_curve_style_real_iso": {}  # {curve: {enabled,color,width,dash,marker,msize}}
+        
+        # Axis limits
+        "enable_x_limits": False,
+        "x_min": None,
+        "x_max": None,
+        "enable_y_limits": False,
+        "y_min": None,
+        "y_max": None,
+        
+        # Figure size
+        "enable_custom_size": False,
+        "figure_width": 800,
+        "figure_height": 500,
+        
+        # Frame/Margin size
+        "margin_left": 60,
+        "margin_right": 20,
+        "margin_top": 40,
+        "margin_bottom": 50,
     }
 
 def _get_palette(ps):
@@ -186,11 +209,15 @@ def apply_plot_style(fig, ps):
         template=ps["template"],
         font=dict(family=ps["font_family"], size=ps["font_size"]),
         legend=dict(font=dict(size=ps["legend_size"])),
-        title=dict(font=dict(size=ps["title_size"])),
         hovermode="x unified",
         plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
         paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
-        margin=dict(l=60, r=20, t=40, b=50),
+        margin=dict(
+            l=ps.get("margin_left", 60),
+            r=ps.get("margin_right", 20),
+            t=ps.get("margin_top", 40),
+            b=ps.get("margin_bottom", 50)
+        ),
     )
 
     tick_dir = "outside" if ps["ticks_outside"] else "inside"
@@ -220,10 +247,17 @@ def apply_plot_style(fig, ps):
     )
     return fig
 
-def _ensure_curve_defaults(ps, curves):
-    ps.setdefault("per_curve_style_real_iso", {})
+def _normalize_plot_name(plot_name: str) -> str:
+    """Normalize plot name to a valid key format."""
+    return plot_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_").replace("/", "_")
+
+def _ensure_curve_defaults(ps, curves, plot_name: str):
+    # Use plot-specific key for per-curve styles
+    plot_key = _normalize_plot_name(plot_name)
+    style_key = f"per_curve_style_{plot_key}"
+    ps.setdefault(style_key, {})
     for c in curves:
-        ps["per_curve_style_real_iso"].setdefault(c, {
+        ps[style_key].setdefault(c, {
             "enabled": False,
             "color": None,
             "width": None,
@@ -231,68 +265,128 @@ def _ensure_curve_defaults(ps, curves):
             "marker": "circle",
             "msize": None
         })
+    return style_key
 
-def plot_style_sidebar(data_dir: Path, curves):
-    ps = dict(st.session_state.plot_style)
-    _ensure_curve_defaults(ps, curves)
+def get_plot_style(plot_name: str):
+    """Get plot-specific style, merging defaults with plot-specific overrides."""
+    default = _default_plot_style()
+    plot_styles = st.session_state.get("plot_styles", {})
+    plot_style = plot_styles.get(plot_name, {})
+    # Deep merge: start with defaults, then update with plot-specific overrides
+    merged = default.copy()
+    for key, value in plot_style.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merged[key].copy()
+            merged[key].update(value)
+        else:
+            merged[key] = value
+    return merged
+
+def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
+    # Plot selector
+    selected_plot = st.sidebar.selectbox(
+        "Select plot to configure",
+        plot_names,
+        key="realiso_plot_selector"
+    )
+    
+    # Get or create plot-specific style
+    if "plot_styles" not in st.session_state:
+        st.session_state.plot_styles = {}
+    if selected_plot not in st.session_state.plot_styles:
+        st.session_state.plot_styles[selected_plot] = {}
+    
+    # Start with defaults, merge with plot-specific overrides
+    ps = get_plot_style(selected_plot)
+    plot_key = _normalize_plot_name(selected_plot)
+    style_key = _ensure_curve_defaults(ps, curves, selected_plot)
+    
+    # Create unique key prefix for all widgets
+    key_prefix = f"realiso_{plot_key}"
 
     with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
+        st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
-        ps["font_family"] = st.selectbox("Font family", fonts, index=fonts.index(ps.get("font_family", "Arial")))
-        ps["font_size"] = st.slider("Base font size", 8, 26, int(ps.get("font_size", 14)))
-        ps["title_size"] = st.slider("Title size", 10, 32, int(ps.get("title_size", 16)))
-        ps["legend_size"] = st.slider("Legend size", 8, 24, int(ps.get("legend_size", 12)))
-        ps["tick_font_size"] = st.slider("Tick label size", 6, 24, int(ps.get("tick_font_size", 12)))
-        ps["axis_title_size"] = st.slider("Axis title size", 8, 28, int(ps.get("axis_title_size", 14)))
+        ps["font_family"] = st.selectbox("Font family", fonts, index=fonts.index(ps.get("font_family", "Arial")),
+                                         key=f"{key_prefix}_font_family")
+        ps["font_size"] = st.slider("Base font size", 8, 26, int(ps.get("font_size", 14)),
+                                     key=f"{key_prefix}_font_size")
+        ps["title_size"] = st.slider("Title size", 10, 32, int(ps.get("title_size", 16)),
+                                      key=f"{key_prefix}_title_size")
+        ps["legend_size"] = st.slider("Legend size", 8, 24, int(ps.get("legend_size", 12)),
+                                       key=f"{key_prefix}_legend_size")
+        ps["tick_font_size"] = st.slider("Tick label size", 6, 24, int(ps.get("tick_font_size", 12)),
+                                          key=f"{key_prefix}_tick_font_size")
+        ps["axis_title_size"] = st.slider("Axis title size", 8, 28, int(ps.get("axis_title_size", 14)),
+                                           key=f"{key_prefix}_axis_title_size")
 
         st.markdown("---")
         st.markdown("**Backgrounds**")
-        ps["plot_bgcolor"] = st.color_picker("Plot background", ps.get("plot_bgcolor", "#FFFFFF"))
-        ps["paper_bgcolor"] = st.color_picker("Paper background", ps.get("paper_bgcolor", "#FFFFFF"))
+        ps["plot_bgcolor"] = st.color_picker("Plot background", ps.get("plot_bgcolor", "#FFFFFF"),
+                                             key=f"{key_prefix}_plot_bgcolor")
+        ps["paper_bgcolor"] = st.color_picker("Paper background", ps.get("paper_bgcolor", "#FFFFFF"),
+                                               key=f"{key_prefix}_paper_bgcolor")
 
         st.markdown("---")
         st.markdown("**Ticks**")
-        ps["tick_len"] = st.slider("Tick length", 2, 14, int(ps.get("tick_len", 6)))
-        ps["tick_w"] = st.slider("Tick width", 0.5, 3.5, float(ps.get("tick_w", 1.2)))
-        ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)))
+        ps["tick_len"] = st.slider("Tick length", 2, 14, int(ps.get("tick_len", 6)),
+                                    key=f"{key_prefix}_tick_len")
+        ps["tick_w"] = st.slider("Tick width", 0.5, 3.5, float(ps.get("tick_w", 1.2)),
+                                  key=f"{key_prefix}_tick_w")
+        ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)),
+                                           key=f"{key_prefix}_ticks_outside")
 
         st.markdown("---")
         st.markdown("**Grid (Major)**")
-        ps["show_grid"] = st.checkbox("Show major grid", bool(ps.get("show_grid", True)))
+        ps["show_grid"] = st.checkbox("Show major grid", bool(ps.get("show_grid", True)),
+                                       key=f"{key_prefix}_show_grid")
         c1, c2 = st.columns(2)
         with c1:
-            ps["grid_on_x"] = st.checkbox("Grid on X", bool(ps.get("grid_on_x", True)))
+            ps["grid_on_x"] = st.checkbox("Grid on X", bool(ps.get("grid_on_x", True)),
+                                           key=f"{key_prefix}_grid_on_x")
         with c2:
-            ps["grid_on_y"] = st.checkbox("Grid on Y", bool(ps.get("grid_on_y", True)))
-        ps["grid_w"] = st.slider("Grid width", 0.2, 2.5, float(ps.get("grid_w", 0.6)))
+            ps["grid_on_y"] = st.checkbox("Grid on Y", bool(ps.get("grid_on_y", True)),
+                                           key=f"{key_prefix}_grid_on_y")
+        ps["grid_w"] = st.slider("Grid width", 0.2, 2.5, float(ps.get("grid_w", 0.6)),
+                                  key=f"{key_prefix}_grid_w")
         grid_styles = ["solid", "dot", "dash", "dashdot"]
         ps["grid_dash"] = st.selectbox("Grid type", grid_styles,
-                                       index=grid_styles.index(ps.get("grid_dash", "dot")))
-        ps["grid_color"] = st.color_picker("Grid color", ps.get("grid_color", "#B0B0B0"))
-        ps["grid_opacity"] = st.slider("Grid opacity", 0.0, 1.0, float(ps.get("grid_opacity", 0.6)))
+                                       index=grid_styles.index(ps.get("grid_dash", "dot")),
+                                       key=f"{key_prefix}_grid_dash")
+        ps["grid_color"] = st.color_picker("Grid color", ps.get("grid_color", "#B0B0B0"),
+                                           key=f"{key_prefix}_grid_color")
+        ps["grid_opacity"] = st.slider("Grid opacity", 0.0, 1.0, float(ps.get("grid_opacity", 0.6)),
+                                        key=f"{key_prefix}_grid_opacity")
 
         st.markdown("---")
         st.markdown("**Grid (Minor)**")
-        ps["show_minor_grid"] = st.checkbox("Show minor grid", bool(ps.get("show_minor_grid", False)))
-        ps["minor_grid_w"] = st.slider("Minor width", 0.1, 2.0, float(ps.get("minor_grid_w", 0.4)))
+        ps["show_minor_grid"] = st.checkbox("Show minor grid", bool(ps.get("show_minor_grid", False)),
+                                             key=f"{key_prefix}_show_minor_grid")
+        ps["minor_grid_w"] = st.slider("Minor width", 0.1, 2.0, float(ps.get("minor_grid_w", 0.4)),
+                                        key=f"{key_prefix}_minor_grid_w")
         ps["minor_grid_dash"] = st.selectbox("Minor type", grid_styles,
                                              index=grid_styles.index(ps.get("minor_grid_dash", "dot")),
-                                             key="minor_grid_dash_realiso")
-        ps["minor_grid_color"] = st.color_picker("Minor color", ps.get("minor_grid_color", "#D0D0D0"))
-        ps["minor_grid_opacity"] = st.slider("Minor opacity", 0.0, 1.0, float(ps.get("minor_grid_opacity", 0.4)))
+                                             key=f"{key_prefix}_minor_grid_dash")
+        ps["minor_grid_color"] = st.color_picker("Minor color", ps.get("minor_grid_color", "#D0D0D0"),
+                                                  key=f"{key_prefix}_minor_grid_color")
+        ps["minor_grid_opacity"] = st.slider("Minor opacity", 0.0, 1.0, float(ps.get("minor_grid_opacity", 0.4)),
+                                              key=f"{key_prefix}_minor_grid_opacity")
 
         st.markdown("---")
         st.markdown("**Curves**")
-        ps["line_width"] = st.slider("Global line width", 0.5, 7.0, float(ps.get("line_width", 2.2)))
-        ps["marker_size"] = st.slider("Global marker size", 0, 14, int(ps.get("marker_size", 6)))
+        ps["line_width"] = st.slider("Global line width", 0.5, 7.0, float(ps.get("line_width", 2.2)),
+                                      key=f"{key_prefix}_line_width")
+        ps["marker_size"] = st.slider("Global marker size", 0, 14, int(ps.get("marker_size", 6)),
+                                       key=f"{key_prefix}_marker_size")
 
         st.markdown("---")
         st.markdown("**Colors**")
         palettes = ["Plotly", "D3", "G10", "T10", "Dark2", "Set1", "Set2",
                     "Pastel1", "Bold", "Prism", "Custom"]
         ps["palette"] = st.selectbox("Palette", palettes,
-                                     index=palettes.index(ps.get("palette", "Plotly")))
+                                     index=palettes.index(ps.get("palette", "Plotly")),
+                                     key=f"{key_prefix}_palette")
         if ps["palette"] == "Custom":
             st.caption("Custom hex colors:")
             current = ps.get("custom_colors", []) or ["#1f77b4", "#ff7f0e", "#2ca02c"]
@@ -300,69 +394,109 @@ def plot_style_sidebar(data_dir: Path, curves):
             cols_ui = st.columns(3)
             for i, c in enumerate(current):
                 new_cols.append(cols_ui[i % 3].text_input(f"Color {i+1}", c,
-                                                          key=f"cust_color_realiso_{i}"))
+                                                          key=f"{key_prefix}_cust_color_{i}"))
             ps["custom_colors"] = new_cols
 
         st.markdown("---")
         st.markdown("**Theme**")
-        template_selector(ps)
+        # Store template in plot-specific style
+        old_template = ps.get("template", "plotly_white")
+        templates = ["plotly_white", "simple_white", "plotly_dark"]
+        ps["template"] = st.selectbox("Template", templates,
+                                      index=templates.index(old_template),
+                                      key=f"{key_prefix}_template")
+        # Auto-update backgrounds when template changes
+        if ps["template"] != old_template:
+            if ps["template"] == "plotly_dark":
+                ps["plot_bgcolor"] = "#1e1e1e"
+                ps["paper_bgcolor"] = "#1e1e1e"
+            else:
+                ps["plot_bgcolor"] = "#FFFFFF"
+                ps["paper_bgcolor"] = "#FFFFFF"
 
+        st.markdown("---")
+        render_axis_limits_ui(ps, key_prefix=key_prefix)
+        st.markdown("---")
+        render_figure_size_ui(ps, key_prefix=key_prefix)
+        st.markdown("---")
+        st.markdown("**Frame/Margin Size**")
+        col1, col2 = st.columns(2)
+        with col1:
+            ps["margin_left"] = st.number_input("Left margin (px)", min_value=0, max_value=200, 
+                                                value=int(ps.get("margin_left", 60)), 
+                                                step=5, key=f"{key_prefix}_margin_left")
+            ps["margin_top"] = st.number_input("Top margin (px)", min_value=0, max_value=200, 
+                                                value=int(ps.get("margin_top", 40)), 
+                                                step=5, key=f"{key_prefix}_margin_top")
+        with col2:
+            ps["margin_right"] = st.number_input("Right margin (px)", min_value=0, max_value=200, 
+                                                  value=int(ps.get("margin_right", 20)), 
+                                                  step=5, key=f"{key_prefix}_margin_right")
+            ps["margin_bottom"] = st.number_input("Bottom margin (px)", min_value=0, max_value=200, 
+                                                   value=int(ps.get("margin_bottom", 50)), 
+                                                   step=5, key=f"{key_prefix}_margin_bottom")
         st.markdown("---")
         st.markdown("**Per-curve overrides (optional)**")
         ps["enable_per_curve_style"] = st.checkbox("Enable per-curve overrides",
-                                                   bool(ps.get("enable_per_curve_style", False)))
+                                                   bool(ps.get("enable_per_curve_style", False)),
+                                                   key=f"{key_prefix}_enable_per_curve")
         if ps["enable_per_curve_style"]:
             dash_opts = ["solid", "dot", "dash", "dashdot", "longdash"]
             marker_opts = ["circle", "square", "diamond", "cross", "x",
                            "triangle-up", "triangle-down", "star"]
             with st.container(border=True):
                 for c in curves:
-                    s = ps["per_curve_style_real_iso"][c]
+                    s = ps[style_key][c]
                     st.markdown(f"`{c}`")
                     o1, o2, o3, o4, o5 = st.columns([1,1,1,1,1])
                     with o1:
                         s["enabled"] = st.checkbox("Override", value=s["enabled"],
-                                                   key=f"realiso_over_on_{c}")
+                                                   key=f"{key_prefix}_over_on_{c}")
                     with o2:
                         s["color"] = st.color_picker("Color", value=s["color"] or "#000000",
-                                                     key=f"realiso_over_color_{c}",
+                                                     key=f"{key_prefix}_over_color_{c}",
                                                      disabled=not s["enabled"])
                     with o3:
                         s["width"] = st.slider("Width", 0.5, 8.0,
                                                float(s["width"] or ps["line_width"]),
-                                               key=f"realiso_over_width_{c}",
+                                               key=f"{key_prefix}_over_width_{c}",
                                                disabled=not s["enabled"])
                     with o4:
                         s["dash"] = st.selectbox("Dash", dash_opts,
                                                  index=dash_opts.index(s["dash"] or "solid"),
-                                                 key=f"realiso_over_dash_{c}",
+                                                 key=f"{key_prefix}_over_dash_{c}",
                                                  disabled=not s["enabled"])
                     with o5:
                         s["marker"] = st.selectbox("Marker", marker_opts,
                                                    index=marker_opts.index(s["marker"] or "circle"),
-                                                   key=f"realiso_over_marker_{c}",
+                                                   key=f"{key_prefix}_over_marker_{c}",
                                                    disabled=not s["enabled"])
                     s["msize"] = st.slider("Marker size", 0, 18,
                                            int(s["msize"] or ps["marker_size"]),
-                                           key=f"realiso_over_msize_{c}",
+                                           key=f"{key_prefix}_over_msize_{c}",
                                            disabled=not s["enabled"])
 
         st.markdown("---")
         b1, b2 = st.columns(2)
+        reset_pressed = False
         with b1:
-            if st.button("💾 Save Plot Style"):
-                st.session_state.plot_style = ps
+            if st.button("💾 Save Plot Style", key=f"{key_prefix}_save"):
+                st.session_state.plot_styles[selected_plot] = ps
                 _save_ui_metadata(data_dir)
-                st.success("Saved plot style.")
+                st.success(f"Saved style for '{selected_plot}'.")
         with b2:
-            if st.button("♻️ Reset Plot Style"):
-                st.session_state.plot_style = _default_plot_style()
+            if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+                st.session_state.plot_styles[selected_plot] = {}
                 _save_ui_metadata(data_dir)
-                st.toast("Reset + saved.", icon="♻️")
+                st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
+                reset_pressed = True
+                st.rerun()
 
-    st.session_state.plot_style = ps
+    # Auto-save plot style changes (applies immediately) - but not if reset was pressed
+    if not reset_pressed:
+        st.session_state.plot_styles[selected_plot] = ps
 
-def _resolve_curve_style(curve, idx, colors, ps):
+def _resolve_curve_style(curve, idx, colors, ps, plot_name: str):
     default_color = colors[idx % len(colors)]
     default_width = ps["line_width"]
     default_dash = "solid"
@@ -372,7 +506,10 @@ def _resolve_curve_style(curve, idx, colors, ps):
     if not ps.get("enable_per_curve_style", False):
         return default_color, default_width, default_dash, default_marker, default_msize
 
-    s = ps.get("per_curve_style_real_iso", {}).get(curve, {})
+    # Use plot-specific style key
+    plot_key = _normalize_plot_name(plot_name)
+    style_key = f"per_curve_style_{plot_key}"
+    s = ps.get(style_key, {}).get(curve, {})
     if not s.get("enabled", False):
         return default_color, default_width, default_dash, default_marker, default_msize
 
@@ -590,7 +727,9 @@ def main():
             if key not in st.session_state.axis_labels_real_iso:
                 st.session_state.axis_labels_real_iso[key] = value
     
-    st.session_state.setdefault("plot_style", _default_plot_style())
+    # Initialize plot_styles if not exists
+    if "plot_styles" not in st.session_state:
+        st.session_state.plot_styles = {}
 
     if st.session_state.get("_last_realiso_dir") != str(data_dir):
         _load_ui_metadata(data_dir)
@@ -601,9 +740,8 @@ def main():
         for key, value in default_axis_labels.items():
             if key not in st.session_state.axis_labels_real_iso:
                 st.session_state.axis_labels_real_iso[key] = value
-        merged = _default_plot_style()
-        merged.update(st.session_state.plot_style or {})
-        st.session_state.plot_style = merged
+        if "plot_styles" not in st.session_state:
+            st.session_state.plot_styles = {}
         st.session_state["_last_realiso_dir"] = str(data_dir)
 
     # locate required file
@@ -710,9 +848,9 @@ def main():
 
     # curve list for overrides
     curves = ["Ex","Ey","Ez","b11","b22","b33","b12","b13","b23","anis","devx","devy","devz","maxdev"]
-    plot_style_sidebar(data_dir, curves)
-    ps = st.session_state.plot_style
-    colors = _get_palette(ps)
+    plot_names = ["Energy Fractions (A)", "Lumley Triangle (B)", "Diagonal b_ii (C)", 
+                  "Cross-correlations (D)", "Deviations (E)", "Convergence (F)"]
+    plot_style_sidebar(data_dir, curves, plot_names)
 
     # Layout - 3 rows x 2 cols like your matplotlib GridSpec
     st.markdown("### Real-space isotropy diagnostics")
@@ -722,11 +860,16 @@ def main():
     # (a) Temporal energy fractions
     # ======================================================
     with colA:
+        # Get plot-specific style
+        plot_name_a = "Energy Fractions (A)"
+        ps_a = get_plot_style(plot_name_a)
+        colors_a = _get_palette(ps_a)
+        
         fig_a = go.Figure()
         E_x, E_y, E_z = turb["frac_x"], turb["frac_y"], turb["frac_z"]
 
         for i, (curve, arr) in enumerate([("Ex",E_x),("Ey",E_y),("Ez",E_z)]):
-            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors, ps)
+            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_a, ps_a, plot_name_a)
             fig_a.add_trace(go.Scatter(
                 x=time_norm, y=arr, mode="lines",
                 name=st.session_state.real_iso_legends[curve],
@@ -741,7 +884,7 @@ def main():
             t_ma = time_norm[ma_win//2: ma_win//2 + len(_ma(E_x))]
 
             for i, (curve, arr) in enumerate([("Ex",E_x),("Ey",E_y),("Ez",E_z)]):
-                c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors, ps)
+                c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_a, ps_a, plot_name_a)
                 fig_a.add_trace(go.Scatter(
                     x=t_ma, y=_ma(arr), mode="lines",
                     showlegend=False,
@@ -755,12 +898,15 @@ def main():
 
         fig_a.add_vline(x=stationary_t, line_dash="dash", line_color="purple", line_width=1.2)
 
-        fig_a.update_layout(
+        layout_kwargs_a = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["energy_frac"],
-            height=420
+            height=420,  # Default, will be overridden if custom size is enabled
         )
-        fig_a = apply_plot_style(fig_a, ps)
+        layout_kwargs_a = apply_axis_limits(layout_kwargs_a, ps_a)
+        layout_kwargs_a = apply_figure_size(layout_kwargs_a, ps_a)
+        fig_a.update_layout(**layout_kwargs_a)
+        fig_a = apply_plot_style(fig_a, ps_a)
         st.plotly_chart(fig_a, use_container_width=True)
         capture_button(fig_a, title="Real-Space Isotropy Analysis (Part A)", source_page="Real Isotropy")
         export_panel(fig_a, data_dir, "real_iso_energy_fractions")
@@ -769,6 +915,10 @@ def main():
     # (b) Lumley triangle
     # ======================================================
     with colB:
+        # Get plot-specific style
+        plot_name_b = "Lumley Triangle (B)"
+        ps_b = get_plot_style(plot_name_b)
+        
         fig_b = go.Figure()
         xi, eta = inv["xi"], inv["eta"]
 
@@ -795,13 +945,16 @@ def main():
                                    marker=dict(size=9, color="green", line=dict(width=1,color="black")),
                                    name="End"))
 
-        fig_b.update_layout(
+        layout_kwargs_b = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["lumley_x"],
             yaxis_title=st.session_state.axis_labels_real_iso["lumley_y"],
-            height=420,
+            height=420,  # Default, will be overridden if custom size is enabled
             showlegend=False,
         )
-        fig_b = apply_plot_style(fig_b, ps)
+        layout_kwargs_b = apply_axis_limits(layout_kwargs_b, ps_b)
+        layout_kwargs_b = apply_figure_size(layout_kwargs_b, ps_b)
+        fig_b.update_layout(**layout_kwargs_b)
+        fig_b = apply_plot_style(fig_b, ps_b)
         st.plotly_chart(fig_b, use_container_width=True)
         capture_button(fig_b, title="Real-Space Isotropy Analysis (Part B)", source_page="Real Isotropy")
         export_panel(fig_b, data_dir, "real_iso_lumley_triangle")
@@ -813,46 +966,62 @@ def main():
     colC, colD = st.columns(2)
 
     with colC:
+        # Get plot-specific style
+        plot_name_c = "Diagonal b_ii (C)"
+        ps_c = get_plot_style(plot_name_c)
+        colors_c = _get_palette(ps_c)
+        
         fig_c = go.Figure()
         for i, curve in enumerate(["b11","b22","b33"]):
-            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors, ps)
+            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_c, ps_c, plot_name_c)
             fig_c.add_trace(go.Scatter(
                 x=time_norm, y=b[curve], mode="lines",
                 name=st.session_state.real_iso_legends[curve],
                 line=dict(color=c, width=lw, dash=dash),
             ))
         fig_c.add_hline(y=0, line_dash="dash", line_color="black")
-        fig_c.update_layout(
+        layout_kwargs_c = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["bij"],
-            height=360
+            height=360,  # Default, will be overridden if custom size is enabled
         )
-        fig_c = apply_plot_style(fig_c, ps)
+        layout_kwargs_c = apply_axis_limits(layout_kwargs_c, ps_c)
+        layout_kwargs_c = apply_figure_size(layout_kwargs_c, ps_c)
+        fig_c.update_layout(**layout_kwargs_c)
+        fig_c = apply_plot_style(fig_c, ps_c)
         st.plotly_chart(fig_c, use_container_width=True)
         export_panel(fig_c, data_dir, "real_iso_bii_diag")
 
     with colD:
+        # Get plot-specific style
+        plot_name_d = "Cross-correlations (D)"
+        ps_d = get_plot_style(plot_name_d)
+        colors_d = _get_palette(ps_d)
+        
         fig_d = go.Figure()
         for i, curve in enumerate(["b12","b13","b23"]):
-            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors, ps)
+            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_d, ps_d, plot_name_d)
             fig_d.add_trace(go.Scatter(
                 x=time_norm, y=np.abs(b[curve]), mode="lines",
                 name=st.session_state.real_iso_legends[curve],
                 line=dict(color=c, width=lw, dash=dash),
             ))
-        c, lw, dash, mk, ms = _resolve_curve_style("anis", 3, colors, ps)
+        c, lw, dash, mk, ms = _resolve_curve_style("anis", 3, colors_d, ps_d, plot_name_d)
         fig_d.add_trace(go.Scatter(
             x=time_norm, y=inv["anis_index"], mode="lines",
             name=st.session_state.real_iso_legends["anis"],
             line=dict(color=c, width=max(2,lw*1.2)),
         ))
-        fig_d.update_layout(
+        layout_kwargs_d = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["cross"],
             yaxis_type="log",
-            height=360
+            height=360,  # Default, will be overridden if custom size is enabled
         )
-        fig_d = apply_plot_style(fig_d, ps)
+        layout_kwargs_d = apply_axis_limits(layout_kwargs_d, ps_d)
+        layout_kwargs_d = apply_figure_size(layout_kwargs_d, ps_d)
+        fig_d.update_layout(**layout_kwargs_d)
+        fig_d = apply_plot_style(fig_d, ps_d)
         st.plotly_chart(fig_d, use_container_width=True)
         export_panel(fig_d, data_dir, "real_iso_cross_corr")
 
@@ -863,6 +1032,11 @@ def main():
     colE, colF = st.columns(2)
 
     with colE:
+        # Get plot-specific style
+        plot_name_e = "Deviations (E)"
+        ps_e = get_plot_style(plot_name_e)
+        colors_e = _get_palette(ps_e)
+        
         fig_e = go.Figure()
         devx = np.abs(E_x - 1/3)
         devy = np.abs(E_y - 1/3)
@@ -870,14 +1044,14 @@ def main():
         maxdev = np.maximum(np.maximum(devx, devy), devz)
 
         for i,(curve,arr) in enumerate([("devx",devx),("devy",devy),("devz",devz)]):
-            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors, ps)
+            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_e, ps_e, plot_name_e)
             fig_e.add_trace(go.Scatter(
                 x=time_norm, y=arr, mode="lines",
                 name=curve,
                 line=dict(color=c, width=lw, dash=dash)
             ))
 
-        c, lw, dash, mk, ms = _resolve_curve_style("maxdev", 3, colors, ps)
+        c, lw, dash, mk, ms = _resolve_curve_style("maxdev", 3, colors_e, ps_e, plot_name_e)
         fig_e.add_trace(go.Scatter(
             x=time_norm, y=maxdev, mode="lines",
             name="Max deviation",
@@ -886,17 +1060,24 @@ def main():
 
         fig_e.add_vline(x=stationary_t, line_dash="dash", line_color="purple", line_width=1)
 
-        fig_e.update_layout(
+        layout_kwargs_e = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["dev"],
             yaxis_type="log",
-            height=360
+            height=360,  # Default, will be overridden if custom size is enabled
         )
-        fig_e = apply_plot_style(fig_e, ps)
+        layout_kwargs_e = apply_axis_limits(layout_kwargs_e, ps_e)
+        layout_kwargs_e = apply_figure_size(layout_kwargs_e, ps_e)
+        fig_e.update_layout(**layout_kwargs_e)
+        fig_e = apply_plot_style(fig_e, ps_e)
         st.plotly_chart(fig_e, use_container_width=True)
         export_panel(fig_e, data_dir, "real_iso_deviation")
 
     with colF:
+        # Get plot-specific style
+        plot_name_f = "Convergence (F)"
+        ps_f = get_plot_style(plot_name_f)
+        
         fig_f = go.Figure()
         if len(E_x) > 20:
             conv_win = st.sidebar.slider("Convergence window", 10, max(20,len(E_x)//2), max(20,len(E_x)//10), 5)
@@ -915,13 +1096,16 @@ def main():
                 line=dict(color="black", width=2.2)
             ))
 
-        fig_f.update_layout(
+        layout_kwargs_f = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title="Running standard deviation",
             yaxis_type="log",
-            height=360
+            height=360,  # Default, will be overridden if custom size is enabled
         )
-        fig_f = apply_plot_style(fig_f, ps)
+        layout_kwargs_f = apply_axis_limits(layout_kwargs_f, ps_f)
+        layout_kwargs_f = apply_figure_size(layout_kwargs_f, ps_f)
+        fig_f.update_layout(**layout_kwargs_f)
+        fig_f = apply_plot_style(fig_f, ps_f)
         st.plotly_chart(fig_f, use_container_width=True)
         export_panel(fig_f, data_dir, "real_iso_convergence")
 

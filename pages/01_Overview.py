@@ -69,12 +69,17 @@ def main():
             'is_les': False,
         }
     
+        # Determine if LES: only directories in \APP\user\LES are treated as LES
+        # Check if path contains APP/user/LES (case-insensitive, cross-platform)
+        path_str = str(data_dir).replace('\\', '/')
+        is_les_dir = '/APP/user/LES' in path_str.upper() or '\\APP\\user\\LES' in str(data_dir).upper()
+        
         # Load parameters
         if files['parameters']:
             params = read_parameters(str(files['parameters'][0]))
             formatted_params = format_parameters_for_display(params)
             sim_data['params'] = formatted_params
-            sim_data['is_les'] = params.get('SmogC', 0.0) > 0.0
+            sim_data['is_les'] = is_les_dir  # Use directory-based detection
         
         all_simulations_data.append(sim_data)
     
@@ -123,48 +128,56 @@ def main():
     # Compute Mach and Knudsen numbers for each simulation
     for sim in all_simulations_data:
         files = sim['files']
-    mach_number = None
-    knudsen_number = None
-    
-    if files['eps_validation']:
-        # Load validation data for u_rms_real
-        val_df = read_eps_validation_csv(str(files['eps_validation'][0]))
-        if 'u_rms_real' in val_df.columns and len(val_df) > 0:
-            u_rms_latest = val_df['u_rms_real'].iloc[-1]
-            c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
-            mach_number = u_rms_latest / c_s
-    
-    # Compute Knudsen number (different for DNS vs LES)
+        mach_number = None
+        knudsen_number = None
         is_les = sim['is_les']
-    if files['parameters']:
-        params = read_parameters(str(files['parameters'][0]))
-        nu = params.get('nu', None)
-        if nu is not None:
-            c_s2 = 1.0 / 3.0
-            
-            if is_les:
-                # LES: Kn_t = ((τ_e - 1/2) * √3 * Δx) / Δx = (τ_e - 1/2) * √3
-                if files['tau_analysis'] and files['parameters']:
-                    params = read_parameters(str(files['parameters'][0]))
-                    nx = params.get('nx', None)
-                    ny = params.get('ny', None)
-                    nz = params.get('nz', None)
-                    
-                    if nx and ny and nz:
-                        tau_file = str(files['tau_analysis'][-1])
-                        try:
-                            tau_e = read_tau_analysis_file(tau_file, nx, ny, nz)
-                            dx = 1.0
-                            sqrt3 = np.sqrt(3.0)
-                            knudsen_number = ((tau_e - 0.5) * sqrt3 * dx) / dx
-                        except Exception:
-                            knudsen_number = None
-            else:
-                # DNS: Kn = (c_s * (τ₀ - 1/2) * Δx) / Δx = c_s * (τ₀ - 1/2)
-                tau_0 = nu / c_s2 + 0.5
+        
+        if files['eps_validation']:
+            # Load validation data for u_rms_real
+            val_df = read_eps_validation_csv(str(files['eps_validation'][0]))
+            if 'u_rms_real' in val_df.columns and len(val_df) > 0:
+                u_rms_latest = val_df['u_rms_real'].iloc[-1]
                 c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
-                dx = 1.0  # Grid spacing in lattice units (Δx)
-                knudsen_number = (c_s * (tau_0 - 0.5) * dx) / dx
+                mach_number = u_rms_latest / c_s
+        
+        # Compute Knudsen number
+        # LES (only in \APP\user\LES): Use effective/turbulent tau (τ_e) from tau_analysis for Kn_t
+        # DNS (all other directories): Use molecular tau (τ₀) from parameters file
+        if files['parameters']:
+            params = read_parameters(str(files['parameters'][0]))
+            nu = params.get('nu', None)
+            if nu is not None:
+                c_s2 = 1.0 / 3.0
+                
+                if is_les:
+                    # LES: Compute turbulent Knudsen number Kn_t using effective tau from tau_analysis
+                    # Kn_t = ((τ_e - 1/2) * √3 * Δx) / Δx = (τ_e - 1/2) * √3
+                    if files['tau_analysis']:
+                        params = read_parameters(str(files['parameters'][0]))
+                        nx = params.get('nx', None)
+                        ny = params.get('ny', None)
+                        nz = params.get('nz', None)
+                        
+                        if nx and ny and nz:
+                            tau_file = str(files['tau_analysis'][-1])
+                            try:
+                                tau_e = read_tau_analysis_file(tau_file, nx, ny, nz)  # Effective tau
+                                dx = 1.0
+                                sqrt3 = np.sqrt(3.0)
+                                knudsen_number = ((tau_e - 0.5) * sqrt3 * dx) / dx
+                            except Exception:
+                                knudsen_number = None
+                        else:
+                            knudsen_number = None
+                    else:
+                        knudsen_number = None
+                else:
+                    # DNS: Use molecular tau (τ₀) from parameters file (input file)
+                    # Kn = (c_s * (τ₀ - 1/2) * Δx) / Δx = c_s * (τ₀ - 1/2)
+                    tau_0 = nu / c_s2 + 0.5  # Molecular tau from viscosity in input file
+                    c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
+                    dx = 1.0  # Grid spacing in lattice units (Δx)
+                    knudsen_number = (c_s * (tau_0 - 0.5) * dx) / dx
         
         sim['mach_number'] = mach_number
         sim['knudsen_number'] = knudsen_number

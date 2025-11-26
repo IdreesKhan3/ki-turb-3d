@@ -34,6 +34,7 @@ from data_readers.norm_spectrum_reader import read_norm_spectrum_file
 from utils.file_detector import natural_sort_key, group_files_by_simulation
 from utils.theme_config import inject_theme_css, template_selector
 from utils.report_builder import capture_button
+from utils.plot_style import resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
 
 
 # ==========================================================
@@ -317,8 +318,21 @@ def _default_plot_style():
 
         # Per-simulation overrides
         "enable_per_sim_style": False,
-        "per_sim_style_raw": {},
-        "per_sim_style_norm": {},
+        "per_sim_style_raw": {},  # {sim: {enabled,color,width,dash,marker,msize}}
+        "per_sim_style_norm": {},  # {sim: {enabled,color,width,dash,marker,msize}}
+        
+        # Axis limits
+        "enable_x_limits": False,
+        "x_min": None,
+        "x_max": None,
+        "enable_y_limits": False,
+        "y_min": None,
+        "y_max": None,
+        
+        # Figure size
+        "enable_custom_size": False,
+        "figure_width": 800,
+        "figure_height": 500,
     }
 
 def _get_palette(ps):
@@ -351,7 +365,6 @@ def apply_plot_style(fig, ps):
         template=ps["template"],
         font=dict(family=ps["font_family"], size=ps["font_size"]),
         legend=dict(font=dict(size=ps["legend_size"])),
-        title=dict(font=dict(size=ps["title_size"])),
         hovermode="x unified",
         plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
         paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
@@ -402,28 +415,9 @@ def apply_plot_style(fig, ps):
     )
     return fig
 
-def _ensure_per_sim_defaults(ps, sim_groups, norm_groups):
-    ps.setdefault("per_sim_style_raw", {})
-    ps.setdefault("per_sim_style_norm", {})
-
-    for k in (sim_groups or {}).keys():
-        ps["per_sim_style_raw"].setdefault(k, {
-            "enabled": False,
-            "color": None,
-            "width": None,
-            "dash": None,
-        })
-    for k in (norm_groups or {}).keys():
-        ps["per_sim_style_norm"].setdefault(k, {
-            "enabled": False,
-            "color": None,
-            "width": None,
-            "dash": None,
-        })
 
 def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups):
     ps = dict(st.session_state.plot_style)
-    _ensure_per_sim_defaults(ps, sim_groups, norm_groups)
 
     with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
         st.markdown("**Fonts**")
@@ -520,82 +514,33 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups):
         template_selector(ps)
 
         st.markdown("---")
-        st.markdown("**Per-simulation line styles (optional)**")
-        ps["enable_per_sim_style"] = st.checkbox(
-            "Enable per-simulation overrides", bool(ps.get("enable_per_sim_style", False))
-        )
+        render_axis_limits_ui(ps, key_prefix="energy")
+        st.markdown("---")
+        render_figure_size_ui(ps, key_prefix="energy")
+        st.markdown("---")
+        
+        # Single checkbox for both plots
+        if sim_groups or norm_groups:
+            st.markdown("**Per-simulation line styles (optional)**")
+            ps["enable_per_sim_style"] = st.checkbox(
+                "Enable per-simulation overrides",
+                bool(ps.get("enable_per_sim_style", False)),
+                key="energy_enable_per_sim"
+            )
+        
+        if sim_groups:
+            st.markdown("**Raw spectra per-simulation styles**")
+            render_per_sim_style_ui(ps, sim_groups, style_key="per_sim_style_raw", 
+                                    key_prefix="raw", include_marker=True, show_enable_checkbox=False)
 
-        if ps["enable_per_sim_style"]:
-            dash_opts = ["solid", "dot", "dash", "dashdot", "longdash", "longdashdot"]
-
-            if sim_groups:
-                with st.container(border=True):
-                    st.markdown("**Raw spectra overrides**")
-                    for sim_prefix in sorted(sim_groups.keys()):
-                        s = ps["per_sim_style_raw"][sim_prefix]
-                        st.markdown(f"`{sim_prefix}`")
-                        c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
-                        with c1:
-                            s["enabled"] = st.checkbox(
-                                "Override", value=s.get("enabled", False),
-                                key=f"raw_override_on_{sim_prefix}"
-                            )
-                        with c2:
-                            s["color"] = st.color_picker(
-                                "Color", value=s.get("color") or "#000000",
-                                key=f"raw_override_color_{sim_prefix}",
-                                disabled=not s["enabled"]
-                            )
-                        with c3:
-                            s["width"] = st.slider(
-                                "Width", 0.5, 8.0,
-                                float(s.get("width") or ps["line_width"]),
-                                key=f"raw_override_width_{sim_prefix}",
-                                disabled=not s["enabled"]
-                            )
-                        with c4:
-                            s["dash"] = st.selectbox(
-                                "Dash", dash_opts,
-                                index=dash_opts.index(s.get("dash") or "solid"),
-                                key=f"raw_override_dash_{sim_prefix}",
-                                disabled=not s["enabled"]
-                            )
-
-            if norm_groups:
-                with st.container(border=True):
-                    st.markdown("**Normalized spectra overrides**")
-                    for norm_prefix in sorted(norm_groups.keys()):
-                        s = ps["per_sim_style_norm"][norm_prefix]
-                        st.markdown(f"`{norm_prefix}`")
-                        c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
-                        with c1:
-                            s["enabled"] = st.checkbox(
-                                "Override", value=s.get("enabled", False),
-                                key=f"norm_override_on_{norm_prefix}"
-                            )
-                        with c2:
-                            s["color"] = st.color_picker(
-                                "Color", value=s.get("color") or "#000000",
-                                key=f"norm_override_color_{norm_prefix}",
-                                disabled=not s["enabled"]
-                            )
-                        with c3:
-                            s["width"] = st.slider(
-                                "Width", 0.5, 8.0,
-                                float(s.get("width") or ps["line_width"]),
-                                key=f"norm_override_width_{norm_prefix}",
-                                disabled=not s["enabled"]
-                            )
-                        with c4:
-                            s["dash"] = st.selectbox(
-                                "Dash", dash_opts,
-                                index=dash_opts.index(s.get("dash") or "solid"),
-                                key=f"norm_override_dash_{norm_prefix}",
-                                disabled=not s["enabled"]
-                            )
+        if norm_groups:
+            st.markdown("**Normalized spectra per-simulation styles**")
+            render_per_sim_style_ui(ps, norm_groups, style_key="per_sim_style_norm", 
+                                    key_prefix="norm", include_marker=True, show_enable_checkbox=False)
 
         st.markdown("---")
         b1, b2 = st.columns(2)
+        reset_pressed = False
         with b1:
             if st.button("💾 Save Plot Style"):
                 st.session_state.plot_style = ps
@@ -606,27 +551,14 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups):
                 st.session_state.plot_style = _default_plot_style()
                 _save_ui_metadata(data_dir)
                 st.toast("Reset + saved.", icon="♻️")
+                reset_pressed = True
+                st.rerun()  # Rerun to update sidebar with default values
 
-    st.session_state.plot_style = ps
+    # Auto-save plot style changes (applies immediately) - but not if reset was pressed
+    if not reset_pressed:
+        st.session_state.plot_style = ps
 
 
-def _resolve_line_style(sim_prefix, idx, colors, ps, kind="raw"):
-    default_color = colors[idx % len(colors)]
-    default_width = ps["line_width"]
-    default_dash = "solid"
-
-    if not ps.get("enable_per_sim_style", False):
-        return default_color, default_width, default_dash
-
-    style_dict = ps["per_sim_style_raw"] if kind == "raw" else ps["per_sim_style_norm"]
-    s = style_dict.get(sim_prefix, {})
-    if not s.get("enabled", False):
-        return default_color, default_width, default_dash
-
-    color = s.get("color") or default_color
-    width = float(s.get("width") or default_width)
-    dash = s.get("dash") or default_dash
-    return color, width, dash
 
 
 # ==========================================================
@@ -957,7 +889,14 @@ def main():
         end_idx = st.sidebar.slider("End file index", start_idx, total_files, total_files)
 
         show_kolm = st.sidebar.checkbox("Show Kolmogorov -5/3 line", value=True)
-        show_std = st.sidebar.checkbox("Show ±1σ band", value=True)
+        error_display = st.sidebar.radio(
+            "Error display",
+            ["Shaded band", "Error bars", "Both", "None"],
+            index=0,
+            help="Choose how to display ±1σ uncertainty"
+        )
+        show_std = error_display in ["Shaded band", "Both"]
+        show_error_bars = error_display in ["Error bars", "Both"]
         show_normalized = st.sidebar.checkbox("Show normalized (collapsed) panel with Pope", value=True)
 
         kmin = st.sidebar.number_input("Inertial range k_min", min_value=1.0, value=3.0)
@@ -975,16 +914,33 @@ def main():
             if k_vals is None:
                 continue
 
-            color, lw, dash = _resolve_line_style(sim_prefix, idx, colors, ps, kind="raw")
+            color, lw, dash, marker, msize, override_on = resolve_line_style(
+                sim_prefix, idx, colors, ps, 
+                style_key="per_sim_style_raw",
+                include_marker=True,
+                default_marker="circle"
+            )
             legend_name = st.session_state.spectrum_legend_names.get(sim_prefix, _default_labelify(sim_prefix))
             plotted_any = True
 
-            fig_raw.add_trace(go.Scatter(
+            mode = "lines+markers" if (override_on and marker and msize > 0) else "lines"
+            trace_kwargs = dict(
                 x=k_vals, y=E_avg,
-                mode="lines",
+                mode=mode,
                 name=legend_name,
                 line=dict(color=color, width=lw, dash=dash),
-            ))
+            )
+            if override_on and marker and msize > 0:
+                trace_kwargs["marker"] = dict(symbol=marker, size=msize)
+            if show_error_bars and E_std is not None:
+                trace_kwargs["error_y"] = dict(
+                    type="data",
+                    array=E_std,
+                    visible=True,
+                    thickness=1,
+                    color=color
+                )
+            fig_raw.add_trace(go.Scatter(**trace_kwargs))
 
             if show_std:
                 rgb = hex_to_rgb(color)
@@ -1006,15 +962,18 @@ def main():
             st.info("No valid spectra could be plotted from selected range.")
             return
 
-        fig_raw.update_layout(
+        layout_kwargs_raw = dict(
             xaxis_title=st.session_state.axis_labels_raw["x"],
             yaxis_title=st.session_state.axis_labels_raw["y"],
             xaxis_type="log",
             yaxis_type="log",
             legend_title="Simulation",
-            height=560,
+            height=500,  # Default, will be overridden if custom size is enabled
             margin=dict(l=40, r=20, t=30, b=40),
         )
+        layout_kwargs_raw = apply_axis_limits(layout_kwargs_raw, ps)
+        layout_kwargs_raw = apply_figure_size(layout_kwargs_raw, ps)
+        fig_raw.update_layout(**layout_kwargs_raw)
         fig_raw = apply_plot_style(fig_raw, ps)
 
         fig_norm = None
@@ -1030,15 +989,32 @@ def main():
                 if keta is None:
                     continue
 
-                color, lw, dash = _resolve_line_style(norm_prefix, idx, colors, ps, kind="norm")
+                color, lw, dash, marker, msize, override_on = resolve_line_style(
+                    norm_prefix, idx, colors, ps, 
+                    style_key="per_sim_style_norm",
+                    include_marker=True,
+                    default_marker="circle"
+                )
                 legend_name = st.session_state.norm_legend_names.get(norm_prefix, _default_labelify(norm_prefix))
 
-                fig_norm.add_trace(go.Scatter(
+                mode = "lines+markers" if (override_on and marker and msize > 0) else "lines"
+                trace_kwargs = dict(
                     x=keta, y=En_avg,
-                    mode="lines",
+                    mode=mode,
                     name=legend_name,
                     line=dict(color=color, width=lw, dash=dash),
-                ))
+                )
+                if override_on and marker and msize > 0:
+                    trace_kwargs["marker"] = dict(symbol=marker, size=msize)
+                if show_error_bars and En_std is not None:
+                    trace_kwargs["error_y"] = dict(
+                        type="data",
+                        array=En_std,
+                        visible=True,
+                        thickness=1,
+                        color=color
+                    )
+                fig_norm.add_trace(go.Scatter(**trace_kwargs))
 
                 if show_std:
                     rgb = hex_to_rgb(color)
@@ -1060,15 +1036,18 @@ def main():
                     line=dict(color=ps["pope_color"], width=ps["line_width"], dash="dash"),
                 ))
 
-            fig_norm.update_layout(
+            layout_kwargs = dict(
                 xaxis_title=st.session_state.axis_labels_norm["x"],
                 yaxis_title=st.session_state.axis_labels_norm["y"],
                 xaxis_type="log",
                 yaxis_type="log",
                 legend_title="Simulation",
-                height=560,
+                height=500,  # Default, will be overridden if custom size is enabled
                 margin=dict(l=40, r=20, t=30, b=40),
             )
+            layout_kwargs = apply_axis_limits(layout_kwargs, ps)
+            layout_kwargs = apply_figure_size(layout_kwargs, ps)
+            fig_norm.update_layout(**layout_kwargs)
             fig_norm = apply_plot_style(fig_norm, ps)
 
         if fig_norm is not None:
@@ -1161,14 +1140,17 @@ def main():
         except Exception as e:
             st.warning(f"Highlight read failed: {e}")
 
-        figE.update_layout(
+        layout_kwargs_evol = dict(
             xaxis_title=st.session_state.axis_labels_raw["x"],
             yaxis_title=st.session_state.axis_labels_raw["y"],
             xaxis_type="log",
             yaxis_type="log",
-            height=560,
+            height=500,  # Default, will be overridden if custom size is enabled
             margin=dict(l=40, r=20, t=30, b=40),
         )
+        layout_kwargs_evol = apply_axis_limits(layout_kwargs_evol, ps)
+        layout_kwargs_evol = apply_figure_size(layout_kwargs_evol, ps)
+        figE.update_layout(**layout_kwargs_evol)
         figE = apply_plot_style(figE, ps)
 
         st.plotly_chart(figE, use_container_width=True)

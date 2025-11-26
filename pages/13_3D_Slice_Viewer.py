@@ -110,10 +110,10 @@ def _apply_clip(field, xmin, xmax, ymin, ymax, zmin, zmax):
 
 def _colormap_options():
     return [
-        "Viridis", "Cividis", "Plasma", "Magma", "Inferno",
-        "Turbo", "Rainbow", "Jet", "Portland", "RdBu",
-        "Spectral", "Ice", "Electric", "Hot", "Cool",
-        "Greys", "YlOrRd", "Blues", "Reds", "Greens"
+        "viridis", "cividis", "plasma", "magma", "inferno",
+        "turbo", "rainbow", "jet", "portland", "rdbu",
+        "spectral", "ice", "electric", "hot", "icefire",
+        "greys", "ylorrd", "blues", "reds", "greens"
     ]
 
 def _create_slice_surface(x_coords, y_coords, z_coords, field_slice, vmin, vmax, cmap, opacity):
@@ -423,9 +423,9 @@ def main():
         show_iso = st.sidebar.checkbox("Isosurface", value=False, key="show_iso")
         show_vectors = st.sidebar.checkbox("Vector field (arrows)", value=False, key="show_vec")
 
-        # Colormap (default to RdBu to match ParaView's typical velocity visualization)
+        # Colormap (default to rdbu to match ParaView's typical velocity visualization)
         cmap_options = _colormap_options()
-        rdbu_index = cmap_options.index("RdBu") if "RdBu" in cmap_options else 0
+        rdbu_index = cmap_options.index("rdbu") if "rdbu" in cmap_options else 0
         cmap = st.sidebar.selectbox("Colormap", cmap_options, index=rdbu_index, key="colormap")
 
         # Value range + opacity controls
@@ -726,7 +726,7 @@ def main():
 
         # Layout
         fig.update_layout(
-            height=800,
+            height=600,
             scene=dict(
                 xaxis_title="X",
                 yaxis_title="Y",
@@ -757,7 +757,7 @@ def main():
             'toImageButtonOptions': {
                 'format': 'png',
                 'filename': f'{Path(selected_file).stem}_3d_view',
-                'height': 800,
+                'height': 600,
                 'width': 1200,
                 'scale': 2
             }
