@@ -142,6 +142,9 @@ RUN/
 # Example data (temporarily ignored)
 examples/
 
+# HDF5 library (local installation)
+hdf5_lib/
+
 # Alternative: Keep directory structure but ignore contents
 # SRC/*
 # !SRC/.gitkeep

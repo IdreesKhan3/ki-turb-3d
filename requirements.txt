@@ -6,4 +6,5 @@ matplotlib>=3.7.0
 scipy>=1.11.0
 kaleido>=0.2.1
 pyvista>=0.42.0  # For 3D volume visualization (optional, for advanced VTI viewing)
+h5py>=3.9.0  # For HDF5 file support
 

@@ -20,6 +20,7 @@ Features:
 import streamlit as st
 import numpy as np
 import glob
+import re
 from pathlib import Path
 import sys
 
@@ -31,6 +32,7 @@ import plotly.graph_objects as go
 import plotly.colors as pc
 
 from data_readers.vti_reader import read_vti_file, compute_velocity_magnitude, compute_vorticity
+from data_readers.hdf5_reader import read_hdf5_file, read_hdf5_file_fortran_order
 from utils.file_detector import natural_sort_key
 
 
@@ -40,14 +42,44 @@ from utils.file_detector import natural_sort_key
 @st.cache_data(show_spinner=True)
 def _cached_read_vti(filepath: str):
     """Cached VTI file reading for performance"""
-    return read_vti_file(filepath)
+    # Use absolute path for consistent caching
+    abs_path = str(Path(filepath).resolve())
+    return read_vti_file(abs_path)
+
+@st.cache_data(show_spinner=True)
+def _cached_read_hdf5(filepath: str, fortran_order: bool = False):
+    """Cached HDF5 file reading for performance"""
+    # Use absolute path for consistent caching
+    abs_path = str(Path(filepath).resolve())
+    # Note: fortran_order is included in cache key automatically
+    if fortran_order:
+        return read_hdf5_file_fortran_order(abs_path)
+    return read_hdf5_file(abs_path)
+
+def _load_velocity_file(filepath: str, fortran_order: bool = False):
+    """Load velocity data from either VTI or HDF5 file"""
+    # Normalize to absolute path for consistent caching
+    abs_filepath = str(Path(filepath).resolve())
+    filepath_lower = abs_filepath.lower()
+    if filepath_lower.endswith(('.h5', '.hdf5')):
+        return _cached_read_hdf5(abs_filepath, fortran_order)
+    elif filepath_lower.endswith('.vti'):
+        return _cached_read_vti(abs_filepath)
+    else:
+        raise ValueError(f"Unsupported file format: {filepath}. Expected .vti, .h5, or .hdf5")
 
 def _safe_minmax(a):
     a = np.asarray(a)
     a = a[np.isfinite(a)]
     if a.size == 0:
         return 0.0, 1.0
-    return float(a.min()), float(a.max())
+    vmin, vmax = float(a.min()), float(a.max())
+    if vmin == vmax:
+        if vmin == 0.0:
+            vmax = 1.0
+        else:
+            vmax = vmin * (1.0 + 1e-6) if vmin > 0 else vmin * (1.0 - 1e-6)
+    return vmin, vmax
 
 def _downsample3d(field, step):
     if step <= 1:
@@ -85,7 +117,9 @@ def _colormap_options():
     ]
 
 def _create_slice_surface(x_coords, y_coords, z_coords, field_slice, vmin, vmax, cmap, opacity):
-    """Create a surface trace for a slice plane"""
+    """Create a surface trace for a slice plane
+    Matches ParaView's coordinate system: X horizontal, Y vertical, Z out-of-plane
+    """
     return go.Surface(
         x=x_coords,
         y=y_coords,
@@ -96,7 +130,8 @@ def _create_slice_surface(x_coords, y_coords, z_coords, field_slice, vmin, vmax,
         colorscale=cmap,
         opacity=opacity,
         showscale=False,
-        hovertemplate="Value: %{surfacecolor:.4f}<extra></extra>"
+        hovertemplate="Value: %{surfacecolor:.4f}<extra></extra>",
+        connectgaps=False
     )
 
 
@@ -120,39 +155,203 @@ def main():
     
     data_dir = Path(data_dirs[0])
     
-    # Find VTI files
-    vti_files = sorted(glob.glob(str(data_dir / "*.vti")), key=natural_sort_key)
-    if not vti_files:
-        st.error("No VTI files found in the selected directory.")
-        st.info("Expected names like: `velocity_50000.vti` or `*_*.vti`")
-        return
-
-    # Sidebar - File Selection
-    st.sidebar.header("📁 File Selection")
-    selected_file = st.sidebar.selectbox(
-        "Select VTI file:",
-        vti_files,
-        format_func=lambda x: Path(x).name,
-        key="vti_file_selector"
+    # Find all available file types (case-insensitive)
+    vti_files = sorted(
+        glob.glob(str(data_dir / "*.vti")) + 
+        glob.glob(str(data_dir / "*.VTI")),
+        key=natural_sort_key
+    )
+    hdf5_files = sorted(
+        glob.glob(str(data_dir / "*.h5")) + 
+        glob.glob(str(data_dir / "*.H5")) +
+        glob.glob(str(data_dir / "*.hdf5")) + 
+        glob.glob(str(data_dir / "*.HDF5")),
+        key=natural_sort_key
     )
     
-    # Time series animation (if multiple files)
-    if len(vti_files) > 1:
-        auto_play = st.sidebar.checkbox("Auto-play animation", value=False)
-        if auto_play:
-            frame_delay = st.sidebar.slider("Frame delay (ms)", 100, 2000, 500)
-            if st.sidebar.button("▶️ Play"):
-                st.session_state.auto_playing = True
-            if st.sidebar.button("⏸️ Pause"):
-                st.session_state.auto_playing = False
+    # File type selector (like ParaView, VisIt, etc.)
+    st.sidebar.header("📁 File Selection")
+    
+    # Determine available file types
+    has_vti = len(vti_files) > 0
+    has_hdf5 = len(hdf5_files) > 0
+    
+    if not has_vti and not has_hdf5:
+        st.error("No 3D velocity files found in the selected directory.")
+        st.info("Expected files: `*.vti`, `*.h5`, or `*.hdf5` (e.g., `velocity_50000.vti` or `velocity_50000.h5`)")
+        return
+    
+    # File type selector
+    file_type_options = []
+    if has_vti:
+        file_type_options.append(f"VTI ({len(vti_files)} files)")
+    if has_hdf5:
+        file_type_options.append(f"HDF5 ({len(hdf5_files)} files)")
+    if has_vti and has_hdf5:
+        file_type_options.append("Both (VTI + HDF5)")
+    
+    # Initialize file type selection in session state
+    if 'file_type_selection' not in st.session_state:
+        # Default to first available type, or "Both" if both are available
+        if len(file_type_options) == 1:
+            st.session_state.file_type_selection = file_type_options[0]
+        elif "Both" in file_type_options:
+            st.session_state.file_type_selection = "Both (VTI + HDF5)"
+        else:
+            st.session_state.file_type_selection = file_type_options[0]
+    
+    selected_file_type = st.sidebar.radio(
+        "File Extension",
+        options=file_type_options,
+        index=file_type_options.index(st.session_state.file_type_selection) if st.session_state.file_type_selection in file_type_options else 0,
+        key="file_type_radio"
+    )
+    st.session_state.file_type_selection = selected_file_type
+    
+    # Filter files based on selection
+    if selected_file_type.startswith("VTI"):
+        all_files = vti_files
+    elif selected_file_type.startswith("HDF5"):
+        all_files = hdf5_files
+    else:  # Both
+        all_files = vti_files + hdf5_files
+    
+    # Extract iteration numbers from selected files (general pattern matching)
+    # Handles: Velocity_1000.vti, Velocity1000.vti, data_42.h5, etc.
+    iterations = []
+    for f in all_files:
+        filename = Path(f).name
+        # Try pattern with underscore: _NUMBER.ext
+        match = re.search(r'_(\d+)\.(vti|h5|hdf5)', filename, re.IGNORECASE)
+        if not match:
+            # Try pattern without underscore: NUMBER.ext (before file extension)
+            match = re.search(r'(\d+)\.(vti|h5|hdf5)', filename, re.IGNORECASE)
+        if match:
+            iterations.append(int(match.group(1)))
+        else:
+            # If no number found, use None (will show time step index instead)
+            iterations.append(None)
 
-    # Load VTI
+    # Time Control
+    st.sidebar.header("⏱️ Time Control")
+    
+    # Show file count for selected type
+    st.sidebar.caption(f"Found {len(all_files)} files")
+    
+    # Initialize/reset file index when file type changes
+    # Track previous file type to detect changes
+    if 'prev_file_type' not in st.session_state:
+        st.session_state.prev_file_type = selected_file_type
+        st.session_state.file_index = 0
+        st.session_state.initial_load = True  # Flag for first load
+    elif st.session_state.prev_file_type != selected_file_type:
+        # File type changed, reset to first file (index 0)
+        st.session_state.file_index = 0
+        st.session_state.prev_file_type = selected_file_type
+        st.session_state.initial_load = True
+    
+    # Initialize file_index if not set (always start at 0 = first file)
+    if 'file_index' not in st.session_state:
+        st.session_state.file_index = 0
+        st.session_state.initial_load = True
+    
+    # Get initial load flag
+    initial_load = st.session_state.get('initial_load', False)
+    
+    # Ensure file_index is within valid bounds [0, len(all_files)-1]
+    # Time step 0 = first file, time step 1 = second file, etc.
+    st.session_state.file_index = max(0, min(st.session_state.file_index, len(all_files) - 1))
+    
+    # Previous / Next buttons - update file_index before slider reads it
+    col_t1, col_t2, col_t3 = st.sidebar.columns([1, 2, 1])
+    
+    # Previous button: go to previous file (decrease index)
+    if col_t1.button("◀", key="prev_file", help="Previous time step"):
+        if st.session_state.file_index > 0:
+            st.session_state.file_index -= 1
+            # FIX: Force the slider key to match the new index
+            st.session_state.slider_index = st.session_state.file_index
+        # Note: Streamlit automatically reruns on button click, no need for explicit st.rerun()
+    
+    # Next button: go to next file (increase index)
+    if col_t3.button("▶", key="next_file", help="Next time step"):
+        if st.session_state.file_index < len(all_files) - 1:
+            st.session_state.file_index += 1
+            # FIX: Force the slider key to match the new index
+            st.session_state.slider_index = st.session_state.file_index
+        # Note: Streamlit automatically reruns on button click, no need for explicit st.rerun()
+    
+    # Time step slider: 0-indexed (0 = first file, 1 = second file, ..., 99 = 100th file)
+    # The slider value comes from session state (updated by buttons or previous slider interaction)
+    file_index = col_t2.slider(
+        "Time Step",
+        0, len(all_files) - 1,
+        value=st.session_state.file_index,
+        key="slider_index"
+    )
+    
+    # Update session state from slider (when user drags slider)
+    # This ensures slider and buttons stay in sync
+    if file_index != st.session_state.file_index:
+        st.session_state.file_index = file_index
+    
+    # Double-check bounds (should always be valid after slider)
+    file_index = max(0, min(file_index, len(all_files) - 1))
+    
+    # Select file at this index: all_files[0] = first file, all_files[1] = second file, etc.
+    selected_file = all_files[file_index]
+    filename = Path(selected_file).name
+    
+    # Display iteration number if available, otherwise show time step
+    iteration = iterations[file_index]
+    st.sidebar.caption(f"File: {filename}")
+    if iteration is not None:
+        st.sidebar.caption(f"Iteration: {iteration}")
+    else:
+        st.sidebar.caption(f"Time Step: {file_index}")
+    
+    # HDF5-specific options
+    is_hdf5 = selected_file.lower().endswith(('.h5', '.hdf5'))
+    use_fortran_order = False
+    if is_hdf5:
+        use_fortran_order = st.sidebar.checkbox(
+            "Fortran order (column-major)",
+            value=False,
+            help="Check if HDF5 data was written in Fortran order",
+            key="fortran_order"
+        )
+
+    # Load velocity data (VTI or HDF5)
     try:
-        with st.spinner("Loading VTI file..."):
-            vti_data = _cached_read_vti(selected_file)
+        file_ext = Path(selected_file).suffix.lower()
+        file_type = "HDF5" if file_ext in ['.h5', '.hdf5'] else "VTI"
         
-        nx, ny, nz = vti_data['dimensions']
+        # Use absolute path to ensure consistent file loading and caching
+        abs_selected_file = str(Path(selected_file).resolve())
+        
+        # On initial load, clear cache to ensure fresh data
+        if initial_load:
+            _cached_read_vti.clear()
+            _cached_read_hdf5.clear()
+            st.session_state.initial_load = False
+        
+        with st.spinner(f"Loading {file_type} file {file_index + 1}/{len(all_files)} ({filename})..."):
+            vti_data = _load_velocity_file(abs_selected_file, use_fortran_order)
+        
         velocity = vti_data['velocity']
+        
+        # Ensure velocity has the correct shape
+        if velocity is None or len(velocity.shape) != 4:
+            raise ValueError(f"Invalid velocity data shape: {velocity.shape if velocity is not None else 'None'}")
+        
+        # VTI reader returns (nx, ny, nz, 3) but x and y dimensions are swapped
+        # Swap x and y to match visualization expectations: (y, x, z, 3) -> (x, y, z, 3)
+        velocity = np.transpose(velocity, (1, 0, 2, 3))
+        nx, ny, nz = velocity.shape[:3]
+        
+        # Verify data is valid (check for NaN/Inf)
+        if np.any(np.isnan(velocity)) or np.any(np.isinf(velocity)):
+            st.warning(f"⚠️ File {filename} contains NaN or Inf values. Visualization may be incorrect.")
         
         # Display file info
         col1, col2, col3 = st.columns(3)
@@ -170,8 +369,9 @@ def main():
         
         field_type = st.sidebar.selectbox(
             "Field to visualize:",
-            ["Velocity Magnitude", "ux", "uy", "uz", 
+            ["ux", "uy", "uz", "Velocity Magnitude",
              "Vorticity Magnitude", "ωx", "ωy", "ωz"],
+            index=0,  # Default to ux to match ParaView
             key="field_type"
         )
 
@@ -217,48 +417,72 @@ def main():
         # Visualization modes
         st.sidebar.markdown("---")
         st.sidebar.subheader("👁️ Display Modes")
-        show_volume = st.sidebar.checkbox("Volume rendering", value=True, key="show_vol")
+        show_volume = st.sidebar.checkbox("Volume rendering", value=False, key="show_vol")
         show_slices = st.sidebar.checkbox("Orthogonal slices", value=True, key="show_slices")
+        show_surface = st.sidebar.checkbox("Surface", value=False, key="show_surface")
         show_iso = st.sidebar.checkbox("Isosurface", value=False, key="show_iso")
         show_vectors = st.sidebar.checkbox("Vector field (arrows)", value=False, key="show_vec")
 
-        # Colormap
-        cmap = st.sidebar.selectbox("Colormap", _colormap_options(), index=0, key="colormap")
+        # Colormap (default to RdBu to match ParaView's typical velocity visualization)
+        cmap_options = _colormap_options()
+        rdbu_index = cmap_options.index("RdBu") if "RdBu" in cmap_options else 0
+        cmap = st.sidebar.selectbox("Colormap", cmap_options, index=rdbu_index, key="colormap")
 
         # Value range + opacity controls
         st.sidebar.markdown("---")
         st.sidebar.subheader("🎛️ Rendering Controls")
+        if vmax <= vmin:
+            vmax = vmin + 1.0 if vmin >= 0 else vmin - 1.0
+        
+        # Color max for contrast control (clips low values to reveal turbulence)
+        cmax = st.sidebar.slider(
+            "Color Max (Contrast)",
+            float(vmin), float(vmax),
+            float(vmax) * 0.6,
+            help="Lower values reveal turbulent structures by clipping low-energy regions",
+            key="color_max"
+        )
+        
         vrange = st.sidebar.slider(
             "Value range",
             min_value=float(vmin), max_value=float(vmax),
-            value=(float(vmin), float(vmax)),
+            value=(float(vmin), float(cmax)),
             step=(vmax - vmin) / 200 if vmax > vmin else 1.0,
             key="vrange"
         )
 
         if show_volume:
             vol_opacity = st.sidebar.slider(
-                "Volume opacity", 0.01, 0.8, 0.12, 0.01,
-                help="Higher = denser fog-like volume.",
+                "Volume opacity", 0.01, 0.8, 0.15, 0.01,
+                help="Higher = denser fog-like volume. Lower values (0.1-0.2) work better for turbulence.",
                 key="vol_opacity"
             )
             vol_surface_count = st.sidebar.slider(
-                "Volume surfaces", 5, 40, 18, 1,
+                "Volume surfaces", 5, 40, 20, 1,
                 help="More surfaces = richer volume but heavier.",
                 key="vol_surfaces"
             )
 
         if show_iso:
+            iso_min, iso_max = float(vrange[0]), float(vrange[1])
+            if iso_max <= iso_min:
+                iso_max = iso_min + 1.0 if iso_min >= 0 else iso_min - 1.0
             iso_value = st.sidebar.slider(
                 "Isosurface value",
-                min_value=float(vrange[0]), max_value=float(vrange[1]),
-                value=float((vrange[0] + vrange[1]) / 2),
-                step=(vrange[1] - vrange[0]) / 200 if vrange[1] > vrange[0] else 1.0,
+                min_value=iso_min, max_value=iso_max,
+                value=float((iso_min + iso_max) / 2),
+                step=(iso_max - iso_min) / 200 if iso_max > iso_min else 1.0,
                 key="iso_value"
             )
             iso_opacity = st.sidebar.slider(
                 "Isosurface opacity", 0.05, 1.0, 0.4, 0.05,
                 key="iso_opacity"
+            )
+
+        if show_surface:
+            surface_opacity = st.sidebar.slider(
+                "Surface opacity", 0.05, 1.0, 0.8, 0.05,
+                key="surface_opacity"
             )
 
         # Slice controls
@@ -325,15 +549,17 @@ def main():
         # Build Plotly 3D
         fig = go.Figure()
 
-        # Volume rendering
+        # Volume rendering (improved for turbulence visualization)
         if show_volume:
+            # Cut off bottom 10% of values to make low-energy regions transparent
+            isomin_val = vmin + (cmax - vmin) * 0.1 if cmax > vmin else vmin
             fig.add_trace(go.Volume(
                 x=xg.flatten(),
                 y=yg.flatten(),
                 z=zg.flatten(),
                 value=field_clip.flatten(),
-                isomin=vrange[0],
-                isomax=vrange[1],
+                isomin=isomin_val,
+                isomax=cmax,
                 opacity=vol_opacity,
                 surface_count=vol_surface_count,
                 colorscale=cmap,
@@ -364,36 +590,93 @@ def main():
                 name=f"Isosurface @ {iso_value:.3f}"
             ))
 
-        # Orthogonal slice planes
+        # Surface rendering (outer faces of domain)
+        if show_surface:
+            # Front face (z = 0)
+            z_front = np.zeros((nx_d, ny_d))
+            x_coords = np.arange(nx_d)[:, None] * np.ones((1, ny_d))
+            y_coords = np.ones((nx_d, 1)) * np.arange(ny_d)[None, :]
+            fig.add_trace(_create_slice_surface(
+                x_coords, y_coords, z_front,
+                field_clip[:, :, 0],
+                vmin, cmax, cmap, surface_opacity
+            ))
+            
+            # Back face (z = nz_d-1)
+            z_back = np.full((nx_d, ny_d), nz_d - 1)
+            fig.add_trace(_create_slice_surface(
+                x_coords, y_coords, z_back,
+                field_clip[:, :, nz_d - 1],
+                vmin, cmax, cmap, surface_opacity
+            ))
+            
+            # Left face (x = 0)
+            x_left = np.zeros((ny_d, nz_d))
+            y_coords = np.arange(ny_d)[:, None] * np.ones((1, nz_d))
+            z_coords = np.ones((ny_d, 1)) * np.arange(nz_d)[None, :]
+            fig.add_trace(_create_slice_surface(
+                x_left, y_coords, z_coords,
+                field_clip[0, :, :],
+                vmin, cmax, cmap, surface_opacity
+            ))
+            
+            # Right face (x = nx_d-1)
+            x_right = np.full((ny_d, nz_d), nx_d - 1)
+            fig.add_trace(_create_slice_surface(
+                x_right, y_coords, z_coords,
+                field_clip[nx_d - 1, :, :],
+                vmin, cmax, cmap, surface_opacity
+            ))
+            
+            # Bottom face (y = 0)
+            y_bottom = np.zeros((nx_d, nz_d))
+            x_coords = np.arange(nx_d)[:, None] * np.ones((1, nz_d))
+            z_coords = np.ones((nx_d, 1)) * np.arange(nz_d)[None, :]
+            fig.add_trace(_create_slice_surface(
+                x_coords, y_bottom, z_coords,
+                field_clip[:, 0, :],
+                vmin, cmax, cmap, surface_opacity
+            ))
+            
+            # Top face (y = ny_d-1)
+            y_top = np.full((nx_d, nz_d), ny_d - 1)
+            fig.add_trace(_create_slice_surface(
+                x_coords, y_top, z_coords,
+                field_clip[:, ny_d - 1, :],
+                vmin, cmax, cmap, surface_opacity
+            ))
+
+        # Orthogonal slice planes (matching ParaView's coordinate system)
         if show_slices:
-            # XY plane at z = slice_z
+            # XY plane at z = slice_z (ParaView: Z-slice showing X-Y plane)
+            # Data: field_clip[i, j, k] where i=x, j=y, k=z (Fortran order)
             z_plane = np.full((nx_d, ny_d), slice_z)
             x_coords = np.arange(nx_d)[:, None] * np.ones((1, ny_d))
             y_coords = np.ones((nx_d, 1)) * np.arange(ny_d)[None, :]
             fig.add_trace(_create_slice_surface(
                 x_coords, y_coords, z_plane,
                 field_clip[:, :, slice_z],
-                vrange[0], vrange[1], cmap, slice_opacity
+                vmin, cmax, cmap, slice_opacity
             ))
 
-            # XZ plane at y = slice_y
+            # XZ plane at y = slice_y (ParaView: Y-slice showing X-Z plane)
             y_plane = np.full((nx_d, nz_d), slice_y)
             x_coords = np.arange(nx_d)[:, None] * np.ones((1, nz_d))
             z_coords = np.ones((nx_d, 1)) * np.arange(nz_d)[None, :]
             fig.add_trace(_create_slice_surface(
                 x_coords, y_plane, z_coords,
                 field_clip[:, slice_y, :],
-                vrange[0], vrange[1], cmap, slice_opacity
+                vmin, cmax, cmap, slice_opacity
             ))
 
-            # YZ plane at x = slice_x
+            # YZ plane at x = slice_x (ParaView: X-slice showing Y-Z plane)
             x_plane = np.full((ny_d, nz_d), slice_x)
             y_coords = np.arange(ny_d)[:, None] * np.ones((1, nz_d))
             z_coords = np.ones((ny_d, 1)) * np.arange(nz_d)[None, :]
             fig.add_trace(_create_slice_surface(
                 x_plane, y_coords, z_coords,
                 field_clip[slice_x, :, :],
-                vrange[0], vrange[1], cmap, slice_opacity
+                vmin, cmax, cmap, slice_opacity
             ))
 
         # Vector field (velocity arrows)
@@ -510,7 +793,8 @@ def main():
                 st.info("Use the camera icon (📷) in the plot toolbar to export as PNG/JPEG/SVG")
 
     except Exception as e:
-        st.error(f"Error loading VTI file: {e}")
+        file_type = "HDF5" if Path(selected_file).suffix.lower() in ['.h5', '.hdf5'] else "VTI"
+        st.error(f"Error loading {file_type} file: {e}")
         import traceback
         with st.expander("Error details"):
             st.code(traceback.format_exc())
