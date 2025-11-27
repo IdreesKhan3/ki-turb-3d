@@ -4,7 +4,7 @@ Interactive 3D volume visualization with ParaView-like features
 
 Features:
 - Reads *.vti velocity fields
-- Field choices: |u|, ux, uy, uz, |ω|, individual vorticity components
+- Field choices: |u|, ux, uy, uz, |ω|, individual vorticity components, Q_S^S, Q, R invariants
 - Interactive Plotly 3D:
     * Volume rendering (opacity, colormap, value range)
     * Orthogonal slicing planes (x/y/z) with interactive sliders
@@ -34,6 +34,7 @@ import plotly.colors as pc
 from data_readers.vti_reader import read_vti_file, compute_velocity_magnitude, compute_vorticity
 from data_readers.hdf5_reader import read_hdf5_file, read_hdf5_file_fortran_order
 from utils.file_detector import natural_sort_key
+from utils.iso_surfaces import compute_qs_s, compute_q_invariant, compute_r_invariant
 
 
 # -----------------------------
@@ -141,7 +142,7 @@ def _create_slice_surface(x_coords, y_coords, z_coords, field_slice, vmin, vmax,
 def main():
     inject_theme_css()
     
-    st.title("🔬 3D Slice Viewer")
+    st.title("🔬 3D Slice Viewer / ISO-Surfaces")
     st.markdown("**Interactive 3D Volume Visualization with ParaView-like Controls**")
 
     # Get data directories
@@ -344,9 +345,8 @@ def main():
         if velocity is None or len(velocity.shape) != 4:
             raise ValueError(f"Invalid velocity data shape: {velocity.shape if velocity is not None else 'None'}")
         
-        # VTI reader returns (nx, ny, nz, 3) but x and y dimensions are swapped
-        # Swap x and y to match visualization expectations: (y, x, z, 3) -> (x, y, z, 3)
-        velocity = np.transpose(velocity, (1, 0, 2, 3))
+        # Both VTI and HDF5 readers now apply transpose to fix x/y swap
+        # No additional transpose needed here - data is already in correct orientation
         nx, ny, nz = velocity.shape[:3]
         
         # Verify data is valid (check for NaN/Inf)
@@ -370,7 +370,8 @@ def main():
         field_type = st.sidebar.selectbox(
             "Field to visualize:",
             ["ux", "uy", "uz", "Velocity Magnitude",
-             "Vorticity Magnitude", "ωx", "ωy", "ωz"],
+             "Vorticity Magnitude", "ωx", "ωy", "ωz",
+             "Q_S^S", "Q Invariant", "R Invariant"],
             index=0,  # Default to ux to match ParaView
             key="field_type"
         )
@@ -405,6 +406,15 @@ def main():
                 field = vort[:, :, :, 1]
             else:  # ωz
                 field = vort[:, :, :, 2]
+        elif field_type == "Q_S^S":
+            with st.spinner("Computing Q_S^S..."):
+                field = compute_qs_s(velocity)
+        elif field_type == "Q Invariant":
+            with st.spinner("Computing Q invariant..."):
+                field = compute_q_invariant(velocity)
+        elif field_type == "R Invariant":
+            with st.spinner("Computing R invariant..."):
+                field = compute_r_invariant(velocity)
 
         # Downsample
         field_ds = _downsample3d(field, downsample_step)
@@ -464,16 +474,29 @@ def main():
             )
 
         if show_iso:
-            iso_min, iso_max = float(vrange[0]), float(vrange[1])
-            if iso_max <= iso_min:
-                iso_max = iso_min + 1.0 if iso_min >= 0 else iso_min - 1.0
-            iso_value = st.sidebar.slider(
-                "Isosurface value",
-                min_value=iso_min, max_value=iso_max,
-                value=float((iso_min + iso_max) / 2),
-                step=(iso_max - iso_min) / 200 if iso_max > iso_min else 1.0,
-                key="iso_value"
-            )
+            # Special threshold slider for Q_S^S method (based on paper thresholds: 2.5, 3.5, 5.0, 6.5)
+            if field_type == "Q_S^S":
+                st.sidebar.markdown("**Q_S^S Threshold (Paper values: 2.5-6.5)**")
+                qss_threshold = st.sidebar.slider(
+                    "Q_S^S threshold",
+                    min_value=0.0, max_value=10.0,
+                    value=5.0,
+                    step=0.1,
+                    help="Paper thresholds: 32³=2.5, 64³=3.5, 128³=5.0, 256³=6.5",
+                    key="qss_threshold"
+                )
+                iso_value = qss_threshold
+            else:
+                iso_min, iso_max = float(vrange[0]), float(vrange[1])
+                if iso_max <= iso_min:
+                    iso_max = iso_min + 1.0 if iso_min >= 0 else iso_min - 1.0
+                iso_value = st.sidebar.slider(
+                    "Isosurface value",
+                    min_value=iso_min, max_value=iso_max,
+                    value=float((iso_min + iso_max) / 2),
+                    step=(iso_max - iso_min) / 200 if iso_max > iso_min else 1.0,
+                    key="iso_value"
+                )
             iso_opacity = st.sidebar.slider(
                 "Isosurface opacity", 0.05, 1.0, 0.4, 0.05,
                 key="iso_opacity"
@@ -776,6 +799,57 @@ def main():
             - Use the camera preset dropdown for quick view changes
             - Adjust all parameters in the sidebar for real-time updates
             """)
+
+        # Theory & Equations
+        with st.expander("📚 Theory & Equations", expanded=False):
+            st.markdown("### Velocity Fields")
+            st.markdown("**Velocity magnitude:**")
+            st.latex(r"|\mathbf{u}| = \sqrt{u_x^2 + u_y^2 + u_z^2}")
+            
+            st.markdown("### Vorticity")
+            st.markdown("**Vorticity vector:**")
+            st.latex(r"\boldsymbol{\omega} = \nabla \times \mathbf{u}")
+            st.markdown("**Components:**")
+            st.latex(r"\omega_x = \frac{\partial u_z}{\partial y} - \frac{\partial u_y}{\partial z}, \quad \omega_y = \frac{\partial u_x}{\partial z} - \frac{\partial u_z}{\partial x}, \quad \omega_z = \frac{\partial u_y}{\partial x} - \frac{\partial u_x}{\partial y}")
+            st.markdown("**Vorticity magnitude:**")
+            st.latex(r"|\boldsymbol{\omega}| = \sqrt{\omega_x^2 + \omega_y^2 + \omega_z^2}")
+            
+            st.markdown("### Q_S^S Method for Vortex Visualization")
+            st.markdown("**Main equation:**")
+            st.latex(r"Q_S^S = \left[(Q_W^3 + Q_S^3) + (\Sigma^2 - R_s^2)\right]^{1/3}")
+            
+            st.markdown("**Component equations:**")
+            st.markdown("**Rotation Rate Strength:**")
+            st.latex(r"Q_W = \frac{1}{2}\Omega_{ij}\Omega_{ij}")
+            
+            st.markdown("**Deformation Rate Strength:**")
+            st.latex(r"Q_S = -\frac{1}{2}S_{ij}S_{ij}")
+            
+            st.markdown("**Enstrophy Production Term:**")
+            st.latex(r"\Sigma = \omega_i S_{ij} \omega_j")
+            
+            st.markdown("**Strain Rate Production:**")
+            st.latex(r"R_s = -\frac{1}{3}S_{ij}S_{jk}S_{ki}")
+            
+            st.markdown("**Tensor definitions:**")
+            st.markdown("- $\\Omega_{ij}$: Rotation tensor (antisymmetric part of velocity gradient)")
+            st.markdown("- $S_{ij}$: Deformation tensor (symmetric part of velocity gradient)")
+            st.markdown("- $\\omega_i$: Vorticity vector")
+            
+            st.markdown("**Isosurface Thresholds (Paper values):**")
+            st.markdown("- $32^3$ resolution: Threshold = 2.5")
+            st.markdown("- $64^3$ resolution: Threshold = 3.5")
+            st.markdown("- $128^3$ resolution: Threshold = 5.0")
+            st.markdown("- $256^3$ resolution: Threshold = 6.5")
+            
+            st.markdown("### Velocity Gradient Tensor Invariants")
+            st.markdown("**Second Invariant Q:**")
+            st.latex(r"Q = -\frac{1}{2}A_{ij}A_{ij} = \frac{1}{4}(\omega_i\omega_i - 2S_{ij}S_{ij})")
+            
+            st.markdown("**Third Invariant R:**")
+            st.latex(r"R = -\frac{1}{3}A_{ij}A_{jk}A_{ki} = -\frac{1}{3}\left(S_{ij}S_{jk}S_{ki} + \frac{3}{4}\omega_i\omega_j S_{ij}\right)")
+            
+            st.markdown("where $A_{ij} = \\partial u_i/\\partial x_j$ is the velocity gradient tensor.")
 
         # Export options
         with st.expander("💾 Export Options", expanded=False):

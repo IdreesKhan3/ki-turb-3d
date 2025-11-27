@@ -83,8 +83,10 @@ def read_hdf5_file(filepath: str) -> Dict:
                 if key not in metadata:
                     metadata[key] = f.attrs[key]
             
-            # Get variable name from metadata or default
             varname = metadata.get('varname', metadata.get('name', 'Velocity'))
+            
+            velocity = np.transpose(velocity, (1, 0, 2, 3))
+            velocity = np.transpose(velocity, (0, 2, 1, 3))
             
             return {
                 'dimensions': (nx, ny, nz),
