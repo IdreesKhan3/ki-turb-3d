@@ -78,17 +78,25 @@ def read_vti_file(filepath: str) -> Dict:
             nbyte_bytes = f.read(4)
             nbyte = struct.unpack('<i', nbyte_bytes)[0]  # Little-endian integer
             
-            # Verify nbyte matches expected size
-            expected_nbyte = 3 * nx * ny * nz * 8  # 3 components * dimensions * 8 bytes (Float64)
-            if nbyte != expected_nbyte:
-                print(f"Warning: nbyte mismatch. Expected {expected_nbyte}, got {nbyte}")
+            # Auto-detect precision from file size
+            expected_nbyte_float64 = 3 * nx * ny * nz * 8  # Float64: 8 bytes per value
+            expected_nbyte_float32 = 3 * nx * ny * nz * 4  # Float32: 4 bytes per value
             
-            # Read velocity data (Float64, 3 components per point)
+            if nbyte == expected_nbyte_float64:
+                dtype = np.float64
+            elif nbyte == expected_nbyte_float32:
+                dtype = np.float32
+            else:
+                # Default to float64 if size doesn't match (legacy behavior)
+                dtype = np.float64
+                print(f"Warning: nbyte mismatch. Expected {expected_nbyte_float64} (float64) or {expected_nbyte_float32} (float32), got {nbyte}. Using float64.")
+            
+            # Read velocity data
             # Fortran writes: ((( ux(xi,yi,zi), uy(xi,yi,zi), uz(xi,yi,zi), xi=1,nx), yi=1,ny), zi=1,nz)
             # File contains: [ux(1,1,1), uy(1,1,1), uz(1,1,1), ux(2,1,1), uy(2,1,1), uz(2,1,1), ...]
             # Components are interleaved: every 3 elements is (ux,uy,uz) for one point
             # Spatial order is Fortran: x changes fastest, then y, then z
-            data = np.frombuffer(f.read(nbyte), dtype=np.float64)
+            data = np.frombuffer(f.read(nbyte), dtype=dtype)
             
             # Reshape to separate components: (nx*ny*nz, 3) with C order
             # This groups every 3 consecutive elements as (ux,uy,uz) for each point
@@ -100,7 +108,7 @@ def read_vti_file(filepath: str) -> Dict:
             # Flat index for (xi, yi, zi) in 0-indexed: zi*nx*ny + yi*nx + xi
             # However, empirical testing shows the data has x and y dimensions swapped
             # Solution: read as (y, x, z) then transpose to (x, y, z)
-            velocity = np.zeros((ny, nx, nz, 3), dtype=np.float64)
+            velocity = np.zeros((ny, nx, nz, 3), dtype=dtype)
             for zi in range(nz):
                 for yi in range(ny):
                     for xi in range(nx):

@@ -10,6 +10,7 @@ from typing import Tuple
 def compute_velocity_gradient_tensor(velocity: np.ndarray, dx: float = 1.0, dy: float = 1.0, dz: float = 1.0) -> np.ndarray:
     """
     Compute velocity gradient tensor A_ij = ∂u_i/∂x_j
+    Uses periodic boundary conditions with central differences (matching Fortran implementation)
     
     Args:
         velocity: (nx, ny, nz, 3) array of velocity components (ux, uy, uz)
@@ -22,10 +23,24 @@ def compute_velocity_gradient_tensor(velocity: np.ndarray, dx: float = 1.0, dy: 
     uy = velocity[:, :, :, 1]
     uz = velocity[:, :, :, 2]
     
-    # Compute all velocity gradients
-    dux_dx, dux_dy, dux_dz = np.gradient(ux, dx, dy, dz)
-    duy_dx, duy_dy, duy_dz = np.gradient(uy, dx, dy, dz)
-    duz_dx, duz_dy, duz_dz = np.gradient(uz, dx, dy, dz)
+    # Compute all velocity gradients using periodic boundary conditions
+    # Following Fortran: (u(ip) - u(im)) / (2*dx) with periodic wrap
+    # Using np.roll for periodic boundaries: roll(-1) = i+1, roll(+1) = i-1
+    
+    # ∂ux/∂x, ∂ux/∂y, ∂ux/∂z
+    dux_dx = (np.roll(ux, -1, axis=0) - np.roll(ux, 1, axis=0)) / (2.0 * dx)
+    dux_dy = (np.roll(ux, -1, axis=1) - np.roll(ux, 1, axis=1)) / (2.0 * dy)
+    dux_dz = (np.roll(ux, -1, axis=2) - np.roll(ux, 1, axis=2)) / (2.0 * dz)
+    
+    # ∂uy/∂x, ∂uy/∂y, ∂uy/∂z
+    duy_dx = (np.roll(uy, -1, axis=0) - np.roll(uy, 1, axis=0)) / (2.0 * dx)
+    duy_dy = (np.roll(uy, -1, axis=1) - np.roll(uy, 1, axis=1)) / (2.0 * dy)
+    duy_dz = (np.roll(uy, -1, axis=2) - np.roll(uy, 1, axis=2)) / (2.0 * dz)
+    
+    # ∂uz/∂x, ∂uz/∂y, ∂uz/∂z
+    duz_dx = (np.roll(uz, -1, axis=0) - np.roll(uz, 1, axis=0)) / (2.0 * dx)
+    duz_dy = (np.roll(uz, -1, axis=1) - np.roll(uz, 1, axis=1)) / (2.0 * dy)
+    duz_dz = (np.roll(uz, -1, axis=2) - np.roll(uz, 1, axis=2)) / (2.0 * dz)
     
     # Build gradient tensor A_ij
     nx, ny, nz = velocity.shape[:3]
@@ -75,6 +90,7 @@ def compute_rotation_deformation_tensors(velocity: np.ndarray, dx: float = 1.0, 
 def compute_vorticity_vector(velocity: np.ndarray, dx: float = 1.0, dy: float = 1.0, dz: float = 1.0) -> np.ndarray:
     """
     Compute vorticity vector ω = ∇ × u
+    Uses periodic boundary conditions with central differences (matching Fortran implementation)
     
     Args:
         velocity: (nx, ny, nz, 3) array of velocity components
@@ -87,10 +103,21 @@ def compute_vorticity_vector(velocity: np.ndarray, dx: float = 1.0, dy: float = 
     uy = velocity[:, :, :, 1]
     uz = velocity[:, :, :, 2]
     
-    duy_dx, duy_dy, duy_dz = np.gradient(uy, dx, dy, dz)
-    duz_dx, duz_dy, duz_dz = np.gradient(uz, dx, dy, dz)
-    dux_dx, dux_dy, dux_dz = np.gradient(ux, dx, dy, dz)
+    # Compute gradients using periodic boundary conditions
+    # Following Fortran: (u(ip) - u(im)) / (2*dx) with periodic wrap
+    dux_dx = (np.roll(ux, -1, axis=0) - np.roll(ux, 1, axis=0)) / (2.0 * dx)
+    dux_dy = (np.roll(ux, -1, axis=1) - np.roll(ux, 1, axis=1)) / (2.0 * dy)
+    dux_dz = (np.roll(ux, -1, axis=2) - np.roll(ux, 1, axis=2)) / (2.0 * dz)
     
+    duy_dx = (np.roll(uy, -1, axis=0) - np.roll(uy, 1, axis=0)) / (2.0 * dx)
+    duy_dy = (np.roll(uy, -1, axis=1) - np.roll(uy, 1, axis=1)) / (2.0 * dy)
+    duy_dz = (np.roll(uy, -1, axis=2) - np.roll(uy, 1, axis=2)) / (2.0 * dz)
+    
+    duz_dx = (np.roll(uz, -1, axis=0) - np.roll(uz, 1, axis=0)) / (2.0 * dx)
+    duz_dy = (np.roll(uz, -1, axis=1) - np.roll(uz, 1, axis=1)) / (2.0 * dy)
+    duz_dz = (np.roll(uz, -1, axis=2) - np.roll(uz, 1, axis=2)) / (2.0 * dz)
+    
+    # Vorticity: ω = ∇ × u
     omega_x = duz_dy - duy_dz
     omega_y = dux_dz - duz_dx
     omega_z = duy_dx - dux_dy

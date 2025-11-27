@@ -32,7 +32,7 @@ import plotly.graph_objects as go
 import plotly.colors as pc
 
 from data_readers.vti_reader import read_vti_file, compute_velocity_magnitude, compute_vorticity
-from data_readers.hdf5_reader import read_hdf5_file, read_hdf5_file_fortran_order
+from data_readers.hdf5_reader import read_hdf5_file
 from utils.file_detector import natural_sort_key
 from utils.iso_surfaces import compute_qs_s, compute_q_invariant, compute_r_invariant
 
@@ -48,22 +48,22 @@ def _cached_read_vti(filepath: str):
     return read_vti_file(abs_path)
 
 @st.cache_data(show_spinner=True)
-def _cached_read_hdf5(filepath: str, fortran_order: bool = False):
-    """Cached HDF5 file reading for performance"""
+def _cached_read_hdf5(filepath: str, _cache_version: str = "v2"):
+    """Cached HDF5 file reading for performance
+    
+    _cache_version: Internal parameter to invalidate cache when reader is updated
+    """
     # Use absolute path for consistent caching
     abs_path = str(Path(filepath).resolve())
-    # Note: fortran_order is included in cache key automatically
-    if fortran_order:
-        return read_hdf5_file_fortran_order(abs_path)
     return read_hdf5_file(abs_path)
 
-def _load_velocity_file(filepath: str, fortran_order: bool = False):
+def _load_velocity_file(filepath: str):
     """Load velocity data from either VTI or HDF5 file"""
     # Normalize to absolute path for consistent caching
     abs_filepath = str(Path(filepath).resolve())
     filepath_lower = abs_filepath.lower()
     if filepath_lower.endswith(('.h5', '.hdf5')):
-        return _cached_read_hdf5(abs_filepath, fortran_order)
+        return _cached_read_hdf5(abs_filepath)
     elif filepath_lower.endswith('.vti'):
         return _cached_read_vti(abs_filepath)
     else:
@@ -313,14 +313,6 @@ def main():
     
     # HDF5-specific options
     is_hdf5 = selected_file.lower().endswith(('.h5', '.hdf5'))
-    use_fortran_order = False
-    if is_hdf5:
-        use_fortran_order = st.sidebar.checkbox(
-            "Fortran order (column-major)",
-            value=False,
-            help="Check if HDF5 data was written in Fortran order",
-            key="fortran_order"
-        )
 
     # Load velocity data (VTI or HDF5)
     try:
@@ -337,7 +329,7 @@ def main():
             st.session_state.initial_load = False
         
         with st.spinner(f"Loading {file_type} file {file_index + 1}/{len(all_files)} ({filename})..."):
-            vti_data = _load_velocity_file(abs_selected_file, use_fortran_order)
+            vti_data = _load_velocity_file(abs_selected_file)
         
         velocity = vti_data['velocity']
         

@@ -1,0 +1,18 @@
+&input_params
+nx = 256
+ny = 256
+nz = 256
+!tau= 0.6
+nu = .004
+u0 = 0.043
+num_time_steps = 100000
+vtk_interval = 1000
+data_interval = 1000
+iti_signal = 100
+SmogC = 0.16 !
+F_amp = 0.01
+perturb_temp = 0.01
+downsample_factor = 1
+tag = 'data2'
+FILTER_CHOICE = 1  ! 1 Gaussian, 2 B0x
+/
