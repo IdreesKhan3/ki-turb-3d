@@ -43,7 +43,7 @@ THEMES = {
         "custom_colors": ["#4ec9b0", "#569cd6", "#dcdcaa", "#ce9178",
                           "#c586c0", "#d7ba7d", "#9cdcfe"],
         "template": "plotly_dark",
-        "font_family": "Consolas, 'Courier New', monospace",
+        "font_family": "Courier New",
         "font_size": 14,
         "title_size": 16,
         "legend_size": 12,

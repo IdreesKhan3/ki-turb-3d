@@ -13,6 +13,7 @@ sys.path.insert(0, str(project_root))
 
 from utils.theme_config import inject_theme_css
 from utils.report_builder import generate_html_report, generate_pdf_report
+st.set_page_config(page_icon="⚫")
 
 def main():
     inject_theme_css()
@@ -127,7 +128,7 @@ def main():
                         )
                     elif section['type'] == "plot":
                         if 'figure' in section and section['figure'] is not None:
-                            st.plotly_chart(section['figure'], use_container_width=True)
+                            st.plotly_chart(section['figure'], use_container_width=True, key=f"plot_chart_{idx}")
                         else:
                             st.warning("⚠️ Figure not available. Please recapture from the source page.")
                     elif section['type'] == "table":
@@ -195,7 +196,8 @@ def main():
                         output_file,
                         include_toc
                     )
-                    st.success(f"✅ Report generated: {Path(report_path).name}")
+                    file_format = "PDF" if report_path.endswith('.pdf') else "HTML"
+                    st.success(f"✅ {file_format} report generated: {Path(report_path).name}")
                     
                     # Provide download button
                     with open(report_path, "rb") as f:

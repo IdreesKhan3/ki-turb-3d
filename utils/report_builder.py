@@ -11,13 +11,55 @@ import pandas as pd
 from datetime import datetime
 import base64
 import io
+import tempfile
+
+
+def _convert_plotly_to_image_base64(fig: go.Figure) -> str:
+    """
+    Convert Plotly figure to base64-encoded PNG image for PDF embedding
+    
+    Returns:
+        Base64-encoded image string (data URI format)
+    """
+    try:
+        # Try using kaleido (recommended)
+        img_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+        img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+        return f"data:image/png;base64,{img_base64}"
+    except Exception as e1:
+        # Fallback: try write_image
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                fig.write_image(tmp.name, width=1200, height=800, scale=2)
+                with open(tmp.name, 'rb') as f:
+                    img_bytes = f.read()
+                Path(tmp.name).unlink()
+                img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+                return f"data:image/png;base64,{img_base64}"
+        except Exception as e2:
+            # Check if it's a Chrome/kaleido error
+            error_msg = str(e1) + " " + str(e2)
+            if "Chrome" in error_msg or "kaleido" in error_msg.lower():
+                # Try to install Chrome automatically
+                try:
+                    import kaleido
+                    kaleido.get_chrome_sync()
+                    # Retry after installing Chrome
+                    img_bytes = fig.to_image(format="png", width=1200, height=800, scale=2)
+                    img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+                    return f"data:image/png;base64,{img_base64}"
+                except Exception:
+                    pass
+            # Last resort: return empty string
+            return ""
 
 
 def generate_html_report(
     title: str,
     sections: List[Dict[str, Any]],
     output_path: Path,
-    include_toc: bool = True
+    include_toc: bool = True,
+    for_pdf: bool = False
 ) -> str:
     """
     Generate HTML report from selected sections
@@ -93,11 +135,17 @@ def generate_html_report(
         html_parts.append(f"<h2>{section_title}</h2>")
         
         if section_type == "plot" and isinstance(content, go.Figure):
-            # Embed Plotly figure as HTML
-            # Use 'inline' for offline support (embeds Plotly.js in the HTML file)
-            # Use 'cdn' for smaller file size but requires internet
-            plot_html = content.to_html(include_plotlyjs='inline', div_id=f"plot_{i}")
-            html_parts.append(f'<div class="plot-container">{plot_html}</div>')
+            if for_pdf:
+                # For PDF: convert Plotly figure to static image
+                img_data = _convert_plotly_to_image_base64(content)
+                if img_data:
+                    html_parts.append(f'<div class="plot-container"><img src="{img_data}" alt="{section_title}" style="max-width: 100%;"></div>')
+                else:
+                    html_parts.append(f'<div class="plot-container"><p style="color: red;">⚠️ Could not render plot. Install kaleido: pip install kaleido</p></div>')
+            else:
+                # For HTML: embed interactive Plotly figure
+                plot_html = content.to_html(include_plotlyjs='inline', div_id=f"plot_{i}")
+                html_parts.append(f'<div class="plot-container">{plot_html}</div>')
         
         elif section_type == "table" and isinstance(content, pd.DataFrame):
             # Convert DataFrame to HTML table
@@ -154,9 +202,9 @@ def generate_pdf_report(
         from weasyprint import HTML, CSS
         from weasyprint.text.fonts import FontConfiguration
         
-        # Generate HTML first
+        # Generate HTML first (with static images for PDF)
         html_path = output_path.with_suffix('.html')
-        html_file = generate_html_report(title, sections, html_path, include_toc)
+        html_file = generate_html_report(title, sections, html_path, include_toc, for_pdf=True)
         
         # Convert HTML to PDF
         font_config = FontConfiguration()
@@ -170,10 +218,11 @@ def generate_pdf_report(
         # Fallback: generate HTML and suggest weasyprint installation
         html_path = output_path.with_suffix('.html')
         html_file = generate_html_report(title, sections, html_path, include_toc)
-        st.warning(
-            "PDF generation requires 'weasyprint'. Generated HTML report instead.\n"
-            "Install with: pip install weasyprint\n"
-            "Or use the HTML file and convert manually."
+        st.info(
+            "ℹ️ PDF generation requires 'weasyprint' (not installed). "
+            "HTML report generated successfully instead.\n\n"
+            "To generate PDFs in the future, install: `pip install weasyprint`\n"
+            "Or convert the HTML file to PDF manually using your browser's print function."
         )
         return html_file
     

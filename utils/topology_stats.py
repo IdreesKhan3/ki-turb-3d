@@ -157,13 +157,22 @@ def compute_discriminant_line(r_values):
     return q_values
 
 
-def render_topology_stats_tab(data_dir, load_velocity_file_func):
+def render_topology_stats_tab(data_dir, load_velocity_file_func,
+                               get_plot_style_func=None, apply_plot_style_func=None,
+                               get_palette_func=None, resolve_line_style_func=None,
+                               export_panel_func=None, capture_button_func=None):
     """
     Render the Topological & Statistical Distribution tab content
     
     Args:
         data_dir: Path to data directory
         load_velocity_file_func: Function to load velocity files (takes filepath)
+        get_plot_style_func: Optional function to get plot style (plot_name) -> style_dict
+        apply_plot_style_func: Optional function to apply plot style (fig, style_dict) -> fig
+        get_palette_func: Optional function to get color palette (style_dict) -> color_list
+        resolve_line_style_func: Optional function to resolve line style for files
+        export_panel_func: Optional function to show export panel (fig, out_dir, base_name)
+        capture_button_func: Optional function to add capture button (fig, title, source_page)
     """
     import glob
     from utils.file_detector import natural_sort_key
@@ -287,57 +296,123 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func):
         if not pdf_data:
             st.info("Select files in the sidebar to plot Velocity PDF")
         else:
-            fig_pdf = go.Figure()
+            plot_name_pdf = "Velocity PDF"
+            ps_pdf = get_plot_style_func(plot_name_pdf) if get_plot_style_func else {}
+            colors_pdf = get_palette_func(ps_pdf) if get_palette_func else ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+            component_colors = ['#1f77b4', '#2ca02c', '#d62728']
+            line_width = ps_pdf.get("line_width", 2.4) if ps_pdf else 2.0
             
-            # Colors for datasets
-            dataset_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
-            # Colors for components (u, v, w) - slightly different shades
-            component_colors = ['#1f77b4', '#2ca02c', '#d62728']  # Blue, Green, Red
+            fig_pdf = go.Figure()
             
             for idx, (filename, (u_bins, pdf_u, pdf_v, pdf_w)) in enumerate(pdf_data.items()):
                 if len(u_bins) == 0:
                     continue
                 
-                base_color = dataset_colors[idx % len(dataset_colors)]
                 label_base = Path(filename).stem
                 
-                # Plot three components as separate smooth curves (KDE provides smoothness)
+                if resolve_line_style_func:
+                    color_u, lw_u, dash_u = resolve_line_style_func(
+                        filename, idx, colors_pdf, ps_pdf,
+                        style_key="per_sim_style_comparison",
+                        include_marker=False,
+                        default_marker="circle"
+                    )
+                else:
+                    color_u = colors_pdf[idx % len(colors_pdf)]
+                    lw_u = line_width
+                    dash_u = "solid"
+                
                 fig_pdf.add_trace(go.Scatter(
                     x=u_bins,
                     y=pdf_u,
                     mode='lines',
                     name=f"{label_base} - u",
-                    line=dict(color=component_colors[0], width=2),
+                    line=dict(color=color_u, width=lw_u, dash=dash_u),
                     hovertemplate=f"u = %{{x:.4f}}<br>PDF = %{{y:.4e}}<extra>{label_base} - u</extra>"
                 ))
+                
+                if resolve_line_style_func:
+                    color_v, lw_v, dash_v = resolve_line_style_func(
+                        filename, idx, colors_pdf, ps_pdf,
+                        style_key="per_sim_style_comparison",
+                        include_marker=False,
+                        default_marker="circle"
+                    )
+                else:
+                    color_v = component_colors[1]
+                    lw_v = line_width
+                    dash_v = "solid"
                 
                 fig_pdf.add_trace(go.Scatter(
                     x=u_bins,
                     y=pdf_v,
                     mode='lines',
                     name=f"{label_base} - v",
-                    line=dict(color=component_colors[1], width=2),
+                    line=dict(color=color_v, width=lw_v, dash=dash_v),
                     hovertemplate=f"v = %{{x:.4f}}<br>PDF = %{{y:.4e}}<extra>{label_base} - v</extra>"
                 ))
+                
+                if resolve_line_style_func:
+                    color_w, lw_w, dash_w = resolve_line_style_func(
+                        filename, idx, colors_pdf, ps_pdf,
+                        style_key="per_sim_style_comparison",
+                        include_marker=False,
+                        default_marker="circle"
+                    )
+                else:
+                    color_w = component_colors[2]
+                    lw_w = line_width
+                    dash_w = "solid"
                 
                 fig_pdf.add_trace(go.Scatter(
                     x=u_bins,
                     y=pdf_w,
                     mode='lines',
                     name=f"{label_base} - w",
-                    line=dict(color=component_colors[2], width=2),
+                    line=dict(color=color_w, width=lw_w, dash=dash_w),
                     hovertemplate=f"w = %{{x:.4f}}<br>PDF = %{{y:.4e}}<extra>{label_base} - w</extra>"
                 ))
             
-            fig_pdf.update_layout(
+            layout_kwargs = dict(
                 xaxis_title="Velocity",
                 yaxis_title="PDF",
-                height=500,
+                height=ps_pdf.get("figure_height", 500) if ps_pdf else 500,
                 hovermode='x unified',
                 legend=dict(x=1.02, y=1)
             )
             
-            st.plotly_chart(fig_pdf, use_container_width=True)
+            if ps_pdf:
+                from utils.plot_style import apply_axis_limits, apply_figure_size
+                layout_kwargs = apply_axis_limits(layout_kwargs, ps_pdf)
+                layout_kwargs = apply_figure_size(layout_kwargs, ps_pdf)
+            
+            fig_pdf.update_layout(**layout_kwargs)
+            
+            if apply_plot_style_func and ps_pdf:
+                fig_pdf = apply_plot_style_func(fig_pdf, ps_pdf)
+            
+            st.plotly_chart(
+                fig_pdf, 
+                use_container_width=True,
+                config={
+                    "modeBarButtonsToAdd": ["zoom2d", "pan2d", "select2d", "lasso2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d"],
+                    "displayModeBar": True,
+                    "displaylogo": False,
+                    "toImageButtonOptions": {
+                        "format": "png",
+                        "filename": "velocity_pdf",
+                        "height": None,
+                        "width": None,
+                        "scale": 2
+                    }
+                }
+            )
+            
+            if capture_button_func:
+                capture_button_func(fig_pdf, title="Velocity PDF", source_page="Comparison")
+            
+            if export_panel_func:
+                export_panel_func(fig_pdf, data_dir, "velocity_pdf")
     
     # ============================================
     # Right: R-Q Topological Space
@@ -412,15 +487,49 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func):
                     hovertemplate="R = %{x:.4f}<br>Q = %{y:.4f}<extra>Discriminant</extra>"
                 ))
             
-            fig_rq.update_layout(
+            plot_name_rq = "R-Q Topological Space"
+            ps_rq = get_plot_style_func(plot_name_rq) if get_plot_style_func else {}
+            
+            layout_kwargs_rq = dict(
                 xaxis_title="R",
                 yaxis_title="Q",
-                height=500,
+                height=ps_rq.get("figure_height", 500) if ps_rq else 500,
                 hovermode='closest',
                 legend=dict(x=1.02, y=1)
             )
             
-            st.plotly_chart(fig_rq, use_container_width=True)
+            if ps_rq:
+                from utils.plot_style import apply_axis_limits, apply_figure_size
+                layout_kwargs_rq = apply_axis_limits(layout_kwargs_rq, ps_rq)
+                layout_kwargs_rq = apply_figure_size(layout_kwargs_rq, ps_rq)
+            
+            fig_rq.update_layout(**layout_kwargs_rq)
+            
+            if apply_plot_style_func and ps_rq:
+                fig_rq = apply_plot_style_func(fig_rq, ps_rq)
+            
+            st.plotly_chart(
+                fig_rq, 
+                use_container_width=True,
+                config={
+                    "modeBarButtonsToAdd": ["zoom2d", "pan2d", "select2d", "lasso2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d"],
+                    "displayModeBar": True,
+                    "displaylogo": False,
+                    "toImageButtonOptions": {
+                        "format": "png",
+                        "filename": "rq_topological_space",
+                        "height": None,
+                        "width": None,
+                        "scale": 2
+                    }
+                }
+            )
+            
+            if capture_button_func:
+                capture_button_func(fig_rq, title="R-Q Topological Space", source_page="Comparison")
+            
+            if export_panel_func:
+                export_panel_func(fig_rq, data_dir, "rq_topological_space")
     
     # Theory & Equations
     with st.expander("📚 Theory & Equations", expanded=False):

@@ -4,8 +4,8 @@ Main Streamlit application entry point
 """
 
 import streamlit as st
-from pathlib import Path
-import sys
+from pathlib import Path # module
+import sys # module
 
 # Add project root to path
 project_root = Path(__file__).parent
@@ -16,7 +16,7 @@ from utils.theme_config import get_theme_list, get_default_theme, inject_theme_c
 # Page configuration
 st.set_page_config(
     page_title="IK-TURB 3D",
-    page_icon="🌊",
+    page_icon="⚫",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -47,10 +47,10 @@ def main():
             try:
                 st.image(str(logo_path), use_container_width=True)
             except Exception:
-                st.title("🌊 IK-TURB 3D")
+                st.title("🌀 IK-TURB 3D")
                 st.caption("Turbulence Visualization & Analysis Suite")
         else:
-            st.title("🌊 IK-TURB 3D")
+            st.title("🌀 IK-TURB 3D")
             st.caption("Turbulence Visualization & Analysis Suite")
         st.markdown("---")
         
@@ -310,10 +310,10 @@ def main():
         try:
             st.image(str(logo_path), use_container_width=True)
         except Exception:
-            st.title("🌊 IK-TURB 3D")
+            st.title("🌀 IK-TURB 3D")
             st.caption("Turbulence Visualization & Analysis Suite")
     else:
-        st.title("🌊 IK-TURB 3D")
+        st.title("🌀 IK-TURB 3D")
         st.caption("Turbulence Visualization & Analysis Suite")
     
     if not st.session_state.data_loaded:

@@ -138,7 +138,7 @@ def create_logo(output_path="logo.png", format="png", size=(800, 400), dpi=300):
     # 3. Main Text: "IK-TURB 3D"
     # ============================================
     # Primary text
-    ax.text(-1.4, 0.15, 'IK-TURB', 
+    ax.text(-1.4, 0.15, 'KI-TURB', 
            fontsize=42, fontweight='bold', 
            color=text_color, family='sans-serif',
            ha='left', va='center', zorder=10)

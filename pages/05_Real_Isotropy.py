@@ -39,6 +39,7 @@ from utils.file_detector import detect_simulation_files
 from utils.theme_config import inject_theme_css
 from utils.report_builder import capture_button
 from utils.plot_style import render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
+st.set_page_config(page_icon="⚫")
 
 
 # ==========================================================

@@ -35,6 +35,7 @@ from utils.file_detector import detect_simulation_files
 from utils.theme_config import apply_theme_to_plot_style, inject_theme_css, template_selector
 from utils.report_builder import capture_button
 from utils.plot_style import resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
+st.set_page_config(page_icon="⚫")
 
 # ==========================================================
 # JSON persistence (dataset-local)

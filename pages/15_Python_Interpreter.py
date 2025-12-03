@@ -462,6 +462,7 @@ fig
         if st.button("📊 Simple Plot", use_container_width=True, key="ex_plot"):
             example_code = """import numpy as np
 import plotly.graph_objects as go
+st.set_page_config(page_icon="⚫")
 
 x = np.linspace(0, 2*np.pi, 100)
 y = np.sin(x)

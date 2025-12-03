@@ -16,9 +16,9 @@ Everything remains persistent per dataset in legend_names.json:
 
 import streamlit as st
 import numpy as np
-import glob
-import re
-import json
+import glob # module
+import re   # module
+import json # module
 from pathlib import Path
 import sys
 import plotly.graph_objects as go
@@ -32,9 +32,10 @@ sys.path.insert(0, str(project_root))
 from data_readers.spectrum_reader import read_spectrum_file
 from data_readers.norm_spectrum_reader import read_norm_spectrum_file
 from utils.file_detector import natural_sort_key, group_files_by_simulation
-from utils.theme_config import inject_theme_css, template_selector
+from utils.theme_config import inject_theme_css
 from utils.report_builder import capture_button
 from utils.plot_style import resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
+st.set_page_config(page_icon="⚫")
 
 
 # ==========================================================
@@ -47,7 +48,7 @@ def _default_labelify(name: str) -> str:
     return name.replace("_", " ").title()
 
 def _load_ui_metadata(data_dir: Path):
-    """Load legends + axis labels + plot_style from legend_names.json if present."""
+    """Load legends + axis labels + plot_styles from legend_names.json if present."""
     path = _legend_json_path(data_dir)
     if not path.exists():
         return
@@ -61,7 +62,17 @@ def _load_ui_metadata(data_dir: Path):
         st.session_state.axis_labels_raw = meta.get("axis_labels_raw", {})
         st.session_state.axis_labels_norm = meta.get("axis_labels_norm", {})
 
-        st.session_state.plot_style = meta.get("plot_style", {})
+        # Load plot_styles (new per-plot system)
+        st.session_state.plot_styles = meta.get("plot_styles", {})
+        # Backward compatibility: if plot_styles doesn't exist, migrate from old plot_style
+        if not st.session_state.plot_styles and "plot_style" in meta:
+            # Migrate old single plot_style to all plots
+            old_style = meta.get("plot_style", {})
+            st.session_state.plot_styles = {
+                "Raw Energy Spectrum": old_style.copy(),
+                "Normalized Spectrum": old_style.copy(),
+                "Time Evolution": old_style.copy(),
+            }
 
     except Exception:
         st.toast("legend_names.json exists but could not be read. Using defaults.",
@@ -74,7 +85,7 @@ def _save_ui_metadata(data_dir: Path):
         "norm_legends": st.session_state.get("norm_legend_names", {}),
         "axis_labels_raw": st.session_state.get("axis_labels_raw", {}),
         "axis_labels_norm": st.session_state.get("axis_labels_norm", {}),
-        "plot_style": st.session_state.get("plot_style", {}),
+        "plot_styles": st.session_state.get("plot_styles", {}),
     }
     try:
         _legend_json_path(data_dir).write_text(
@@ -333,6 +344,12 @@ def _default_plot_style():
         "enable_custom_size": False,
         "figure_width": 800,
         "figure_height": 500,
+        
+        # Frame/Margin size
+        "margin_left": 40,
+        "margin_right": 20,
+        "margin_top": 30,
+        "margin_bottom": 40,
     }
 
 def _get_palette(ps):
@@ -368,6 +385,12 @@ def apply_plot_style(fig, ps):
         hovermode="x unified",
         plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
         paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
+        margin=dict(
+            l=ps.get("margin_left", 40),
+            r=ps.get("margin_right", 20),
+            t=ps.get("margin_top", 30),
+            b=ps.get("margin_bottom", 40)
+        ),
     )
 
     tick_dir = "outside" if ps["ticks_outside"] else "inside"
@@ -415,81 +438,144 @@ def apply_plot_style(fig, ps):
     )
     return fig
 
+def _normalize_plot_name(plot_name: str) -> str:
+    """Normalize plot name to a valid key format."""
+    return plot_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
 
-def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups):
-    ps = dict(st.session_state.plot_style)
+def get_plot_style(plot_name: str):
+    """Get plot-specific style, merging defaults with plot-specific overrides."""
+    default = _default_plot_style()
+    plot_styles = st.session_state.get("plot_styles", {})
+    plot_style = plot_styles.get(plot_name, {})
+    # Deep merge: start with defaults, then update with plot-specific overrides
+    merged = default.copy()
+    for key, value in plot_style.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merged[key].copy()
+            merged[key].update(value)
+        else:
+            merged[key] = value
+    return merged
+
+def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list):
+    # Plot selector
+    selected_plot = st.sidebar.selectbox(
+        "Select plot to configure",
+        plot_names,
+        key="energy_plot_selector"
+    )
+    
+    # Get or create plot-specific style
+    if "plot_styles" not in st.session_state:
+        st.session_state.plot_styles = {}
+    if selected_plot not in st.session_state.plot_styles:
+        st.session_state.plot_styles[selected_plot] = {}
+    
+    # Start with defaults, merge with plot-specific overrides
+    ps = get_plot_style(selected_plot)
+    plot_key = _normalize_plot_name(selected_plot)
+    
+    # Create unique key prefix for all widgets
+    key_prefix = f"energy_{plot_key}"
 
     with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
+        st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
         ps["font_family"] = st.selectbox(
             "Font family", fonts,
-            index=fonts.index(ps.get("font_family", "Arial"))
+            index=fonts.index(ps.get("font_family", "Arial")),
+            key=f"{key_prefix}_font_family"
         )
-        ps["font_size"] = st.slider("Base/global font size", 8, 26, int(ps.get("font_size", 14)))
-        ps["title_size"] = st.slider("Plot title size", 10, 32, int(ps.get("title_size", 16)))
-        ps["legend_size"] = st.slider("Legend font size", 8, 24, int(ps.get("legend_size", 12)))
-        ps["tick_font_size"] = st.slider("Tick label font size", 6, 24, int(ps.get("tick_font_size", 12)))
-        ps["axis_title_size"] = st.slider("Axis title font size", 8, 28, int(ps.get("axis_title_size", 14)))
+        ps["font_size"] = st.slider("Base/global font size", 8, 26, int(ps.get("font_size", 14)),
+                                     key=f"{key_prefix}_font_size")
+        ps["title_size"] = st.slider("Plot title size", 10, 32, int(ps.get("title_size", 16)),
+                                      key=f"{key_prefix}_title_size")
+        ps["legend_size"] = st.slider("Legend font size", 8, 24, int(ps.get("legend_size", 12)),
+                                       key=f"{key_prefix}_legend_size")
+        ps["tick_font_size"] = st.slider("Tick label font size", 6, 24, int(ps.get("tick_font_size", 12)),
+                                          key=f"{key_prefix}_tick_font_size")
+        ps["axis_title_size"] = st.slider("Axis title font size", 8, 28, int(ps.get("axis_title_size", 14)),
+                                           key=f"{key_prefix}_axis_title_size")
 
         st.markdown("---")
         st.markdown("**Backgrounds**")
         ps["plot_bgcolor"] = st.color_picker(
-            "Plot background (inside axes)", ps.get("plot_bgcolor", "#FFFFFF")
+            "Plot background (inside axes)", ps.get("plot_bgcolor", "#FFFFFF"),
+            key=f"{key_prefix}_plot_bgcolor"
         )
         ps["paper_bgcolor"] = st.color_picker(
-            "Paper background (outside axes)", ps.get("paper_bgcolor", "#FFFFFF")
+            "Paper background (outside axes)", ps.get("paper_bgcolor", "#FFFFFF"),
+            key=f"{key_prefix}_paper_bgcolor"
         )
 
         st.markdown("---")
         st.markdown("**Ticks**")
-        ps["tick_len"] = st.slider("Tick length", 2, 14, int(ps.get("tick_len", 6)))
-        ps["tick_w"] = st.slider("Tick width", 0.5, 3.5, float(ps.get("tick_w", 1.2)))
-        ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)))
+        ps["tick_len"] = st.slider("Tick length", 2, 14, int(ps.get("tick_len", 6)),
+                                    key=f"{key_prefix}_tick_len")
+        ps["tick_w"] = st.slider("Tick width", 0.5, 3.5, float(ps.get("tick_w", 1.2)),
+                                  key=f"{key_prefix}_tick_w")
+        ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)),
+                                           key=f"{key_prefix}_ticks_outside")
 
         st.markdown("---")
         st.markdown("**Grid (Major)**")
-        ps["show_grid"] = st.checkbox("Show major grid", bool(ps.get("show_grid", True)))
+        ps["show_grid"] = st.checkbox("Show major grid", bool(ps.get("show_grid", True)),
+                                       key=f"{key_prefix}_show_grid")
         gcol1, gcol2 = st.columns(2)
         with gcol1:
-            ps["grid_on_x"] = st.checkbox("Grid on X", bool(ps.get("grid_on_x", True)))
+            ps["grid_on_x"] = st.checkbox("Grid on X", bool(ps.get("grid_on_x", True)),
+                                           key=f"{key_prefix}_grid_on_x")
         with gcol2:
-            ps["grid_on_y"] = st.checkbox("Grid on Y", bool(ps.get("grid_on_y", True)))
+            ps["grid_on_y"] = st.checkbox("Grid on Y", bool(ps.get("grid_on_y", True)),
+                                           key=f"{key_prefix}_grid_on_y")
 
-        ps["grid_w"] = st.slider("Major grid width", 0.2, 2.5, float(ps.get("grid_w", 0.6)))
+        ps["grid_w"] = st.slider("Major grid width", 0.2, 2.5, float(ps.get("grid_w", 0.6)),
+                                  key=f"{key_prefix}_grid_w")
         grid_styles = ["solid", "dot", "dash", "dashdot"]
         ps["grid_dash"] = st.selectbox(
             "Major grid type", grid_styles,
-            index=grid_styles.index(ps.get("grid_dash", "dot"))
+            index=grid_styles.index(ps.get("grid_dash", "dot")),
+            key=f"{key_prefix}_grid_dash"
         )
-        ps["grid_color"] = st.color_picker("Major grid color", ps.get("grid_color", "#B0B0B0"))
-        ps["grid_opacity"] = st.slider("Major grid opacity", 0.0, 1.0, float(ps.get("grid_opacity", 0.6)))
+        ps["grid_color"] = st.color_picker("Major grid color", ps.get("grid_color", "#B0B0B0"),
+                                           key=f"{key_prefix}_grid_color")
+        ps["grid_opacity"] = st.slider("Major grid opacity", 0.0, 1.0, float(ps.get("grid_opacity", 0.6)),
+                                        key=f"{key_prefix}_grid_opacity")
 
         st.markdown("---")
         st.markdown("**Grid (Minor)**")
-        ps["show_minor_grid"] = st.checkbox("Show minor grid", bool(ps.get("show_minor_grid", False)))
-        ps["minor_grid_w"] = st.slider("Minor grid width", 0.1, 2.0, float(ps.get("minor_grid_w", 0.4)))
+        ps["show_minor_grid"] = st.checkbox("Show minor grid", bool(ps.get("show_minor_grid", False)),
+                                             key=f"{key_prefix}_show_minor_grid")
+        ps["minor_grid_w"] = st.slider("Minor grid width", 0.1, 2.0, float(ps.get("minor_grid_w", 0.4)),
+                                        key=f"{key_prefix}_minor_grid_w")
         ps["minor_grid_dash"] = st.selectbox(
             "Minor grid type", grid_styles,
             index=grid_styles.index(ps.get("minor_grid_dash", "dot")),
-            key="minor_grid_dash_select"
+            key=f"{key_prefix}_minor_grid_dash"
         )
-        ps["minor_grid_color"] = st.color_picker("Minor grid color", ps.get("minor_grid_color", "#D0D0D0"))
+        ps["minor_grid_color"] = st.color_picker("Minor grid color", ps.get("minor_grid_color", "#D0D0D0"),
+                                                  key=f"{key_prefix}_minor_grid_color")
         ps["minor_grid_opacity"] = st.slider(
-            "Minor grid opacity", 0.0, 1.0, float(ps.get("minor_grid_opacity", 0.45))
+            "Minor grid opacity", 0.0, 1.0, float(ps.get("minor_grid_opacity", 0.45)),
+            key=f"{key_prefix}_minor_grid_opacity"
         )
 
         st.markdown("---")
         st.markdown("**Curves**")
-        ps["line_width"] = st.slider("Global line width", 1.0, 7.0, float(ps.get("line_width", 2.4)))
-        ps["marker_size"] = st.slider("Marker size", 0, 14, int(ps.get("marker_size", 6)))
-        ps["std_alpha"] = st.slider("Std band opacity", 0.05, 0.6, float(ps.get("std_alpha", 0.18)))
+        ps["line_width"] = st.slider("Global line width", 1.0, 7.0, float(ps.get("line_width", 2.4)),
+                                      key=f"{key_prefix}_line_width")
+        ps["marker_size"] = st.slider("Marker size", 0, 14, int(ps.get("marker_size", 6)),
+                                       key=f"{key_prefix}_marker_size")
+        ps["std_alpha"] = st.slider("Std band opacity", 0.05, 0.6, float(ps.get("std_alpha", 0.18)),
+                                    key=f"{key_prefix}_std_alpha")
 
         st.markdown("---")
         st.markdown("**Colors**")
         palettes = ["Plotly", "D3", "G10", "T10", "Dark2", "Set1", "Set2",
                     "Pastel1", "Bold", "Prism", "Custom"]
-        ps["palette"] = st.selectbox("Palette", palettes, index=palettes.index(ps.get("palette", "Plotly")))
+        ps["palette"] = st.selectbox("Palette", palettes, index=palettes.index(ps.get("palette", "Plotly")),
+                                     key=f"{key_prefix}_palette")
 
         if ps["palette"] == "Custom":
             st.caption("Custom hex colors:")
@@ -497,26 +583,58 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups):
             new_cols = []
             cols_ui = st.columns(3)
             for i, c in enumerate(current):
-                new_cols.append(cols_ui[i % 3].text_input(f"Color {i+1}", c, key=f"cust_color_{i}"))
+                new_cols.append(cols_ui[i % 3].text_input(f"Color {i+1}", c, key=f"{key_prefix}_cust_color_{i}"))
             ps["custom_colors"] = new_cols
 
-        ps["pope_color"] = st.color_picker("Pope model color", ps.get("pope_color", "#000000"))
-        ps["kolmogorov_color"] = st.color_picker("Kolmogorov line color", ps.get("kolmogorov_color", "#666666"))
+        ps["pope_color"] = st.color_picker("Pope model color", ps.get("pope_color", "#000000"),
+                                           key=f"{key_prefix}_pope_color")
+        ps["kolmogorov_color"] = st.color_picker("Kolmogorov line color", ps.get("kolmogorov_color", "#666666"),
+                                                  key=f"{key_prefix}_kolmogorov_color")
 
         st.markdown("---")
         st.markdown("**Highlight curve**")
         ps["highlight_color"] = st.color_picker(
-            "Highlight color (time evolution)", ps.get("highlight_color", "#E41A1C")
+            "Highlight color (time evolution)", ps.get("highlight_color", "#E41A1C"),
+            key=f"{key_prefix}_highlight_color"
         )
 
         st.markdown("---")
         st.markdown("**Theme**")
-        template_selector(ps)
+        old_template = ps.get("template", "plotly_white")
+        templates = ["plotly_white", "simple_white", "plotly_dark"]
+        ps["template"] = st.selectbox("Template", templates,
+                                      index=templates.index(old_template),
+                                      key=f"{key_prefix}_template")
+        # Auto-update backgrounds when template changes
+        if ps["template"] != old_template:
+            if ps["template"] == "plotly_dark":
+                ps["plot_bgcolor"] = "#1e1e1e"
+                ps["paper_bgcolor"] = "#1e1e1e"
+            else:
+                ps["plot_bgcolor"] = "#FFFFFF"
+                ps["paper_bgcolor"] = "#FFFFFF"
 
         st.markdown("---")
-        render_axis_limits_ui(ps, key_prefix="energy")
+        render_axis_limits_ui(ps, key_prefix=key_prefix)
         st.markdown("---")
-        render_figure_size_ui(ps, key_prefix="energy")
+        render_figure_size_ui(ps, key_prefix=key_prefix)
+        st.markdown("---")
+        st.markdown("**Frame/Margin Size**")
+        col1, col2 = st.columns(2)
+        with col1:
+            ps["margin_left"] = st.number_input("Left margin (px)", min_value=0, max_value=200, 
+                                                value=int(ps.get("margin_left", 40)), 
+                                                step=5, key=f"{key_prefix}_margin_left")
+            ps["margin_top"] = st.number_input("Top margin (px)", min_value=0, max_value=200, 
+                                                value=int(ps.get("margin_top", 30)), 
+                                                step=5, key=f"{key_prefix}_margin_top")
+        with col2:
+            ps["margin_right"] = st.number_input("Right margin (px)", min_value=0, max_value=200, 
+                                                  value=int(ps.get("margin_right", 20)), 
+                                                  step=5, key=f"{key_prefix}_margin_right")
+            ps["margin_bottom"] = st.number_input("Bottom margin (px)", min_value=0, max_value=200, 
+                                                   value=int(ps.get("margin_bottom", 40)), 
+                                                   step=5, key=f"{key_prefix}_margin_bottom")
         st.markdown("---")
         
         # Single checkbox for both plots
@@ -525,38 +643,38 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups):
             ps["enable_per_sim_style"] = st.checkbox(
                 "Enable per-simulation overrides",
                 bool(ps.get("enable_per_sim_style", False)),
-                key="energy_enable_per_sim"
+                key=f"{key_prefix}_enable_per_sim"
             )
         
         if sim_groups:
             st.markdown("**Raw spectra per-simulation styles**")
             render_per_sim_style_ui(ps, sim_groups, style_key="per_sim_style_raw", 
-                                    key_prefix="raw", include_marker=True, show_enable_checkbox=False)
+                                    key_prefix=f"{key_prefix}_raw", include_marker=True, show_enable_checkbox=False)
 
         if norm_groups:
             st.markdown("**Normalized spectra per-simulation styles**")
             render_per_sim_style_ui(ps, norm_groups, style_key="per_sim_style_norm", 
-                                    key_prefix="norm", include_marker=True, show_enable_checkbox=False)
+                                    key_prefix=f"{key_prefix}_norm", include_marker=True, show_enable_checkbox=False)
 
         st.markdown("---")
         b1, b2 = st.columns(2)
         reset_pressed = False
         with b1:
-            if st.button("💾 Save Plot Style"):
-                st.session_state.plot_style = ps
+            if st.button("💾 Save Plot Style", key=f"{key_prefix}_save"):
+                st.session_state.plot_styles[selected_plot] = ps
                 _save_ui_metadata(data_dir)
-                st.success("Saved plot style.")
+                st.success(f"Saved style for '{selected_plot}'.")
         with b2:
-            if st.button("♻️ Reset Plot Style"):
-                st.session_state.plot_style = _default_plot_style()
+            if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+                st.session_state.plot_styles[selected_plot] = {}
                 _save_ui_metadata(data_dir)
-                st.toast("Reset + saved.", icon="♻️")
+                st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
                 reset_pressed = True
-                st.rerun()  # Rerun to update sidebar with default values
+                st.rerun()
 
     # Auto-save plot style changes (applies immediately) - but not if reset was pressed
     if not reset_pressed:
-        st.session_state.plot_style = ps
+        st.session_state.plot_styles[selected_plot] = ps
 
 
 
@@ -577,7 +695,7 @@ def main():
         "x": "Normalized wavenumber kη",
         "y": "Normalized spectrum E<sub>norm</sub>(kη)",
     })
-    st.session_state.setdefault("plot_style", _default_plot_style())
+    st.session_state.setdefault("plot_styles", {})
     st.session_state.setdefault("file_selection_mode", "directory")
     st.session_state.setdefault("custom_spectrum_files", [])
     st.session_state.setdefault("custom_norm_files", [])
@@ -791,12 +909,9 @@ def main():
 
     if st.session_state.get("_last_legend_dir") != str(data_dir):
         _load_ui_metadata(data_dir)
-        merged = _default_plot_style()
-        merged.update(st.session_state.plot_style or {})
-        st.session_state.plot_style = merged
+        if "plot_styles" not in st.session_state:
+            st.session_state.plot_styles = {}
         st.session_state["_last_legend_dir"] = str(data_dir)
-
-    ps = st.session_state.plot_style
 
     st.sidebar.header("Options")
     view_mode = st.sidebar.radio("View Mode", ["Time-Averaged", "Time Evolution"], index=0)
@@ -870,9 +985,8 @@ def main():
                     st.toast("Reset + saved.", icon="♻️")
 
     # Full plot style sidebar (includes backgrounds, ticks, per-sim, highlight)
-    plot_style_sidebar(data_dir, sim_groups, norm_groups)
-    ps = st.session_state.plot_style
-    colors = _get_palette(ps)
+    plot_names = ["Raw Energy Spectrum", "Normalized Spectrum", "Time Evolution"]
+    plot_style_sidebar(data_dir, sim_groups, norm_groups, plot_names)
 
     # ======================================================
     # TIME-AVERAGED
@@ -902,6 +1016,11 @@ def main():
         kmin = st.sidebar.number_input("Inertial range k_min", min_value=1.0, value=3.0)
         kmax = st.sidebar.number_input("Inertial range k_max", min_value=kmin + 1e-6, value=20.0)
 
+        # Get plot-specific style
+        plot_name_raw = "Raw Energy Spectrum"
+        ps_raw = get_plot_style(plot_name_raw)
+        colors_raw = _get_palette(ps_raw)
+
         fig_raw = go.Figure()
         plotted_any = False
 
@@ -915,7 +1034,7 @@ def main():
                 continue
 
             color, lw, dash, marker, msize, override_on = resolve_line_style(
-                sim_prefix, idx, colors, ps, 
+                sim_prefix, idx, colors_raw, ps_raw, 
                 style_key="per_sim_style_raw",
                 include_marker=True,
                 default_marker="circle"
@@ -944,7 +1063,7 @@ def main():
 
             if show_std:
                 rgb = hex_to_rgb(color)
-                fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps['std_alpha']})"
+                fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps_raw['std_alpha']})"
                 fig_raw.add_trace(go.Scatter(
                     x=np.concatenate([k_vals, k_vals[::-1]]),
                     y=np.concatenate([E_avg - E_std, (E_avg + E_std)[::-1]]),
@@ -956,7 +1075,7 @@ def main():
                 ))
 
             if show_kolm and idx == 0:
-                fig_raw = _add_kolmogorov_line(fig_raw, k_vals, E_avg, kmin, kmax, ps)
+                fig_raw = _add_kolmogorov_line(fig_raw, k_vals, E_avg, kmin, kmax, ps_raw)
 
         if not plotted_any:
             st.info("No valid spectra could be plotted from selected range.")
@@ -969,15 +1088,19 @@ def main():
             yaxis_type="log",
             legend_title="Simulation",
             height=500,  # Default, will be overridden if custom size is enabled
-            margin=dict(l=40, r=20, t=30, b=40),
         )
-        layout_kwargs_raw = apply_axis_limits(layout_kwargs_raw, ps)
-        layout_kwargs_raw = apply_figure_size(layout_kwargs_raw, ps)
+        layout_kwargs_raw = apply_axis_limits(layout_kwargs_raw, ps_raw)
+        layout_kwargs_raw = apply_figure_size(layout_kwargs_raw, ps_raw)
         fig_raw.update_layout(**layout_kwargs_raw)
-        fig_raw = apply_plot_style(fig_raw, ps)
+        fig_raw = apply_plot_style(fig_raw, ps_raw)
 
         fig_norm = None
         if show_normalized and norm_groups:
+            # Get plot-specific style
+            plot_name_norm = "Normalized Spectrum"
+            ps_norm = get_plot_style(plot_name_norm)
+            colors_norm = _get_palette(ps_norm)
+            
             fig_norm = go.Figure()
 
             for idx, (norm_prefix, files) in enumerate(sorted(norm_groups.items())):
@@ -990,7 +1113,7 @@ def main():
                     continue
 
                 color, lw, dash, marker, msize, override_on = resolve_line_style(
-                    norm_prefix, idx, colors, ps, 
+                    norm_prefix, idx, colors_norm, ps_norm, 
                     style_key="per_sim_style_norm",
                     include_marker=True,
                     default_marker="circle"
@@ -1018,7 +1141,7 @@ def main():
 
                 if show_std:
                     rgb = hex_to_rgb(color)
-                    fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps['std_alpha']})"
+                    fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps_norm['std_alpha']})"
                     fig_norm.add_trace(go.Scatter(
                         x=np.concatenate([keta, keta[::-1]]),
                         y=np.concatenate([En_avg - En_std, (En_avg + En_std)[::-1]]),
@@ -1033,7 +1156,7 @@ def main():
                     x=keta, y=Ep_avg,
                     mode="lines",
                     name=f"{legend_name} Pope",
-                    line=dict(color=ps["pope_color"], width=ps["line_width"], dash="dash"),
+                    line=dict(color=ps_norm["pope_color"], width=ps_norm["line_width"], dash="dash"),
                 ))
 
             layout_kwargs = dict(
@@ -1043,12 +1166,11 @@ def main():
                 yaxis_type="log",
                 legend_title="Simulation",
                 height=500,  # Default, will be overridden if custom size is enabled
-                margin=dict(l=40, r=20, t=30, b=40),
             )
-            layout_kwargs = apply_axis_limits(layout_kwargs, ps)
-            layout_kwargs = apply_figure_size(layout_kwargs, ps)
+            layout_kwargs = apply_axis_limits(layout_kwargs, ps_norm)
+            layout_kwargs = apply_figure_size(layout_kwargs, ps_norm)
             fig_norm.update_layout(**layout_kwargs)
-            fig_norm = apply_plot_style(fig_norm, ps)
+            fig_norm = apply_plot_style(fig_norm, ps_norm)
 
         if fig_norm is not None:
             colL, colR = st.columns(2)
@@ -1113,6 +1235,10 @@ def main():
         highlight_file = thin_files[sel_pos]
         highlight_iter = thin_iters[sel_pos]
 
+        # Get plot-specific style
+        plot_name_evol = "Time Evolution"
+        ps_evol = get_plot_style(plot_name_evol)
+
         figE = go.Figure()
 
         for f, it in zip(thin_files, thin_iters):
@@ -1123,7 +1249,7 @@ def main():
             figE.add_trace(go.Scatter(
                 x=k, y=E,
                 mode="lines",
-                line=dict(width=max(1.0, ps["line_width"] * 0.6)),
+                line=dict(width=max(1.0, ps_evol["line_width"] * 0.6)),
                 opacity=0.25,
                 showlegend=False,
             ))
@@ -1134,7 +1260,7 @@ def main():
                 x=kH, y=EH,
                 mode="lines",
                 name=f"Highlighted iter {highlight_iter}",
-                line=dict(width=ps["line_width"] * 1.2, color=ps.get("highlight_color", "#E41A1C")),
+                line=dict(width=ps_evol["line_width"] * 1.2, color=ps_evol.get("highlight_color", "#E41A1C")),
                 opacity=1.0
             ))
         except Exception as e:
@@ -1145,15 +1271,15 @@ def main():
             yaxis_title=st.session_state.axis_labels_raw["y"],
             xaxis_type="log",
             yaxis_type="log",
-            height=500,  # Default, will be overridden if custom size is enabled
-            margin=dict(l=40, r=20, t=30, b=40),
+            width=700,  # Width less than height
+            height=600,  # Reduced for time evolution figure
         )
-        layout_kwargs_evol = apply_axis_limits(layout_kwargs_evol, ps)
-        layout_kwargs_evol = apply_figure_size(layout_kwargs_evol, ps)
+        layout_kwargs_evol = apply_axis_limits(layout_kwargs_evol, ps_evol)
+        # Don't apply figure size override for time evolution to keep fixed width
         figE.update_layout(**layout_kwargs_evol)
-        figE = apply_plot_style(figE, ps)
+        figE = apply_plot_style(figE, ps_evol)
 
-        st.plotly_chart(figE, use_container_width=True)
+        st.plotly_chart(figE, use_container_width=False)
         capture_button(figE, title=f"Energy Spectra Time Evolution - {sim_sel}", source_page="Energy Spectra")
 
         st.subheader("Export time evolution figure")

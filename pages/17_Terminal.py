@@ -17,6 +17,7 @@ import plotly.express as px
 from datetime import datetime
 
 from utils.theme_config import inject_theme_css, get_theme_list
+st.set_page_config(page_icon="⚫")
 
 def inject_terminal_css():
     """Inject professional terminal CSS styling"""

@@ -19,6 +19,8 @@ from data_readers.binary_reader import read_tau_analysis_file
 from utils.file_detector import detect_simulation_files
 from utils.theme_config import inject_theme_css
 
+st.set_page_config(page_icon="⚫")
+
 def main():
     # Apply theme CSS (persists across pages)
     inject_theme_css()

@@ -41,7 +41,7 @@ import glob
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from utils.theme_config import inject_theme_css, template_selector
+from utils.theme_config import inject_theme_css
 from utils.file_detector import (
     detect_simulation_files,
     group_files_by_simulation,
@@ -52,6 +52,7 @@ from utils.plot_style import resolve_line_style, render_per_sim_style_ui, render
 
 # Binary/text readers (binary is required by plan, text is optional)
 from data_readers.binary_reader import read_structure_function_file
+st.set_page_config(page_icon="⚫")
 try:
     from data_readers.text_reader import read_structure_function_txt
 except Exception:
@@ -68,7 +69,7 @@ def _default_labelify(name: str) -> str:
     return name.replace("_", " ").title()
 
 def _load_ui_metadata(data_dir: Path):
-    """Load structure legends + axis labels + plot_style from legend_names.json."""
+    """Load structure legends + axis labels + plot_styles from legend_names.json."""
     path = _legend_json_path(data_dir)
     if not path.exists():
         return
@@ -76,7 +77,18 @@ def _load_ui_metadata(data_dir: Path):
         meta = json.loads(path.read_text(encoding="utf-8"))
         st.session_state.structure_legend_names = meta.get("structure_legends", {})
         st.session_state.axis_labels_structure = meta.get("axis_labels_structure", {})
-        st.session_state.plot_style = meta.get("plot_style", st.session_state.get("plot_style", {}))
+        
+        # Load plot_styles (per-plot system)
+        st.session_state.plot_styles = meta.get("plot_styles", {})
+        # Backward compatibility: if plot_styles doesn't exist, migrate from old plot_style
+        if not st.session_state.plot_styles and "plot_style" in meta:
+            # Migrate old single plot_style to all plots
+            old_style = meta.get("plot_style", {})
+            st.session_state.plot_styles = {
+                "S_p(r) vs r": old_style.copy(),
+                "ESS (S_p vs S_3)": old_style.copy(),
+                "Anomalies (ξₚ − p/3)": old_style.copy(),
+            }
     except Exception:
         st.toast("legend_names.json exists but could not be read. Using defaults.", icon="⚠️")
 
@@ -93,7 +105,7 @@ def _save_ui_metadata(data_dir: Path):
     old.update({
         "structure_legends": st.session_state.get("structure_legend_names", {}),
         "axis_labels_structure": st.session_state.get("axis_labels_structure", {}),
-        "plot_style": st.session_state.get("plot_style", {}),
+        "plot_styles": st.session_state.get("plot_styles", {}),
     })
 
     try:
@@ -245,6 +257,7 @@ def export_panel(fig, out_dir: Path, base_name: str):
                 return
 
             errors = []
+            chrome_error = False
             for f_label in fmts:
                 ext = _EXPORT_FORMATS[f_label]
                 out = out_dir / f"{base_name}.{ext}"
@@ -261,14 +274,38 @@ def export_panel(fig, out_dir: Path, base_name: str):
 
                     fig.write_image(str(out), scale=scale, **kwargs)
                 except Exception as e:
-                    errors.append((out.name, str(e)))
+                    error_msg = str(e)
+                    errors.append((out.name, error_msg))
+                    if "Chrome" in error_msg or "chrome" in error_msg.lower():
+                        chrome_error = True
 
             if errors:
-                st.error(
-                    "Some exports failed. Ensure kaleido is installed:\n"
-                    "pip install -U kaleido\n\n"
-                    + "\n".join([f"- {n}: {msg}" for n, msg in errors])
-                )
+                error_text = "Some exports failed.\n\n"
+                
+                if chrome_error:
+                    error_text += (
+                        "**Issue:** Kaleido (the image export library) requires Google Chrome to be installed on your system.\n\n"
+                        "**What you need:** Google Chrome browser installed on your computer.\n\n"
+                        "**Solution - Choose one:**\n\n"
+                        "**Option 1 (Recommended):** Auto-install Chrome via command:\n"
+                        "```bash\n"
+                        "kaleido_get_chrome\n"
+                        "```\n"
+                        "This command downloads and installs Chrome automatically.\n\n"
+                        "**Option 2:** Install Chrome manually:\n"
+                        "1. Download Chrome from: https://www.google.com/chrome/\n"
+                        "2. Install it following the installer instructions\n"
+                        "3. Restart your application\n\n"
+                        "**Note:** After installing Chrome, you may need to update kaleido:\n"
+                        "```bash\n"
+                        "pip install -U kaleido\n"
+                        "```\n\n"
+                    )
+                else:
+                    error_text += "Ensure kaleido is installed:\n```bash\npip install -U kaleido\n```\n\n"
+                
+                error_text += "**Failed exports:**\n" + "\n".join([f"- {n}: {msg}" for n, msg in errors])
+                st.error(error_text)
             else:
                 st.success("All selected exports saved to dataset folder.")
 
@@ -330,6 +367,12 @@ def _default_plot_style():
         "enable_custom_size": False,
         "figure_width": 800,
         "figure_height": 500,
+        
+        # Frame/Margin size
+        "margin_left": 50,
+        "margin_right": 20,
+        "margin_top": 30,
+        "margin_bottom": 50,
     }
 
 def _get_palette(ps):
@@ -365,6 +408,12 @@ def apply_plot_style(fig, ps):
         hovermode="x unified",
         plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
         paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
+        margin=dict(
+            l=ps.get("margin_left", 50),
+            r=ps.get("margin_right", 20),
+            t=ps.get("margin_top", 30),
+            b=ps.get("margin_bottom", 50)
+        ),
     )
 
     tick_dir = "outside" if ps["ticks_outside"] else "inside"
@@ -412,6 +461,25 @@ def apply_plot_style(fig, ps):
     )
     return fig
 
+def _normalize_plot_name(plot_name: str) -> str:
+    """Normalize plot name to a valid key format."""
+    return plot_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_").replace("ₚ", "p").replace("ξ", "xi").replace("/", "_")
+
+def get_plot_style(plot_name: str):
+    """Get plot-specific style, merging defaults with plot-specific overrides."""
+    default = _default_plot_style()
+    plot_styles = st.session_state.get("plot_styles", {})
+    plot_style = plot_styles.get(plot_name, {})
+    # Deep merge: start with defaults, then update with plot-specific overrides
+    merged = default.copy()
+    for key, value in plot_style.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merged[key].copy()
+            merged[key].update(value)
+        else:
+            merged[key] = value
+    return merged
+
 def _ensure_per_sim_defaults(ps, sim_groups):
     ps.setdefault("per_sim_style_structure", {})
     for k in sim_groups.keys():
@@ -424,109 +492,189 @@ def _ensure_per_sim_defaults(ps, sim_groups):
             "msize": None,
         })
 
-def plot_style_sidebar(data_dir: Path, sim_groups):
-    ps = dict(st.session_state.plot_style)
+def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
+    # Plot selector
+    selected_plot = st.sidebar.selectbox(
+        "Select plot to configure",
+        plot_names,
+        key="structure_plot_selector"
+    )
+    
+    # Get or create plot-specific style
+    if "plot_styles" not in st.session_state:
+        st.session_state.plot_styles = {}
+    if selected_plot not in st.session_state.plot_styles:
+        st.session_state.plot_styles[selected_plot] = {}
+    
+    # Start with defaults, merge with plot-specific overrides
+    ps = get_plot_style(selected_plot)
+    plot_key = _normalize_plot_name(selected_plot)
     _ensure_per_sim_defaults(ps, sim_groups)
+    
+    # Create unique key prefix for all widgets
+    key_prefix = f"structure_{plot_key}"
 
     with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
+        st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
-        ps["font_family"] = st.selectbox("Font family", fonts, index=fonts.index(ps.get("font_family", "Arial")))
-        ps["font_size"] = st.slider("Base/global font size", 8, 26, int(ps.get("font_size", 14)))
-        ps["title_size"] = st.slider("Plot title size", 10, 32, int(ps.get("title_size", 16)))
-        ps["legend_size"] = st.slider("Legend font size", 8, 24, int(ps.get("legend_size", 12)))
-        ps["tick_font_size"] = st.slider("Tick label font size", 6, 24, int(ps.get("tick_font_size", 12)))
-        ps["axis_title_size"] = st.slider("Axis title font size", 8, 28, int(ps.get("axis_title_size", 14)))
+        ps["font_family"] = st.selectbox("Font family", fonts, index=fonts.index(ps.get("font_family", "Arial")),
+                                         key=f"{key_prefix}_font_family")
+        ps["font_size"] = st.slider("Base/global font size", 8, 26, int(ps.get("font_size", 14)),
+                                     key=f"{key_prefix}_font_size")
+        ps["title_size"] = st.slider("Plot title size", 10, 32, int(ps.get("title_size", 16)),
+                                      key=f"{key_prefix}_title_size")
+        ps["legend_size"] = st.slider("Legend font size", 8, 24, int(ps.get("legend_size", 12)),
+                                       key=f"{key_prefix}_legend_size")
+        ps["tick_font_size"] = st.slider("Tick label font size", 6, 24, int(ps.get("tick_font_size", 12)),
+                                          key=f"{key_prefix}_tick_font_size")
+        ps["axis_title_size"] = st.slider("Axis title font size", 8, 28, int(ps.get("axis_title_size", 14)),
+                                           key=f"{key_prefix}_axis_title_size")
 
         st.markdown("---")
         st.markdown("**Backgrounds**")
-        ps["plot_bgcolor"] = st.color_picker("Plot background (inside axes)", ps.get("plot_bgcolor", "#FFFFFF"))
-        ps["paper_bgcolor"] = st.color_picker("Paper background (outside axes)", ps.get("paper_bgcolor", "#FFFFFF"))
+        ps["plot_bgcolor"] = st.color_picker("Plot background (inside axes)", ps.get("plot_bgcolor", "#FFFFFF"),
+                                             key=f"{key_prefix}_plot_bgcolor")
+        ps["paper_bgcolor"] = st.color_picker("Paper background (outside axes)", ps.get("paper_bgcolor", "#FFFFFF"),
+                                               key=f"{key_prefix}_paper_bgcolor")
 
         st.markdown("---")
         st.markdown("**Ticks**")
-        ps["tick_len"] = st.slider("Tick length", 2, 14, int(ps.get("tick_len", 6)))
-        ps["tick_w"] = st.slider("Tick width", 0.5, 3.5, float(ps.get("tick_w", 1.2)))
-        ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)))
+        ps["tick_len"] = st.slider("Tick length", 2, 14, int(ps.get("tick_len", 6)),
+                                    key=f"{key_prefix}_tick_len")
+        ps["tick_w"] = st.slider("Tick width", 0.5, 3.5, float(ps.get("tick_w", 1.2)),
+                                  key=f"{key_prefix}_tick_w")
+        ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)),
+                                           key=f"{key_prefix}_ticks_outside")
 
         st.markdown("---")
         st.markdown("**Grid (Major)**")
-        ps["show_grid"] = st.checkbox("Show major grid", bool(ps.get("show_grid", True)))
+        ps["show_grid"] = st.checkbox("Show major grid", bool(ps.get("show_grid", True)),
+                                       key=f"{key_prefix}_show_grid")
         gcol1, gcol2 = st.columns(2)
         with gcol1:
-            ps["grid_on_x"] = st.checkbox("Grid on X", bool(ps.get("grid_on_x", True)))
+            ps["grid_on_x"] = st.checkbox("Grid on X", bool(ps.get("grid_on_x", True)),
+                                           key=f"{key_prefix}_grid_on_x")
         with gcol2:
-            ps["grid_on_y"] = st.checkbox("Grid on Y", bool(ps.get("grid_on_y", True)))
-        ps["grid_w"] = st.slider("Major grid width", 0.2, 2.5, float(ps.get("grid_w", 0.6)))
+            ps["grid_on_y"] = st.checkbox("Grid on Y", bool(ps.get("grid_on_y", True)),
+                                           key=f"{key_prefix}_grid_on_y")
+        ps["grid_w"] = st.slider("Major grid width", 0.2, 2.5, float(ps.get("grid_w", 0.6)),
+                                  key=f"{key_prefix}_grid_w")
         grid_styles = ["solid", "dot", "dash", "dashdot"]
         ps["grid_dash"] = st.selectbox("Major grid type", grid_styles,
-                                       index=grid_styles.index(ps.get("grid_dash", "dot")))
-        ps["grid_color"] = st.color_picker("Major grid color", ps.get("grid_color", "#B0B0B0"))
-        ps["grid_opacity"] = st.slider("Major grid opacity", 0.0, 1.0, float(ps.get("grid_opacity", 0.6)))
+                                       index=grid_styles.index(ps.get("grid_dash", "dot")),
+                                       key=f"{key_prefix}_grid_dash")
+        ps["grid_color"] = st.color_picker("Major grid color", ps.get("grid_color", "#B0B0B0"),
+                                           key=f"{key_prefix}_grid_color")
+        ps["grid_opacity"] = st.slider("Major grid opacity", 0.0, 1.0, float(ps.get("grid_opacity", 0.6)),
+                                        key=f"{key_prefix}_grid_opacity")
 
         st.markdown("---")
         st.markdown("**Grid (Minor)**")
-        ps["show_minor_grid"] = st.checkbox("Show minor grid", bool(ps.get("show_minor_grid", False)))
-        ps["minor_grid_w"] = st.slider("Minor grid width", 0.1, 2.0, float(ps.get("minor_grid_w", 0.4)))
+        ps["show_minor_grid"] = st.checkbox("Show minor grid", bool(ps.get("show_minor_grid", False)),
+                                             key=f"{key_prefix}_show_minor_grid")
+        ps["minor_grid_w"] = st.slider("Minor grid width", 0.1, 2.0, float(ps.get("minor_grid_w", 0.4)),
+                                        key=f"{key_prefix}_minor_grid_w")
         ps["minor_grid_dash"] = st.selectbox("Minor grid type", grid_styles,
                                              index=grid_styles.index(ps.get("minor_grid_dash", "dot")),
-                                             key="minor_grid_dash_struct")
-        ps["minor_grid_color"] = st.color_picker("Minor grid color", ps.get("minor_grid_color", "#D0D0D0"))
+                                             key=f"{key_prefix}_minor_grid_dash")
+        ps["minor_grid_color"] = st.color_picker("Minor grid color", ps.get("minor_grid_color", "#D0D0D0"),
+                                                  key=f"{key_prefix}_minor_grid_color")
         ps["minor_grid_opacity"] = st.slider("Minor grid opacity", 0.0, 1.0,
-                                             float(ps.get("minor_grid_opacity", 0.45)))
+                                             float(ps.get("minor_grid_opacity", 0.45)),
+                                             key=f"{key_prefix}_minor_grid_opacity")
 
         st.markdown("---")
         st.markdown("**Curves**")
-        ps["line_width"] = st.slider("Global line width", 0.5, 7.0, float(ps.get("line_width", 2.4)))
-        ps["marker_size"] = st.slider("Global marker size", 0, 14, int(ps.get("marker_size", 6)))
-        ps["std_alpha"] = st.slider("Std band opacity", 0.05, 0.6, float(ps.get("std_alpha", 0.18)))
+        ps["line_width"] = st.slider("Global line width", 0.5, 7.0, float(ps.get("line_width", 2.4)),
+                                      key=f"{key_prefix}_line_width")
+        ps["marker_size"] = st.slider("Global marker size", 0, 14, int(ps.get("marker_size", 6)),
+                                       key=f"{key_prefix}_marker_size")
+        ps["std_alpha"] = st.slider("Std band opacity", 0.05, 0.6, float(ps.get("std_alpha", 0.18)),
+                                    key=f"{key_prefix}_std_alpha")
 
         st.markdown("---")
         st.markdown("**Colors**")
         palettes = ["Plotly", "D3", "G10", "T10", "Dark2", "Set1", "Set2",
                     "Pastel1", "Bold", "Prism", "Custom"]
         ps["palette"] = st.selectbox("Palette", palettes,
-                                     index=palettes.index(ps.get("palette", "Plotly")))
+                                     index=palettes.index(ps.get("palette", "Plotly")),
+                                     key=f"{key_prefix}_palette")
         if ps["palette"] == "Custom":
             st.caption("Custom hex colors:")
             current = ps.get("custom_colors", []) or ["#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e"]
             new_cols = []
             cols_ui = st.columns(3)
             for i, c in enumerate(current):
-                new_cols.append(cols_ui[i % 3].text_input(f"Color {i+1}", c, key=f"cust_color_struct_{i}"))
+                new_cols.append(cols_ui[i % 3].text_input(f"Color {i+1}", c, key=f"{key_prefix}_cust_color_{i}"))
             ps["custom_colors"] = new_cols
 
         st.markdown("---")
         st.markdown("**Theme**")
-        template_selector(ps)
+        old_template = ps.get("template", "plotly_white")
+        templates = ["plotly_white", "simple_white", "plotly_dark"]
+        ps["template"] = st.selectbox("Template", templates,
+                                      index=templates.index(old_template),
+                                      key=f"{key_prefix}_template")
+        # Auto-update backgrounds when template changes
+        if ps["template"] != old_template:
+            if ps["template"] == "plotly_dark":
+                ps["plot_bgcolor"] = "#1e1e1e"
+                ps["paper_bgcolor"] = "#1e1e1e"
+            else:
+                ps["plot_bgcolor"] = "#FFFFFF"
+                ps["paper_bgcolor"] = "#FFFFFF"
 
         st.markdown("---")
-        render_axis_limits_ui(ps, key_prefix="struct")
+        render_axis_limits_ui(ps, key_prefix=key_prefix)
         st.markdown("---")
-        render_figure_size_ui(ps, key_prefix="struct")
+        render_figure_size_ui(ps, key_prefix=key_prefix)
+        st.markdown("---")
+        st.markdown("**Frame/Margin Size**")
+        col1, col2 = st.columns(2)
+        with col1:
+            ps["margin_left"] = st.number_input("Left margin (px)", min_value=0, max_value=200, 
+                                                value=int(ps.get("margin_left", 50)), 
+                                                step=5, key=f"{key_prefix}_margin_left")
+            ps["margin_top"] = st.number_input("Top margin (px)", min_value=0, max_value=200, 
+                                                value=int(ps.get("margin_top", 30)), 
+                                                step=5, key=f"{key_prefix}_margin_top")
+        with col2:
+            ps["margin_right"] = st.number_input("Right margin (px)", min_value=0, max_value=200, 
+                                                  value=int(ps.get("margin_right", 20)), 
+                                                  step=5, key=f"{key_prefix}_margin_right")
+            ps["margin_bottom"] = st.number_input("Bottom margin (px)", min_value=0, max_value=200, 
+                                                   value=int(ps.get("margin_bottom", 50)), 
+                                                   step=5, key=f"{key_prefix}_margin_bottom")
         st.markdown("---")
         render_per_sim_style_ui(ps, sim_groups, style_key="per_sim_style_structure", 
-                                key_prefix="struct", include_marker=True)
+                                key_prefix=f"{key_prefix}_sim", include_marker=True)
 
         st.markdown("---")
         b1, b2 = st.columns(2)
         reset_pressed = False
         with b1:
-            if st.button("💾 Save Plot Style"):
-                st.session_state.plot_style = ps
+            if st.button("💾 Save Plot Style", key=f"{key_prefix}_save"):
+                st.session_state.plot_styles[selected_plot] = ps
                 _save_ui_metadata(data_dir)
-                st.success("Saved plot style.")
+                st.success(f"Saved style for '{selected_plot}'.")
         with b2:
-            if st.button("♻️ Reset Plot Style"):
-                st.session_state.plot_style = _default_plot_style()
+            if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+                st.session_state.plot_styles[selected_plot] = {}
                 _save_ui_metadata(data_dir)
-                st.toast("Reset + saved.", icon="♻️")
+                st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
                 reset_pressed = True
-                st.rerun()  # Rerun to update sidebar with default values
+                st.rerun()
 
     # Auto-save plot style changes (applies immediately) - but not if reset was pressed
     if not reset_pressed:
-        st.session_state.plot_style = ps
+        # Make a copy to avoid modifying the original dict reference
+        ps_copy = ps.copy()
+        # Deep copy nested dicts
+        for key, value in ps.items():
+            if isinstance(value, dict):
+                ps_copy[key] = value.copy()
+        st.session_state.plot_styles[selected_plot] = ps_copy
 
 
 def _color_to_rgb_tuple(color):
@@ -542,28 +690,6 @@ def _color_to_rgb_tuple(color):
     except (ValueError, TypeError):
         # Fallback to default if conversion fails
         return (0, 0, 0)
-
-def _resolve_line_style(sim_prefix, idx, colors, ps):
-    default_color = colors[idx % len(colors)]
-    default_width = ps["line_width"]
-    default_dash = "solid"
-    default_marker = "circle"
-    default_msize = ps["marker_size"]
-
-    if not ps.get("enable_per_sim_style", False):
-        return default_color, default_width, default_dash, default_marker, default_msize, False
-
-    s = ps.get("per_sim_style_structure", {}).get(sim_prefix, {})
-    if not s.get("enabled", False):
-        return default_color, default_width, default_dash, default_marker, default_msize, False
-
-    color = s.get("color") or default_color
-    width = float(s.get("width") or default_width)
-    dash = s.get("dash") or default_dash
-    marker = s.get("marker") or default_marker
-    msize = int(s.get("msize") or default_msize)
-    return color, width, dash, marker, msize, True
-
 
 # ==========================================================
 # Page main
@@ -596,17 +722,14 @@ def main():
         "y_ess": r"$S_p(r)$",
         "y_anom": r"$\xi_p - p/3$",
     })
-    st.session_state.setdefault("plot_style", _default_plot_style())
+    st.session_state.setdefault("plot_styles", {})
 
     # Load json once per dataset change
     if st.session_state.get("_last_struct_dir") != str(data_dir):
         _load_ui_metadata(data_dir)
-        merged = _default_plot_style()
-        merged.update(st.session_state.plot_style or {})
-        st.session_state.plot_style = merged
+        if "plot_styles" not in st.session_state:
+            st.session_state.plot_styles = {}
         st.session_state["_last_struct_dir"] = str(data_dir)
-
-    ps = st.session_state.plot_style
 
     # Collect files from all directories
     all_bin_files = []
@@ -829,9 +952,8 @@ def main():
                 st.rerun()
 
     # Full style sidebar
-    plot_style_sidebar(data_dir, sim_groups)
-    ps = st.session_state.plot_style
-    colors = _get_palette(ps)
+    plot_names = ["S_p(r) vs r", "ESS (S_p vs S_3)", "Anomalies (ξₚ − p/3)"]
+    plot_style_sidebar(data_dir, sim_groups, plot_names)
 
     tabs = st.tabs(["Sₚ(r) vs r", "ESS (Sₚ vs S₃)", "Scaling Exponents Table"])
 
@@ -840,6 +962,12 @@ def main():
     # ============================================
     with tabs[0]:
         st.subheader("Time-averaged Structure Functions")
+        
+        # Get plot-specific style
+        plot_name_sp = "S_p(r) vs r"
+        ps_sp = get_plot_style(plot_name_sp)
+        colors_sp = _get_palette(ps_sp)
+        
         fig_sp = go.Figure()
         plotted_any = False
 
@@ -859,7 +987,7 @@ def main():
 
             legend_base = st.session_state.structure_legend_names.get(sim_prefix, _default_labelify(sim_prefix))
             color_base, lw_base, dash_base, marker_base, msize_base, override_on = resolve_line_style(
-                sim_prefix, idx, colors, ps,
+                sim_prefix, idx, colors_sp, ps_sp,
                 style_key="per_sim_style_structure",
                 include_marker=True,
                 default_marker="circle"
@@ -908,7 +1036,7 @@ def main():
 
                 if show_std_band and ystd is not None:
                     rgb = _color_to_rgb_tuple(line_color)
-                    fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps['std_alpha']})"
+                    fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps_sp['std_alpha']})"
                     fig_sp.add_trace(go.Scatter(
                         x=np.concatenate([r, r[::-1]]),
                         y=np.concatenate([y - ystd, (y + ystd)[::-1]]),
@@ -929,12 +1057,11 @@ def main():
                 yaxis_type="log",
                 legend_title="Simulation / Order",
                 height=500,  # Default, will be overridden if custom size is enabled
-                margin=dict(l=50, r=20, t=30, b=50),
             )
-            layout_kwargs = apply_axis_limits(layout_kwargs, ps)
-            layout_kwargs = apply_figure_size(layout_kwargs, ps)
+            layout_kwargs = apply_axis_limits(layout_kwargs, ps_sp)
+            layout_kwargs = apply_figure_size(layout_kwargs, ps_sp)
             fig_sp.update_layout(**layout_kwargs)
-            fig_sp = apply_plot_style(fig_sp, ps)
+            fig_sp = apply_plot_style(fig_sp, ps_sp)
             st.plotly_chart(fig_sp, use_container_width=True)
             capture_button(fig_sp, title="Structure Functions S_p(r)", source_page="Structure Functions")
             export_panel(fig_sp, data_dir, base_name="structure_functions_sp")
@@ -944,6 +1071,12 @@ def main():
     # ============================================
     with tabs[1]:
         st.subheader("Extended Self-Similarity (ESS)")
+        
+        # Get plot-specific style
+        plot_name_ess = "ESS (S_p vs S_3)"
+        ps_ess = get_plot_style(plot_name_ess)
+        colors_ess = _get_palette(ps_ess)
+        
         fig_ess = go.Figure()
         plotted_any = False
 
@@ -965,7 +1098,7 @@ def main():
 
             legend_base = st.session_state.structure_legend_names.get(sim_prefix, _default_labelify(sim_prefix))
             color, lw, dash, marker, msize, override_on = resolve_line_style(
-                sim_prefix, idx, colors, ps,
+                sim_prefix, idx, colors_ess, ps_ess,
                 style_key="per_sim_style_structure",
                 include_marker=True,
                 default_marker="circle"
@@ -1034,7 +1167,7 @@ def main():
                 # Add shaded band if requested (for y-direction uncertainty)
                 if show_std_band and y_std is not None:
                     rgb = _color_to_rgb_tuple(color)
-                    fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps['std_alpha']})"
+                    fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps_ess['std_alpha']})"
                     fig_ess.add_trace(go.Scatter(
                         x=np.concatenate([x, x[::-1]]),
                         y=np.concatenate([y - y_std, (y + y_std)[::-1]]),
@@ -1071,21 +1204,31 @@ def main():
                 yaxis_type="log",
                 legend_title="Simulation / Order",
                 height=500,  # Default, will be overridden if custom size is enabled
-                margin=dict(l=50, r=20, t=30, b=50),
             )
-            layout_kwargs = apply_axis_limits(layout_kwargs, ps)
-            layout_kwargs = apply_figure_size(layout_kwargs, ps)
+            layout_kwargs = apply_axis_limits(layout_kwargs, ps_ess)
+            layout_kwargs = apply_figure_size(layout_kwargs, ps_ess)
             fig_ess.update_layout(**layout_kwargs)
-            fig_ess = apply_plot_style(fig_ess, ps)
+            fig_ess = apply_plot_style(fig_ess, ps_ess)
             st.plotly_chart(fig_ess, use_container_width=True)
             capture_button(fig_ess, title="Structure Functions ESS", source_page="Structure Functions")
             export_panel(fig_ess, data_dir, base_name="structure_functions_ess")
 
             st.markdown("#### Anomalies (ξₚ − p/3)")
+            
+            # Get plot-specific style
+            plot_name_anom = "Anomalies (ξₚ − p/3)"
+            ps_anom = get_plot_style(plot_name_anom)
+            colors_anom = _get_palette(ps_anom)
+            
             fig_anom = go.Figure()
 
             for idx, sim_prefix in enumerate(sorted(xi_all.keys())):
-                color, lw, dash, marker, msize, override_on = _resolve_line_style(sim_prefix, idx, colors, ps)
+                color, lw, dash, marker, msize, override_on = resolve_line_style(
+                    sim_prefix, idx, colors_anom, ps_anom,
+                    style_key="per_sim_style_structure",
+                    include_marker=True,
+                    default_marker="circle"
+                )
                 ps_show = sorted(xi_all[sim_prefix].keys())
                 yvals = [anom_all[sim_prefix][p] for p in ps_show]
                 yerr = [xi_err_all[sim_prefix].get(p, 0.0) for p in ps_show]
@@ -1122,14 +1265,16 @@ def main():
 
             fig_anom.add_hline(y=0, line_dash="dot", line_color="black", line_width=1)
 
-            fig_anom.update_layout(
+            layout_kwargs_anom = dict(
                 xaxis_title=r"$p$",
                 yaxis_title=st.session_state.axis_labels_structure.get("y_anom", r"$\xi_p - p/3$"),
                 height=360,
-                margin=dict(l=50, r=20, t=30, b=50),
                 legend_title="",
             )
-            fig_anom = apply_plot_style(fig_anom, ps)
+            layout_kwargs_anom = apply_axis_limits(layout_kwargs_anom, ps_anom)
+            layout_kwargs_anom = apply_figure_size(layout_kwargs_anom, ps_anom)
+            fig_anom.update_layout(**layout_kwargs_anom)
+            fig_anom = apply_plot_style(fig_anom, ps_anom)
             st.plotly_chart(fig_anom, use_container_width=True)
             export_panel(fig_anom, data_dir, base_name="structure_functions_anomalies")
 

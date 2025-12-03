@@ -40,9 +40,10 @@ sys.path.insert(0, str(project_root))
 
 from data_readers.text_reader import read_flatness_file
 from utils.file_detector import detect_simulation_files, group_files_by_simulation, natural_sort_key
-from utils.theme_config import inject_theme_css, template_selector
+from utils.theme_config import inject_theme_css
 from utils.report_builder import capture_button
 from utils.plot_style import resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
+st.set_page_config(page_icon="⚫")
 
 
 # ==========================================================
@@ -55,7 +56,7 @@ def _default_labelify(name: str) -> str:
     return name.replace("_", " ").title()
 
 def _load_ui_metadata(data_dir: Path):
-    """Load flatness legends + axis labels + plot_style from legend_names.json if present."""
+    """Load flatness legends + axis labels + plot_styles from legend_names.json if present."""
     path = _legend_json_path(data_dir)
     if not path.exists():
         return
@@ -65,7 +66,16 @@ def _load_ui_metadata(data_dir: Path):
         # Keep other pages' settings intact; just read our keys if present
         st.session_state.flatness_legend_names = meta.get("flatness_legends", {})
         st.session_state.axis_labels_flatness = meta.get("axis_labels_flatness", {})
-        st.session_state.plot_style = meta.get("plot_style", st.session_state.get("plot_style", {}))
+        
+        # Load plot_styles (per-plot system)
+        st.session_state.plot_styles = meta.get("plot_styles", {})
+        # Backward compatibility: if plot_styles doesn't exist, migrate from old plot_style
+        if not st.session_state.plot_styles and "plot_style" in meta:
+            # Migrate old single plot_style to plot
+            old_style = meta.get("plot_style", {})
+            st.session_state.plot_styles = {
+                "Flatness Factors": old_style.copy(),
+            }
     except Exception:
         st.toast("legend_names.json exists but could not be read. Using defaults.", icon="⚠️")
 
@@ -82,7 +92,7 @@ def _save_ui_metadata(data_dir: Path):
     old.update({
         "flatness_legends": st.session_state.get("flatness_legend_names", {}),
         "axis_labels_flatness": st.session_state.get("axis_labels_flatness", {}),
-        "plot_style": st.session_state.get("plot_style", {}),
+        "plot_styles": st.session_state.get("plot_styles", {}),
     })
 
     try:
@@ -287,6 +297,12 @@ def _default_plot_style():
         "enable_custom_size": False,
         "figure_width": 800,
         "figure_height": 500,
+        
+        # Frame/Margin size
+        "margin_left": 50,
+        "margin_right": 30,
+        "margin_top": 30,
+        "margin_bottom": 50,
     }
 
 def _get_palette(ps):
@@ -322,6 +338,12 @@ def apply_plot_style(fig, ps):
         hovermode="x unified",
         plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
         paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
+        margin=dict(
+            l=ps.get("margin_left", 50),
+            r=ps.get("margin_right", 30),
+            t=ps.get("margin_top", 30),
+            b=ps.get("margin_bottom", 50)
+        ),
     )
 
     tick_dir = "outside" if ps["ticks_outside"] else "inside"
@@ -369,6 +391,24 @@ def apply_plot_style(fig, ps):
     )
     return fig
 
+def _normalize_plot_name(plot_name: str) -> str:
+    """Normalize plot name to a valid key format."""
+    return plot_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+
+def get_plot_style(plot_name: str):
+    """Get plot-specific style, merging defaults with plot-specific overrides."""
+    default = _default_plot_style()
+    plot_styles = st.session_state.get("plot_styles", {})
+    plot_style = plot_styles.get(plot_name, {})
+    # Deep merge: start with defaults, then update with plot-specific overrides
+    merged = default.copy()
+    for key, value in plot_style.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merged[key].copy()
+            merged[key].update(value)
+        else:
+            merged[key] = value
+    return merged
 
 def _ensure_per_sim_defaults(ps, sim_groups):
     ps.setdefault("per_sim_style_flatness", {})
@@ -383,120 +423,197 @@ def _ensure_per_sim_defaults(ps, sim_groups):
         })
 
 
-def plot_style_sidebar(data_dir: Path, sim_groups):
-    ps = dict(st.session_state.plot_style)
+def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
+    # Plot selector
+    selected_plot = st.sidebar.selectbox(
+        "Select plot to configure",
+        plot_names,
+        key="flatness_plot_selector"
+    )
+    
+    # Get or create plot-specific style
+    if "plot_styles" not in st.session_state:
+        st.session_state.plot_styles = {}
+    if selected_plot not in st.session_state.plot_styles:
+        st.session_state.plot_styles[selected_plot] = {}
+    
+    # Start with defaults, merge with plot-specific overrides
+    ps = get_plot_style(selected_plot)
+    plot_key = _normalize_plot_name(selected_plot)
     _ensure_per_sim_defaults(ps, sim_groups)
+    
+    # Create unique key prefix for all widgets
+    key_prefix = f"flatness_{plot_key}"
 
     with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
+        st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
         ps["font_family"] = st.selectbox(
             "Font family", fonts,
-            index=fonts.index(ps.get("font_family", "Arial"))
+            index=fonts.index(ps.get("font_family", "Arial")),
+            key=f"{key_prefix}_font_family"
         )
-        ps["font_size"] = st.slider("Base/global font size", 8, 26, int(ps.get("font_size", 14)))
-        ps["title_size"] = st.slider("Plot title size", 10, 32, int(ps.get("title_size", 16)))
-        ps["legend_size"] = st.slider("Legend font size", 8, 24, int(ps.get("legend_size", 12)))
-        ps["tick_font_size"] = st.slider("Tick label font size", 6, 24, int(ps.get("tick_font_size", 12)))
-        ps["axis_title_size"] = st.slider("Axis title font size", 8, 28, int(ps.get("axis_title_size", 14)))
+        ps["font_size"] = st.slider("Base/global font size", 8, 26, int(ps.get("font_size", 14)),
+                                     key=f"{key_prefix}_font_size")
+        ps["title_size"] = st.slider("Plot title size", 10, 32, int(ps.get("title_size", 16)),
+                                      key=f"{key_prefix}_title_size")
+        ps["legend_size"] = st.slider("Legend font size", 8, 24, int(ps.get("legend_size", 12)),
+                                       key=f"{key_prefix}_legend_size")
+        ps["tick_font_size"] = st.slider("Tick label font size", 6, 24, int(ps.get("tick_font_size", 12)),
+                                          key=f"{key_prefix}_tick_font_size")
+        ps["axis_title_size"] = st.slider("Axis title font size", 8, 28, int(ps.get("axis_title_size", 14)),
+                                           key=f"{key_prefix}_axis_title_size")
 
         st.markdown("---")
         st.markdown("**Backgrounds**")
-        ps["plot_bgcolor"] = st.color_picker("Plot background (inside axes)", ps.get("plot_bgcolor", "#FFFFFF"))
-        ps["paper_bgcolor"] = st.color_picker("Paper background (outside axes)", ps.get("paper_bgcolor", "#FFFFFF"))
+        ps["plot_bgcolor"] = st.color_picker("Plot background (inside axes)", ps.get("plot_bgcolor", "#FFFFFF"),
+                                             key=f"{key_prefix}_plot_bgcolor")
+        ps["paper_bgcolor"] = st.color_picker("Paper background (outside axes)", ps.get("paper_bgcolor", "#FFFFFF"),
+                                               key=f"{key_prefix}_paper_bgcolor")
 
         st.markdown("---")
         st.markdown("**Ticks**")
-        ps["tick_len"] = st.slider("Tick length", 2, 14, int(ps.get("tick_len", 6)))
-        ps["tick_w"] = st.slider("Tick width", 0.5, 3.5, float(ps.get("tick_w", 1.2)))
-        ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)))
+        ps["tick_len"] = st.slider("Tick length", 2, 14, int(ps.get("tick_len", 6)),
+                                    key=f"{key_prefix}_tick_len")
+        ps["tick_w"] = st.slider("Tick width", 0.5, 3.5, float(ps.get("tick_w", 1.2)),
+                                  key=f"{key_prefix}_tick_w")
+        ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)),
+                                           key=f"{key_prefix}_ticks_outside")
 
         st.markdown("---")
         st.markdown("**Grid (Major)**")
-        ps["show_grid"] = st.checkbox("Show major grid", bool(ps.get("show_grid", True)))
+        ps["show_grid"] = st.checkbox("Show major grid", bool(ps.get("show_grid", True)),
+                                       key=f"{key_prefix}_show_grid")
         gcol1, gcol2 = st.columns(2)
         with gcol1:
-            ps["grid_on_x"] = st.checkbox("Grid on X", bool(ps.get("grid_on_x", True)))
+            ps["grid_on_x"] = st.checkbox("Grid on X", bool(ps.get("grid_on_x", True)),
+                                           key=f"{key_prefix}_grid_on_x")
         with gcol2:
-            ps["grid_on_y"] = st.checkbox("Grid on Y", bool(ps.get("grid_on_y", True)))
-        ps["grid_w"] = st.slider("Major grid width", 0.2, 2.5, float(ps.get("grid_w", 0.6)))
+            ps["grid_on_y"] = st.checkbox("Grid on Y", bool(ps.get("grid_on_y", True)),
+                                           key=f"{key_prefix}_grid_on_y")
+        ps["grid_w"] = st.slider("Major grid width", 0.2, 2.5, float(ps.get("grid_w", 0.6)),
+                                  key=f"{key_prefix}_grid_w")
         grid_styles = ["solid", "dot", "dash", "dashdot"]
         ps["grid_dash"] = st.selectbox("Major grid type", grid_styles,
-                                       index=grid_styles.index(ps.get("grid_dash", "dot")))
-        ps["grid_color"] = st.color_picker("Major grid color", ps.get("grid_color", "#B0B0B0"))
-        ps["grid_opacity"] = st.slider("Major grid opacity", 0.0, 1.0, float(ps.get("grid_opacity", 0.6)))
+                                       index=grid_styles.index(ps.get("grid_dash", "dot")),
+                                       key=f"{key_prefix}_grid_dash")
+        ps["grid_color"] = st.color_picker("Major grid color", ps.get("grid_color", "#B0B0B0"),
+                                           key=f"{key_prefix}_grid_color")
+        ps["grid_opacity"] = st.slider("Major grid opacity", 0.0, 1.0, float(ps.get("grid_opacity", 0.6)),
+                                        key=f"{key_prefix}_grid_opacity")
 
         st.markdown("---")
         st.markdown("**Grid (Minor)**")
-        ps["show_minor_grid"] = st.checkbox("Show minor grid", bool(ps.get("show_minor_grid", False)))
-        ps["minor_grid_w"] = st.slider("Minor grid width", 0.1, 2.0, float(ps.get("minor_grid_w", 0.4)))
+        ps["show_minor_grid"] = st.checkbox("Show minor grid", bool(ps.get("show_minor_grid", False)),
+                                             key=f"{key_prefix}_show_minor_grid")
+        ps["minor_grid_w"] = st.slider("Minor grid width", 0.1, 2.0, float(ps.get("minor_grid_w", 0.4)),
+                                        key=f"{key_prefix}_minor_grid_w")
         ps["minor_grid_dash"] = st.selectbox("Minor grid type", grid_styles,
                                              index=grid_styles.index(ps.get("minor_grid_dash", "dot")),
-                                             key="minor_grid_dash_select_flat")
-        ps["minor_grid_color"] = st.color_picker("Minor grid color", ps.get("minor_grid_color", "#D0D0D0"))
+                                             key=f"{key_prefix}_minor_grid_dash")
+        ps["minor_grid_color"] = st.color_picker("Minor grid color", ps.get("minor_grid_color", "#D0D0D0"),
+                                                  key=f"{key_prefix}_minor_grid_color")
         ps["minor_grid_opacity"] = st.slider("Minor grid opacity", 0.0, 1.0,
-                                             float(ps.get("minor_grid_opacity", 0.45)))
+                                             float(ps.get("minor_grid_opacity", 0.45)),
+                                             key=f"{key_prefix}_minor_grid_opacity")
 
         st.markdown("---")
         st.markdown("**Curves**")
-        ps["line_width"] = st.slider("Global line width", 0.5, 7.0, float(ps.get("line_width", 2.4)))
-        ps["marker_size"] = st.slider("Global marker size", 0, 14, int(ps.get("marker_size", 7)))
-        ps["std_alpha"] = st.slider("Std band opacity", 0.05, 0.6, float(ps.get("std_alpha", 0.18)))
+        ps["line_width"] = st.slider("Global line width", 0.5, 7.0, float(ps.get("line_width", 2.4)),
+                                      key=f"{key_prefix}_line_width")
+        ps["marker_size"] = st.slider("Global marker size", 0, 14, int(ps.get("marker_size", 7)),
+                                       key=f"{key_prefix}_marker_size")
+        ps["std_alpha"] = st.slider("Std band opacity", 0.05, 0.6, float(ps.get("std_alpha", 0.18)),
+                                    key=f"{key_prefix}_std_alpha")
 
         st.markdown("---")
         st.markdown("**Colors**")
         palettes = ["Plotly", "D3", "G10", "T10", "Dark2", "Set1", "Set2",
                     "Pastel1", "Bold", "Prism", "Custom"]
         ps["palette"] = st.selectbox("Palette", palettes,
-                                     index=palettes.index(ps.get("palette", "Plotly")))
+                                     index=palettes.index(ps.get("palette", "Plotly")),
+                                     key=f"{key_prefix}_palette")
         if ps["palette"] == "Custom":
             st.caption("Custom hex colors:")
             current = ps.get("custom_colors", []) or ["#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e"]
             new_cols = []
             cols_ui = st.columns(3)
             for i, c in enumerate(current):
-                new_cols.append(cols_ui[i % 3].text_input(f"Color {i+1}", c, key=f"cust_color_flat_{i}"))
+                new_cols.append(cols_ui[i % 3].text_input(f"Color {i+1}", c, key=f"{key_prefix}_cust_color_{i}"))
             ps["custom_colors"] = new_cols
 
         st.markdown("---")
         st.markdown("**Reference line (Gaussian F=3)**")
-        ps["reference_color"] = st.color_picker("Reference line color", ps.get("reference_color", "#000000"))
+        ps["reference_color"] = st.color_picker("Reference line color", ps.get("reference_color", "#000000"),
+                                                key=f"{key_prefix}_reference_color")
         ps["reference_width"] = st.slider("Reference line width", 0.5, 4.0,
-                                          float(ps.get("reference_width", 1.5)))
+                                          float(ps.get("reference_width", 1.5)),
+                                          key=f"{key_prefix}_reference_width")
         ps["reference_dash"] = st.selectbox("Reference line dash", grid_styles,
-                                            index=grid_styles.index(ps.get("reference_dash", "dot")))
+                                            index=grid_styles.index(ps.get("reference_dash", "dot")),
+                                            key=f"{key_prefix}_reference_dash")
 
         st.markdown("---")
         st.markdown("**Theme**")
-        template_selector(ps)
+        old_template = ps.get("template", "plotly_white")
+        templates = ["plotly_white", "simple_white", "plotly_dark"]
+        ps["template"] = st.selectbox("Template", templates,
+                                      index=templates.index(old_template),
+                                      key=f"{key_prefix}_template")
+        # Auto-update backgrounds when template changes
+        if ps["template"] != old_template:
+            if ps["template"] == "plotly_dark":
+                ps["plot_bgcolor"] = "#1e1e1e"
+                ps["paper_bgcolor"] = "#1e1e1e"
+            else:
+                ps["plot_bgcolor"] = "#FFFFFF"
+                ps["paper_bgcolor"] = "#FFFFFF"
 
         st.markdown("---")
-        render_axis_limits_ui(ps, key_prefix="flat")
+        render_axis_limits_ui(ps, key_prefix=key_prefix)
         st.markdown("---")
-        render_figure_size_ui(ps, key_prefix="flat")
+        render_figure_size_ui(ps, key_prefix=key_prefix)
+        st.markdown("---")
+        st.markdown("**Frame/Margin Size**")
+        col1, col2 = st.columns(2)
+        with col1:
+            ps["margin_left"] = st.number_input("Left margin (px)", min_value=0, max_value=200, 
+                                                value=int(ps.get("margin_left", 50)), 
+                                                step=5, key=f"{key_prefix}_margin_left")
+            ps["margin_top"] = st.number_input("Top margin (px)", min_value=0, max_value=200, 
+                                                value=int(ps.get("margin_top", 30)), 
+                                                step=5, key=f"{key_prefix}_margin_top")
+        with col2:
+            ps["margin_right"] = st.number_input("Right margin (px)", min_value=0, max_value=200, 
+                                                  value=int(ps.get("margin_right", 30)), 
+                                                  step=5, key=f"{key_prefix}_margin_right")
+            ps["margin_bottom"] = st.number_input("Bottom margin (px)", min_value=0, max_value=200, 
+                                                   value=int(ps.get("margin_bottom", 50)), 
+                                                   step=5, key=f"{key_prefix}_margin_bottom")
         st.markdown("---")
         render_per_sim_style_ui(ps, sim_groups, style_key="per_sim_style_flatness", 
-                                key_prefix="flat", include_marker=True)
+                                key_prefix=f"{key_prefix}_sim", include_marker=True)
 
         st.markdown("---")
         b1, b2 = st.columns(2)
         reset_pressed = False
         with b1:
-            if st.button("💾 Save Plot Style"):
-                st.session_state.plot_style = ps
+            if st.button("💾 Save Plot Style", key=f"{key_prefix}_save"):
+                st.session_state.plot_styles[selected_plot] = ps
                 _save_ui_metadata(data_dir)
-                st.success("Saved plot style.")
+                st.success(f"Saved style for '{selected_plot}'.")
         with b2:
-            if st.button("♻️ Reset Plot Style"):
-                st.session_state.plot_style = _default_plot_style()
+            if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+                st.session_state.plot_styles[selected_plot] = {}
                 _save_ui_metadata(data_dir)
-                st.toast("Reset + saved.", icon="♻️")
+                st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
                 reset_pressed = True
-                st.rerun()  # Rerun to update sidebar with default values
+                st.rerun()
 
     # Auto-save plot style changes (applies immediately) - but not if reset was pressed
     if not reset_pressed:
-        st.session_state.plot_style = ps
+        st.session_state.plot_styles[selected_plot] = ps
 
 
 def _color_to_rgb_tuple(color):
@@ -563,22 +680,19 @@ def main():
         "x": "Separation distance $r$ (lattice units)",
         "y": "Longitudinal flatness $F_L(r)$",
     })
-    st.session_state.setdefault("plot_style", _default_plot_style())
+    st.session_state.setdefault("plot_styles", {})
 
     # Load JSON once per dataset change
     if st.session_state.get("_last_flatness_dir") != str(data_dir):
         _load_ui_metadata(data_dir)
-        merged = _default_plot_style()
-        merged.update(st.session_state.plot_style or {})
-        st.session_state.plot_style = merged
+        if "plot_styles" not in st.session_state:
+            st.session_state.plot_styles = {}
         st.session_state.setdefault("flatness_legend_names", {})
         st.session_state.setdefault("axis_labels_flatness", {
             "x": "Separation distance $r$ (lattice units)",
             "y": "Longitudinal flatness $F_L(r)$",
         })
         st.session_state["_last_flatness_dir"] = str(data_dir)
-
-    ps = st.session_state.plot_style
 
     # Detect flatness files from all directories
     all_flatness_files = []
@@ -729,8 +843,12 @@ def main():
                 st.rerun()
 
     # Sidebar: full plot style (persistent)
-    plot_style_sidebar(data_dir, sim_groups)
-    ps = st.session_state.plot_style
+    plot_names = ["Flatness Factors"]
+    plot_style_sidebar(data_dir, sim_groups, plot_names)
+    
+    # Get plot-specific style
+    plot_name = "Flatness Factors"
+    ps = get_plot_style(plot_name)
     colors = _get_palette(ps)
 
     # =========================
@@ -814,7 +932,6 @@ def main():
             xaxis_type="log",
             legend_title="Simulation",
             height=500,  # Default, will be overridden if custom size is enabled
-            margin=dict(l=50, r=30, t=30, b=50),
         )
         layout_kwargs = apply_axis_limits(layout_kwargs, ps)
         layout_kwargs = apply_figure_size(layout_kwargs, ps)

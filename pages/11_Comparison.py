@@ -13,6 +13,14 @@ from utils.theme_config import inject_theme_css
 from data_readers.vti_reader import read_vti_file
 from data_readers.hdf5_reader import read_hdf5_file
 from utils.topology_stats import render_topology_stats_tab
+from utils.plot_style import resolve_line_style, apply_axis_limits, apply_figure_size
+from utils.comparison_plot_style import (
+    _load_ui_metadata, _save_ui_metadata, get_plot_style, apply_plot_style,
+    _get_palette, plot_style_sidebar, export_panel
+)
+from utils.report_builder import capture_button
+
+st.set_page_config(page_icon="⚫")
 
 
 # -----------------------------
@@ -63,6 +71,38 @@ def main():
     
     data_dir = Path(data_dirs[0])
     
+    # Initialize plot styles
+    st.session_state.setdefault("plot_styles", {})
+    
+    # Load UI metadata
+    if st.session_state.get("_last_comparison_dir") != str(data_dir):
+        _load_ui_metadata(data_dir)
+        if "plot_styles" not in st.session_state:
+            st.session_state.plot_styles = {}
+        st.session_state["_last_comparison_dir"] = str(data_dir)
+    
+    # Get all files for sidebar
+    import glob
+    from utils.file_detector import natural_sort_key
+    vti_files = sorted(
+        glob.glob(str(data_dir / "*.vti")) + 
+        glob.glob(str(data_dir / "*.VTI")),
+        key=natural_sort_key
+    )
+    hdf5_files = sorted(
+        glob.glob(str(data_dir / "*.h5")) + 
+        glob.glob(str(data_dir / "*.H5")) +
+        glob.glob(str(data_dir / "*.hdf5")) + 
+        glob.glob(str(data_dir / "*.HDF5")),
+        key=natural_sort_key
+    )
+    all_files = [Path(f).name for f in vti_files + hdf5_files]
+    
+    # Plot style sidebar
+    plot_names = ["Velocity PDF", "R-Q Topological Space"]
+    if all_files:
+        plot_style_sidebar(data_dir, all_files, plot_names)
+    
     # Create tabs
     tabs = st.tabs(["Topological & Statistical Distribution"])
     
@@ -70,7 +110,16 @@ def main():
     # Tab: Topological & Statistical Distribution
     # ============================================
     with tabs[0]:
-        render_topology_stats_tab(data_dir, _load_velocity_file)
+        render_topology_stats_tab(
+            data_dir, 
+            _load_velocity_file,
+            get_plot_style_func=get_plot_style,
+            apply_plot_style_func=apply_plot_style,
+            get_palette_func=_get_palette,
+            resolve_line_style_func=resolve_line_style,
+            export_panel_func=export_panel,
+            capture_button_func=capture_button
+        )
 
 
 if __name__ == "__main__":

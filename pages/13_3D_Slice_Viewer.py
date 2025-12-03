@@ -35,6 +35,7 @@ from data_readers.vti_reader import read_vti_file, compute_velocity_magnitude, c
 from data_readers.hdf5_reader import read_hdf5_file
 from utils.file_detector import natural_sort_key
 from utils.iso_surfaces import compute_qs_s, compute_q_invariant, compute_r_invariant
+st.set_page_config(page_icon="⚫")
 
 
 # -----------------------------

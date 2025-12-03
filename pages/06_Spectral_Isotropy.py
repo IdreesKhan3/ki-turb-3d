@@ -40,6 +40,7 @@ from utils.file_detector import detect_simulation_files, natural_sort_key
 from utils.theme_config import inject_theme_css
 from utils.report_builder import capture_button
 from utils.plot_style import render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
+st.set_page_config(page_icon="⚫")
 
 
 # ==========================================================
@@ -887,13 +888,14 @@ def main():
                 yaxis_title=st.session_state.axis_labels_spec_iso["ek"],
                 xaxis_type="log",
                 yaxis_type="log",
-                height=500,  # Default, will be overridden if custom size is enabled
+                width=700,
+                height=600,
             )
             layout_kwargs_eii = apply_axis_limits(layout_kwargs_eii, ps_eii)
-            layout_kwargs_eii = apply_figure_size(layout_kwargs_eii, ps_eii)
+            # Don't apply figure size override to keep fixed dimensions
             fig_eii.update_layout(**layout_kwargs_eii)
             fig_eii = apply_plot_style(fig_eii, ps_eii)
-            st.plotly_chart(fig_eii, use_container_width=True)
+            st.plotly_chart(fig_eii, use_container_width=False)
             capture_button(fig_eii, title="Spectral Isotropy (E_ii)", source_page="Spectral Isotropy")
             export_panel(fig_eii, data_dir, "spectral_isotropy_Eii")
 
