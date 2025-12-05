@@ -478,7 +478,7 @@ Type 'help' for available commands.
         )
     
     with col2:
-        execute_btn = st.button("▶️", use_container_width=True)
+        execute_btn = st.button("▶️", width='stretch')
     
     # Execute command
     if execute_btn and command_input.strip():
@@ -520,7 +520,7 @@ Type 'help' for available commands.
         st.markdown("---")
         with st.expander("📜 Command History", expanded=False):
             for idx, cmd in enumerate(reversed(st.session_state.terminal_command_history[-20:]), 1):
-                if st.button(f"{cmd}", key=f"hist_{idx}", use_container_width=True):
+                if st.button(f"{cmd}", key=f"hist_{idx}", width='stretch'):
                     st.session_state.terminal_command = cmd
                     st.rerun()
 

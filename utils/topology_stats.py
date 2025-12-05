@@ -393,7 +393,7 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func,
             
             st.plotly_chart(
                 fig_pdf, 
-                use_container_width=True,
+                width='stretch',
                 config={
                     "modeBarButtonsToAdd": ["zoom2d", "pan2d", "select2d", "lasso2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d"],
                     "displayModeBar": True,
@@ -510,7 +510,7 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func,
             
             st.plotly_chart(
                 fig_rq, 
-                use_container_width=True,
+                width='stretch',
                 config={
                     "modeBarButtonsToAdd": ["zoom2d", "pan2d", "select2d", "lasso2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d"],
                     "displayModeBar": True,

@@ -938,7 +938,7 @@ def main():
         fig.update_layout(**layout_kwargs)
         fig = apply_plot_style(fig, ps)
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
         capture_button(fig, title="Flatness Factors", source_page="Flatness")
 
         st.subheader("Export Figure")

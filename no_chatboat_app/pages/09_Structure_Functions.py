@@ -1062,7 +1062,7 @@ def main():
             layout_kwargs = apply_figure_size(layout_kwargs, ps_sp)
             fig_sp.update_layout(**layout_kwargs)
             fig_sp = apply_plot_style(fig_sp, ps_sp)
-            st.plotly_chart(fig_sp, use_container_width=True)
+            st.plotly_chart(fig_sp, width='stretch')
             capture_button(fig_sp, title="Structure Functions S_p(r)", source_page="Structure Functions")
             export_panel(fig_sp, data_dir, base_name="structure_functions_sp")
 
@@ -1209,7 +1209,7 @@ def main():
             layout_kwargs = apply_figure_size(layout_kwargs, ps_ess)
             fig_ess.update_layout(**layout_kwargs)
             fig_ess = apply_plot_style(fig_ess, ps_ess)
-            st.plotly_chart(fig_ess, use_container_width=True)
+            st.plotly_chart(fig_ess, width='stretch')
             capture_button(fig_ess, title="Structure Functions ESS", source_page="Structure Functions")
             export_panel(fig_ess, data_dir, base_name="structure_functions_ess")
 
@@ -1275,7 +1275,7 @@ def main():
             layout_kwargs_anom = apply_figure_size(layout_kwargs_anom, ps_anom)
             fig_anom.update_layout(**layout_kwargs_anom)
             fig_anom = apply_plot_style(fig_anom, ps_anom)
-            st.plotly_chart(fig_anom, use_container_width=True)
+            st.plotly_chart(fig_anom, width='stretch')
             export_panel(fig_anom, data_dir, base_name="structure_functions_anomalies")
 
             st.session_state["_xi_all"] = xi_all
@@ -1333,7 +1333,7 @@ def main():
                     # Display table with better formatting
                     st.dataframe(
                         df,
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True,
                         height=min(400, 50 + len(df) * 35)  # Dynamic height based on rows
                     )

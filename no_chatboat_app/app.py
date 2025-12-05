@@ -45,7 +45,7 @@ def main():
         logo_path = project_root / "logo.png"
         if logo_path.exists() and logo_path.stat().st_size > 0:
             try:
-                st.image(str(logo_path), use_container_width=True)
+                st.image(str(logo_path), width='stretch')
             except Exception:
                 st.title("🌀 IK-TURB 3D")
                 st.caption("Turbulence Visualization & Analysis Suite")
@@ -191,7 +191,7 @@ def main():
             for label, path in quick_paths:
                 full_path = project_root / path
                 if full_path.exists():
-                    if st.button(f"📁 {label}", key=f"quick_{path}", use_container_width=True):
+                    if st.button(f"📁 {label}", key=f"quick_{path}", width='stretch'):
                         st.session_state.data_directory = str(full_path)
                         st.session_state.data_directories = [str(full_path)]
                         st.session_state.data_loaded = True
@@ -308,7 +308,7 @@ def main():
     logo_path = project_root / "logo.png"
     if logo_path.exists() and logo_path.stat().st_size > 0:
         try:
-            st.image(str(logo_path), use_container_width=True)
+            st.image(str(logo_path), width='stretch')
         except Exception:
             st.title("🌀 IK-TURB 3D")
             st.caption("Turbulence Visualization & Analysis Suite")

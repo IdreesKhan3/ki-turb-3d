@@ -69,7 +69,7 @@ def main():
     st.sidebar.subheader("Report Sections")
     st.sidebar.caption(f"Current sections: {len(st.session_state.report_sections)}")
     
-    if st.sidebar.button("➕ Add Section", use_container_width=True):
+    if st.sidebar.button("➕ Add Section", width='stretch'):
         st.session_state.report_sections.append({
             "title": f"Section {len(st.session_state.report_sections) + 1}",
             "type": "text",
@@ -128,12 +128,12 @@ def main():
                         )
                     elif section['type'] == "plot":
                         if 'figure' in section and section['figure'] is not None:
-                            st.plotly_chart(section['figure'], use_container_width=True, key=f"plot_chart_{idx}")
+                            st.plotly_chart(section['figure'], width='stretch', key=f"plot_chart_{idx}")
                         else:
                             st.warning("⚠️ Figure not available. Please recapture from the source page.")
                     elif section['type'] == "table":
                         if 'dataframe' in section and section['dataframe'] is not None:
-                            st.dataframe(section['dataframe'], use_container_width=True)
+                            st.dataframe(section['dataframe'], width='stretch')
                         else:
                             st.warning("⚠️ Table not available. Please recapture from the source page.")
                     
@@ -154,7 +154,7 @@ def main():
         
         st.markdown("---")
         
-        if st.button("📄 Generate Report", type="primary", use_container_width=True):
+        if st.button("📄 Generate Report", type="primary", width='stretch'):
             if not st.session_state.report_sections:
                 st.error("Please add at least one section to the report.")
                 return
@@ -260,12 +260,12 @@ def main():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("🗑️ Clear All Sections", use_container_width=True):
+        if st.button("🗑️ Clear All Sections", width='stretch'):
             st.session_state.report_sections = []
             st.rerun()
     
     with col2:
-        if st.button("📋 Add Text Section", use_container_width=True):
+        if st.button("📋 Add Text Section", width='stretch'):
             st.session_state.report_sections.append({
                 "title": "New Text Section",
                 "type": "text",
@@ -275,7 +275,7 @@ def main():
             st.rerun()
     
     with col3:
-        if st.button("📊 Add Table Placeholder", use_container_width=True):
+        if st.button("📊 Add Table Placeholder", width='stretch'):
             st.session_state.report_sections.append({
                 "title": "New Table Section",
                 "type": "table",

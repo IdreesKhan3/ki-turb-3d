@@ -100,7 +100,7 @@ def main():
         
         if comparison_data:
             comparison_df = pd.DataFrame(comparison_data)
-            st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+            st.dataframe(comparison_df, width='stretch', hide_index=True)
     else:
         # Single simulation - original detailed view
         if all_simulations_data[0]['params']:
@@ -221,7 +221,7 @@ def main():
             
             if validation_data:
                 validation_df = pd.DataFrame(validation_data)
-                st.dataframe(validation_df, use_container_width=True, hide_index=True)
+                st.dataframe(validation_df, width='stretch', hide_index=True)
                 st.caption("💡 N/A values indicate missing required files or data for computation")
         else:
             # Single simulation - detailed view
@@ -300,7 +300,7 @@ def main():
             availability_data.append(row)
         
         availability_df = pd.DataFrame(availability_data)
-        st.dataframe(availability_df, use_container_width=True, hide_index=True)
+        st.dataframe(availability_df, width='stretch', hide_index=True)
         st.caption("💡 ❌ indicates the file type is not found in that directory. ✅ means files are available.")
     else:
         # Single simulation - original checklist

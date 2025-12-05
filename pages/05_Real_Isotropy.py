@@ -908,7 +908,7 @@ def main():
         layout_kwargs_a = apply_figure_size(layout_kwargs_a, ps_a)
         fig_a.update_layout(**layout_kwargs_a)
         fig_a = apply_plot_style(fig_a, ps_a)
-        st.plotly_chart(fig_a, use_container_width=True)
+        st.plotly_chart(fig_a, width='stretch')
         capture_button(fig_a, title="Real-Space Isotropy Analysis (Part A)", source_page="Real Isotropy")
         export_panel(fig_a, data_dir, "real_iso_energy_fractions")
 
@@ -956,7 +956,7 @@ def main():
         layout_kwargs_b = apply_figure_size(layout_kwargs_b, ps_b)
         fig_b.update_layout(**layout_kwargs_b)
         fig_b = apply_plot_style(fig_b, ps_b)
-        st.plotly_chart(fig_b, use_container_width=True)
+        st.plotly_chart(fig_b, width='stretch')
         capture_button(fig_b, title="Real-Space Isotropy Analysis (Part B)", source_page="Real Isotropy")
         export_panel(fig_b, data_dir, "real_iso_lumley_triangle")
 
@@ -990,7 +990,7 @@ def main():
         layout_kwargs_c = apply_figure_size(layout_kwargs_c, ps_c)
         fig_c.update_layout(**layout_kwargs_c)
         fig_c = apply_plot_style(fig_c, ps_c)
-        st.plotly_chart(fig_c, use_container_width=True)
+        st.plotly_chart(fig_c, width='stretch')
         export_panel(fig_c, data_dir, "real_iso_bii_diag")
 
     with colD:
@@ -1023,7 +1023,7 @@ def main():
         layout_kwargs_d = apply_figure_size(layout_kwargs_d, ps_d)
         fig_d.update_layout(**layout_kwargs_d)
         fig_d = apply_plot_style(fig_d, ps_d)
-        st.plotly_chart(fig_d, use_container_width=True)
+        st.plotly_chart(fig_d, width='stretch')
         export_panel(fig_d, data_dir, "real_iso_cross_corr")
 
 
@@ -1071,7 +1071,7 @@ def main():
         layout_kwargs_e = apply_figure_size(layout_kwargs_e, ps_e)
         fig_e.update_layout(**layout_kwargs_e)
         fig_e = apply_plot_style(fig_e, ps_e)
-        st.plotly_chart(fig_e, use_container_width=True)
+        st.plotly_chart(fig_e, width='stretch')
         export_panel(fig_e, data_dir, "real_iso_deviation")
 
     with colF:
@@ -1107,7 +1107,7 @@ def main():
         layout_kwargs_f = apply_figure_size(layout_kwargs_f, ps_f)
         fig_f.update_layout(**layout_kwargs_f)
         fig_f = apply_plot_style(fig_f, ps_f)
-        st.plotly_chart(fig_f, use_container_width=True)
+        st.plotly_chart(fig_f, width='stretch')
         export_panel(fig_f, data_dir, "real_iso_convergence")
 
     # ======================================================
@@ -1121,7 +1121,7 @@ def main():
         "Final anisotropy index": float(inv["anis_index"][-1]),
         "Mean anisotropy index": float(np.mean(inv["anis_index"])),
     }])
-    st.dataframe(df_sum, use_container_width=True)
+    st.dataframe(df_sum, width='stretch')
 
     st.download_button(
         "Download summary CSV",

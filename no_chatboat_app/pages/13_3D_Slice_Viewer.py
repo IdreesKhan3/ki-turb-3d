@@ -767,7 +767,7 @@ def main():
         )
 
         # Display plot
-        st.plotly_chart(fig, use_container_width=True, config={
+        st.plotly_chart(fig, width='stretch', config={
             'displayModeBar': True,
             'modeBarButtonsToAdd': ['drawline', 'drawopenpath', 'drawclosedpath', 'drawcircle', 'drawrect', 'eraseshape'],
             'toImageButtonOptions': {

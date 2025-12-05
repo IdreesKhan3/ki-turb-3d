@@ -204,7 +204,7 @@ def main():
             "Generate report"
         ]
         for example in examples:
-            if st.button(example, key=f"example_{example}", use_container_width=True):
+            if st.button(example, key=f"example_{example}", width='stretch'):
                 st.session_state.example_query = example
     
     # Initialize parser with selected provider (use session state, not local variable)
@@ -262,7 +262,7 @@ def main():
             
             col1, col2 = st.columns([1, 1])
             with col1:
-                if st.button("✅ Accept Rename", key=f"accept_rename_{i}", type="primary", use_container_width=True):
+                if st.button("✅ Accept Rename", key=f"accept_rename_{i}", type="primary", width='stretch'):
                     action = rename["action"].copy()
                     action["confirmed"] = True
                     result = executor.execute(action)
@@ -281,7 +281,7 @@ def main():
                         del st.session_state.pending_renames
                     st.rerun()
             with col2:
-                if st.button("❌ Reject Rename", key=f"reject_rename_{i}", use_container_width=True):
+                if st.button("❌ Reject Rename", key=f"reject_rename_{i}", width='stretch'):
                     st.session_state.pending_renames = [r for r in st.session_state.pending_renames if r != rename]
                     if not st.session_state.pending_renames:
                         del st.session_state.pending_renames
@@ -352,7 +352,7 @@ def main():
             
             col1, col2 = st.columns([1, 1])
             with col1:
-                if st.button("✅ Accept Changes", key=f"accept_modify_{i}", type="primary", use_container_width=True):
+                if st.button("✅ Accept Changes", key=f"accept_modify_{i}", type="primary", width='stretch'):
                     # Execute modification with confirmation
                     action = modification["action"].copy()
                     action["confirmed"] = True
@@ -373,7 +373,7 @@ def main():
                         del st.session_state.pending_modifications
                     st.rerun()
             with col2:
-                if st.button("❌ Reject Changes", key=f"reject_modify_{i}", use_container_width=True):
+                if st.button("❌ Reject Changes", key=f"reject_modify_{i}", width='stretch'):
                     # Remove this modification from pending list
                     st.session_state.pending_modifications = [m for m in st.session_state.pending_modifications if m != modification]
                     if not st.session_state.pending_modifications:
@@ -396,7 +396,7 @@ def main():
             st.warning(f"**File to delete:** `{filename}`")
             col1, col2 = st.columns([1, 1])
             with col1:
-                if st.button("✅ Confirm Delete", key=f"confirm_delete_{i}", type="primary", use_container_width=True):
+                if st.button("✅ Confirm Delete", key=f"confirm_delete_{i}", type="primary", width='stretch'):
                     # Execute deletion with confirmation
                     action = deletion["action"].copy()
                     action["confirmed"] = True
@@ -417,7 +417,7 @@ def main():
                         del st.session_state.pending_deletions
                     st.rerun()
             with col2:
-                if st.button("❌ Cancel", key=f"cancel_delete_{i}", use_container_width=True):
+                if st.button("❌ Cancel", key=f"cancel_delete_{i}", width='stretch'):
                     # Remove this deletion from pending list
                     st.session_state.pending_deletions = [d for d in st.session_state.pending_deletions if d != deletion]
                     if not st.session_state.pending_deletions:
@@ -453,7 +453,7 @@ def main():
     # Clear button
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🗑️ Clear Chat History", use_container_width=True):
+        if st.button("🗑️ Clear Chat History", width='stretch'):
             st.session_state.chat_history = []
             st.rerun()
     with col2:
@@ -523,7 +523,7 @@ def main():
             if example_query:
                 del st.session_state.example_query
         with col2:
-            send_button = st.form_submit_button("Send", type="primary", use_container_width=True)
+            send_button = st.form_submit_button("Send", type="primary", width='stretch')
     
     # Process input
     if send_button and user_input:

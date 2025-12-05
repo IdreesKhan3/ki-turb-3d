@@ -855,7 +855,7 @@ def main():
         layout_kwargs_ic = apply_figure_size(layout_kwargs_ic, ps_ic)
         fig_ic.update_layout(**layout_kwargs_ic)
         fig_ic = apply_plot_style(fig_ic, ps_ic)
-        st.plotly_chart(fig_ic, use_container_width=True)
+        st.plotly_chart(fig_ic, width='stretch')
         capture_button(fig_ic, title="Spectral Isotropy (IC)", source_page="Spectral Isotropy")
         export_panel(fig_ic, data_dir, "spectral_isotropy_IC")
 
@@ -895,7 +895,7 @@ def main():
             # Don't apply figure size override to keep fixed dimensions
             fig_eii.update_layout(**layout_kwargs_eii)
             fig_eii = apply_plot_style(fig_eii, ps_eii)
-            st.plotly_chart(fig_eii, use_container_width=False)
+            st.plotly_chart(fig_eii, width='content')
             capture_button(fig_eii, title="Spectral Isotropy (E_ii)", source_page="Spectral Isotropy")
             export_panel(fig_eii, data_dir, "spectral_isotropy_Eii")
 
@@ -911,7 +911,7 @@ def main():
             "Min IC": float(np.nanmin(IC_mean)),
             "Max IC": float(np.nanmax(IC_mean)),
         }])
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width='stretch')
         st.download_button(
             "Download summary CSV",
             df.to_csv(index=False).encode("utf-8"),

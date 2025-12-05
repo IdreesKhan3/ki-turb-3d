@@ -911,7 +911,7 @@ def main():
                 separatethousands=False,  # Don't add thousand separators
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             capture_button(fig, title="Custom Multi-Trace Plot", source_page="Other Turbulence Stats")
             
             # Export panel
@@ -940,12 +940,12 @@ def main():
                     st.markdown("**Latest Values:**")
                     latest = df_stats.iloc[-1]
                     latest_df = latest.to_frame().T
-                    st.dataframe(latest_df, use_container_width=True)
+                    st.dataframe(latest_df, width='stretch')
                     capture_button(df=latest_df, title=f"Latest Values - {dir_name}", source_page="Other Turbulence Stats")
                     
                     # Full time series table
                     st.markdown("**Time Series Data:**")
-                    st.dataframe(df_stats, use_container_width=True, height=300)
+                    st.dataframe(df_stats, width='stretch', height=300)
                     capture_button(df=df_stats, title=f"Time Series - {dir_name}", source_page="Other Turbulence Stats")
                     st.markdown("---")
             else:
@@ -957,12 +957,12 @@ def main():
                 st.subheader("Latest Values")
                 latest = df_stats.iloc[-1]
                 latest_df = latest.to_frame().T
-                st.dataframe(latest_df, use_container_width=True)
+                st.dataframe(latest_df, width='stretch')
                 capture_button(df=latest_df, title="Latest Values", source_page="Other Turbulence Stats")
                 
                 # Full time series table
                 st.subheader("Time Series Data")
-                st.dataframe(df_stats, use_container_width=True, height=400)
+                st.dataframe(df_stats, width='stretch', height=400)
                 capture_button(df=df_stats, title="Time Series Data", source_page="Other Turbulence Stats")
                 
                 st.markdown("---")
@@ -974,7 +974,7 @@ def main():
             st.header("Energy Balance Validation")
             key = list(eps_tables.keys())[0]
             df_val = eps_tables[key]['df']
-            st.dataframe(df_val, use_container_width=True, height=300)
+            st.dataframe(df_val, width='stretch', height=300)
             capture_button(df=df_val, title="Energy Balance Validation", source_page="Other Turbulence Stats")
 
 

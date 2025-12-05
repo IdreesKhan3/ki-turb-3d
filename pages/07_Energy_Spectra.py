@@ -1176,14 +1176,14 @@ def main():
             colL, colR = st.columns(2)
             with colL:
                 st.markdown("### Raw Energy Spectrum")
-                st.plotly_chart(fig_raw, use_container_width=True)
+                st.plotly_chart(fig_raw, width='stretch')
                 capture_button(fig_raw, title="Energy Spectra (Raw)", source_page="Energy Spectra")
             with colR:
                 st.markdown("### Normalized (Collapsed) Spectrum")
-                st.plotly_chart(fig_norm, use_container_width=True)
+                st.plotly_chart(fig_norm, width='stretch')
                 capture_button(fig_norm, title="Energy Spectra (Normalized)", source_page="Energy Spectra")
         else:
-            st.plotly_chart(fig_raw, use_container_width=True)
+            st.plotly_chart(fig_raw, width='stretch')
             capture_button(fig_raw, title="Energy Spectra", source_page="Energy Spectra")
 
         st.subheader("Export")
@@ -1279,7 +1279,7 @@ def main():
         figE.update_layout(**layout_kwargs_evol)
         figE = apply_plot_style(figE, ps_evol)
 
-        st.plotly_chart(figE, use_container_width=False)
+        st.plotly_chart(figE, width='content')
         capture_button(figE, title=f"Energy Spectra Time Evolution - {sim_sel}", source_page="Energy Spectra")
 
         st.subheader("Export time evolution figure")
