@@ -145,6 +145,11 @@ examples/
 # HDF5 library (local installation)
 hdf5_lib/
 
+# Ollama local installation and models
+local_tools/ollama/
+*.ollama
+.ollama/
+
 # Alternative: Keep directory structure but ignore contents
 # SRC/*
 # !SRC/.gitkeep
