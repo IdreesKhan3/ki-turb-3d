@@ -286,22 +286,6 @@ def main():
                     st.success(f"Data loaded from: {selected_path}")
         else:
             st.info("No data directories found. You can still load your own data using the directory path above.")
-        
-        # Navigation
-        st.markdown("---")
-        st.markdown("### 📊 Navigation")
-        st.markdown("""
-        - [Overview](#overview)
-        - [Energy Spectra](#energy-spectra)
-        - [Structure Functions](#structure-functions)
-        - [Flatness](#flatness)
-        - [LES Metrics](#les-metrics)
-        - [Isotropy](#isotropy)
-        - [Comparison](#comparison)
-        - [Reynolds Transition](#reynolds-transition)
-        - [Theory & Equations](#theory-equations)
-        - [Multi-Method Support](#multi-method-support)
-        """)
     
     # Main content area
     # Logo at top (if exists), otherwise text title

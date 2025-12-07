@@ -210,6 +210,60 @@ def inject_theme_css(theme_name: str = None):
             background-color: {bg_color} !important;
         }}
         
+        /* Scrollbar - always visible */
+        * {{
+            scrollbar-width: thin;
+            scrollbar-color: #5a5a5a {container_bg};
+        }}
+        
+        *::-webkit-scrollbar {{
+            width: 14px !important;
+            height: 14px !important;
+            display: block !important;
+        }}
+        
+        *::-webkit-scrollbar-track {{
+            background: {container_bg} !important;
+            display: block !important;
+        }}
+        
+        *::-webkit-scrollbar-thumb {{
+            background: #5a5a5a !important;
+            border-radius: 7px !important;
+            border: 2px solid {container_bg} !important;
+            display: block !important;
+        }}
+        
+        *::-webkit-scrollbar-thumb:hover {{
+            background: #6a6a6a !important;
+        }}
+        
+        /* Main app scrollbar */
+        .stApp::-webkit-scrollbar,
+        .main::-webkit-scrollbar,
+        [data-testid="stAppViewContainer"]::-webkit-scrollbar {{
+            width: 14px !important;
+            display: block !important;
+        }}
+        
+        .stApp::-webkit-scrollbar-thumb,
+        .main::-webkit-scrollbar-thumb,
+        [data-testid="stAppViewContainer"]::-webkit-scrollbar-thumb {{
+            background: #5a5a5a !important;
+            display: block !important;
+        }}
+        
+        /* Sidebar scrollbar */
+        [data-testid="stSidebar"]::-webkit-scrollbar {{
+            width: 14px !important;
+            display: block !important;
+        }}
+        
+        [data-testid="stSidebar"]::-webkit-scrollbar-thumb {{
+            background: #5a5a5a !important;
+            display: block !important;
+        }}
+        
         /* Streamlit header/menu bar */
         header[data-testid="stHeader"] {{
             background-color: {header_bg} !important;
@@ -673,13 +727,68 @@ def inject_theme_css(theme_name: str = None):
             color: {bright_text} !important;
         }}
         
-        /* Code blocks */
+        /* Code blocks - dark theme with syntax highlighting */
         .stCodeBlock {{
-            background-color: {container_bg} !important;
+            background-color: #1e1e1e !important;
+            border: 1px solid {border_color} !important;
+        }}
+        
+        .stCodeBlock pre {{
+            background-color: #1e1e1e !important;
+            color: #d4d4d4 !important;
         }}
         
         .stCodeBlock code {{
-            color: {bright_text} !important;
+            background-color: #1e1e1e !important;
+            color: #d4d4d4 !important;
+        }}
+        
+        /* Syntax highlighting colors (VS Code dark theme) */
+        .stCodeBlock .hljs-keyword,
+        .stCodeBlock code .hljs-keyword {{
+            color: #569cd6 !important;
+        }}
+        
+        .stCodeBlock .hljs-string,
+        .stCodeBlock code .hljs-string {{
+            color: #ce9178 !important;
+        }}
+        
+        .stCodeBlock .hljs-function,
+        .stCodeBlock code .hljs-function {{
+            color: #dcdcaa !important;
+        }}
+        
+        .stCodeBlock .hljs-comment,
+        .stCodeBlock code .hljs-comment {{
+            color: #6a9955 !important;
+        }}
+        
+        .stCodeBlock .hljs-number,
+        .stCodeBlock code .hljs-number {{
+            color: #b5cea8 !important;
+        }}
+        
+        .stCodeBlock .hljs-variable,
+        .stCodeBlock code .hljs-variable {{
+            color: #9cdcfe !important;
+        }}
+        
+        .stCodeBlock .hljs-built_in,
+        .stCodeBlock code .hljs-built_in {{
+            color: #4ec9b0 !important;
+        }}
+        
+        /* Code blocks in chat messages */
+        .stChatMessage .stCodeBlock,
+        .stChatMessage code {{
+            background-color: #1e1e1e !important;
+            color: #d4d4d4 !important;
+        }}
+        
+        .stChatMessage pre {{
+            background-color: #1e1e1e !important;
+            color: #d4d4d4 !important;
         }}
         
         /* Caption text */

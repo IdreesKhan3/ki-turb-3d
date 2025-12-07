@@ -10,7 +10,6 @@ Features:
     * Orthogonal slicing planes (x/y/z) with interactive sliders
     * Clipping (cutting) box: x/y/z min-max
     * Isosurface overlay
-    * Vector field visualization (velocity arrows)
     * User rotates / zooms / pans in browser (like ParaView)
 - Fast downsampling controls for large grids
 - Time series animation support
@@ -411,7 +410,6 @@ def main():
 
         # Downsample
         field_ds = _downsample3d(field, downsample_step)
-        velocity_ds = _downsample_vectors(velocity, downsample_step)
         nx_d, ny_d, nz_d = field_ds.shape
         xg, yg, zg = _make_grid(nx_d, ny_d, nz_d)
 
@@ -424,7 +422,6 @@ def main():
         show_slices = st.sidebar.checkbox("Orthogonal slices", value=True, key="show_slices")
         show_surface = st.sidebar.checkbox("Surface", value=False, key="show_surface")
         show_iso = st.sidebar.checkbox("Isosurface", value=False, key="show_iso")
-        show_vectors = st.sidebar.checkbox("Vector field (arrows)", value=False, key="show_vec")
 
         # Colormap (default to rdbu to match ParaView's typical velocity visualization)
         cmap_options = _colormap_options()
@@ -520,24 +517,6 @@ def main():
             slice_opacity = st.sidebar.slider(
                 "Slice opacity", 0.05, 1.0, 0.9, 0.05,
                 key="slice_opacity"
-            )
-
-        # Vector field controls
-        if show_vectors:
-            st.sidebar.markdown("---")
-            st.sidebar.subheader("➡️ Vector Field")
-            vector_scale = st.sidebar.slider(
-                "Arrow scale", 0.1, 5.0, 1.0, 0.1,
-                key="vec_scale"
-            )
-            vector_step = st.sidebar.slider(
-                "Arrow spacing", 1, 10, 3, 1,
-                help="Skip points for arrows (higher = fewer arrows)",
-                key="vec_step"
-            )
-            vector_opacity = st.sidebar.slider(
-                "Arrow opacity", 0.1, 1.0, 0.8, 0.1,
-                key="vec_opacity"
             )
 
         # Clipping / cutting box
@@ -693,42 +672,6 @@ def main():
                 x_plane, y_coords, z_coords,
                 field_clip[slice_x, :, :],
                 vmin, cmax, cmap, slice_opacity
-            ))
-
-        # Vector field (velocity arrows)
-        if show_vectors:
-            # Sample vectors
-            step = vector_step
-            x_vec = xg[::step, ::step, ::step].flatten()
-            y_vec = yg[::step, ::step, ::step].flatten()
-            z_vec = zg[::step, ::step, ::step].flatten()
-            u_vec = velocity_ds[::step, ::step, ::step, 0].flatten()
-            v_vec = velocity_ds[::step, ::step, ::step, 1].flatten()
-            w_vec = velocity_ds[::step, ::step, ::step, 2].flatten()
-            
-            # Filter out NaN vectors
-            valid = np.isfinite(u_vec) & np.isfinite(v_vec) & np.isfinite(w_vec)
-            x_vec = x_vec[valid]
-            y_vec = y_vec[valid]
-            z_vec = z_vec[valid]
-            u_vec = u_vec[valid] * vector_scale
-            v_vec = v_vec[valid] * vector_scale
-            w_vec = w_vec[valid] * vector_scale
-            
-            fig.add_trace(go.Cone(
-                x=x_vec,
-                y=y_vec,
-                z=z_vec,
-                u=u_vec,
-                v=v_vec,
-                w=w_vec,
-                sizemode="absolute",
-                sizeref=vector_scale * 2,
-                anchor="tail",
-                colorscale="Reds",
-                showscale=False,
-                opacity=vector_opacity,
-                name="Velocity vectors"
             ))
 
         # Camera presets

@@ -105,6 +105,22 @@ def _default_plot_style():
         "tick_len": 6,
         "tick_w": 1.2,
         "ticks_outside": True,
+        
+        # Axis scale type (linear or logarithmic)
+        "x_axis_type": "linear",  # "linear" or "log"
+        "y_axis_type": "linear",  # "linear" or "log"
+        
+        # Tick number format (integer or float)
+        "x_tick_format": "auto",  # "auto", "integer", or "float"
+        "x_tick_decimals": 2,  # Number of decimal places when format is "float"
+        "y_tick_format": "auto",  # "auto", "integer", or "float"
+        "y_tick_decimals": 2,  # Number of decimal places when format is "float"
+
+        # Axis borders (spines) for scientific box appearance
+        "show_axis_lines": True,
+        "axis_line_width": 0.8,  # Thinner borders for cleaner look
+        "axis_line_color": "#000000",
+        "mirror_axes": True,  # Show borders on all sides (box)
 
         "plot_bgcolor": "#FFFFFF",
         "paper_bgcolor": "#FFFFFF",
@@ -192,16 +208,40 @@ def apply_plot_style(fig, ps):
     show_minor = ps.get("show_minor_grid", False)
     minor_rgba = f"rgba{hex_to_rgb(ps['minor_grid_color']) + (ps['minor_grid_opacity'],)}"
 
-    fig.update_xaxes(
-        ticks=tick_dir,
+    # Axis borders (spines) for scientific box appearance
+    show_axis_lines = ps.get("show_axis_lines", True)
+    axis_line_width = ps.get("axis_line_width", 0.8)
+    axis_line_color = ps.get("axis_line_color", "#000000")
+    mirror_axes = ps.get("mirror_axes", True)
+    
+    # Ensure ticks are visible - set tick color to match axis line color
+    tick_color = ps.get("tick_color", axis_line_color)
+    
+    # For mirror axes, use "ticks" to show ticks on all sides
+    mirror_mode = "ticks" if mirror_axes else False
+    
+    # Get axis scale types (linear or log)
+    x_axis_type = ps.get("x_axis_type", "linear")
+    y_axis_type = ps.get("y_axis_type", "linear")
+    
+    # Build axis update dictionaries - conditionally include linecolor
+    # Plotly doesn't accept "transparent" as a color, so we only set linecolor when showing lines
+    xaxis_update = dict(
+        type=x_axis_type,  # "linear" or "log" - controls axis scale type
+        ticks=tick_dir,  # "outside" or "inside" - controls tick visibility
         ticklen=ps["tick_len"],
         tickwidth=ps["tick_w"],
+        tickcolor=tick_color,  # Make ticks visible with explicit color
         tickfont=_tick_font(ps),
         title_font=_axis_title_font(ps),
+        showticklabels=True,  # Explicitly show tick labels
         showgrid=show_x_grid,
         gridwidth=ps["grid_w"],
         griddash=ps["grid_dash"],
         gridcolor=grid_rgba,
+        showline=show_axis_lines,
+        linewidth=axis_line_width if show_axis_lines else 0,
+        mirror=mirror_mode,  # "ticks" shows ticks on all sides when True, False shows only bottom/left
         minor=dict(
             showgrid=show_minor,
             gridwidth=ps["minor_grid_w"],
@@ -209,16 +249,26 @@ def apply_plot_style(fig, ps):
             gridcolor=minor_rgba,
         )
     )
-    fig.update_yaxes(
-        ticks=tick_dir,
+    # Only set linecolor when showing axis lines (avoids "transparent" error)
+    if show_axis_lines:
+        xaxis_update["linecolor"] = axis_line_color
+    
+    yaxis_update = dict(
+        type=y_axis_type,  # "linear" or "log" - controls axis scale type
+        ticks=tick_dir,  # "outside" or "inside" - controls tick visibility
         ticklen=ps["tick_len"],
         tickwidth=ps["tick_w"],
+        tickcolor=tick_color,  # Make ticks visible with explicit color
         tickfont=_tick_font(ps),
         title_font=_axis_title_font(ps),
+        showticklabels=True,  # Explicitly show tick labels
         showgrid=show_y_grid,
         gridwidth=ps["grid_w"],
         griddash=ps["grid_dash"],
         gridcolor=grid_rgba,
+        showline=show_axis_lines,
+        linewidth=axis_line_width if show_axis_lines else 0,
+        mirror=mirror_mode,  # "ticks" shows ticks on all sides when True, False shows only bottom/left
         minor=dict(
             showgrid=show_minor,
             gridwidth=ps["minor_grid_w"],
@@ -226,6 +276,13 @@ def apply_plot_style(fig, ps):
             gridcolor=minor_rgba,
         )
     )
+    # Only set linecolor when showing axis lines (avoids "transparent" error)
+    if show_axis_lines:
+        yaxis_update["linecolor"] = axis_line_color
+    
+    # Apply updates
+    fig.update_xaxes(**xaxis_update)
+    fig.update_yaxes(**yaxis_update)
     return fig
 
 def _ensure_per_sim_defaults(ps, sim_groups):
@@ -262,6 +319,46 @@ def plot_style_sidebar(data_dir: Path, sim_groups):
         ps["tick_len"] = st.slider("Tick length", 2, 14, int(ps.get("tick_len", 6)))
         ps["tick_w"] = st.slider("Tick width", 0.5, 3.5, float(ps.get("tick_w", 1.2)))
         ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)))
+
+        st.markdown("---")
+        st.markdown("**Axis Scale Type**")
+        axis_types = ["linear", "log"]
+        x_axis_type_idx = axis_types.index(ps.get("x_axis_type", "linear"))
+        y_axis_type_idx = axis_types.index(ps.get("y_axis_type", "linear"))
+        ps["x_axis_type"] = st.selectbox("X-axis scale", axis_types, index=x_axis_type_idx,
+                                         help="Linear: standard scale. Log: logarithmic scale (useful for wide data ranges)")
+        ps["y_axis_type"] = st.selectbox("Y-axis scale", axis_types, index=y_axis_type_idx,
+                                         help="Linear: standard scale. Log: logarithmic scale (useful for wide data ranges)")
+
+        st.markdown("---")
+        st.markdown("**Tick Number Format**")
+        tick_format_options = ["auto", "integer", "float"]
+        x_format_idx = tick_format_options.index(ps.get("x_tick_format", "auto"))
+        y_format_idx = tick_format_options.index(ps.get("y_tick_format", "auto"))
+        
+        ps["x_tick_format"] = st.selectbox("X-axis number format", tick_format_options, index=x_format_idx,
+                                          help="Auto: let Plotly decide. Integer: no decimals. Float: show decimals")
+        if ps["x_tick_format"] == "float":
+            ps["x_tick_decimals"] = st.slider("X-axis decimal places", 0, 6, int(ps.get("x_tick_decimals", 2)),
+                                             help="Number of decimal places for X-axis")
+        
+        ps["y_tick_format"] = st.selectbox("Y-axis number format", tick_format_options, index=y_format_idx,
+                                          help="Auto: let Plotly decide. Integer: no decimals. Float: show decimals")
+        if ps["y_tick_format"] == "float":
+            ps["y_tick_decimals"] = st.slider("Y-axis decimal places", 0, 6, int(ps.get("y_tick_decimals", 2)),
+                                             help="Number of decimal places for Y-axis")
+
+        st.markdown("---")
+        st.markdown("**Axis Borders (Box)**")
+        ps["show_axis_lines"] = st.checkbox("Show axis borders", bool(ps.get("show_axis_lines", True)), 
+                                           help="Enable to show axis border lines (scientific paper style)")
+        ps["axis_line_width"] = st.slider("Border line width", 0.5, 4.0, float(ps.get("axis_line_width", 0.8)), 
+                                          disabled=not ps.get("show_axis_lines", True))
+        ps["axis_line_color"] = st.color_picker("Border color", ps.get("axis_line_color", "#000000"), 
+                                                disabled=not ps.get("show_axis_lines", True))
+        ps["mirror_axes"] = st.checkbox("Box on all sides", bool(ps.get("mirror_axes", True)), 
+                                       help="Checked: 4 borders (box). Unchecked: 2 borders (bottom & left only)", 
+                                       disabled=not ps.get("show_axis_lines", True))
 
         st.markdown("---")
         st.markdown("**Grid (Major)**")
@@ -358,6 +455,9 @@ _EXPORT_FORMATS = {
 
 def export_panel(fig, out_dir: Path, base_name: str):
     with st.expander(f"📤 Export figure: {base_name}", expanded=False):
+        # Show export directory path
+        st.info(f"📁 **Export directory:** `{out_dir.resolve()}`")
+        
         fmts = st.multiselect(
             "Select export format(s)",
             list(_EXPORT_FORMATS.keys()),
@@ -379,12 +479,14 @@ def export_panel(fig, out_dir: Path, base_name: str):
                 return
 
             errors = []
+            saved_files = []
             for f_label in fmts:
                 ext = _EXPORT_FORMATS[f_label]
                 out = out_dir / f"{base_name}.{ext}"
                 try:
                     if ext == "html":
                         fig.write_html(str(out))
+                        saved_files.append(out.name)
                         continue
 
                     kwargs = {}
@@ -394,6 +496,7 @@ def export_panel(fig, out_dir: Path, base_name: str):
                         kwargs["height"] = int(height_px)
 
                     fig.write_image(str(out), scale=scale, **kwargs)
+                    saved_files.append(out.name)
                 except Exception as e:
                     errors.append((out.name, str(e)))
 
@@ -404,7 +507,12 @@ def export_panel(fig, out_dir: Path, base_name: str):
                     + "\n".join([f"- {n}: {msg}" for n, msg in errors])
                 )
             else:
-                st.success("All selected exports saved to dataset folder.")
+                files_list = "\n".join([f"  • {f}" for f in saved_files])
+                st.success(
+                    f"✅ All selected exports saved!\n\n"
+                    f"**Location:** `{out_dir.resolve()}`\n\n"
+                    f"**Files saved:**\n{files_list}"
+                )
 
 
 # ==========================================================
@@ -895,7 +1003,7 @@ def main():
                 title="Custom Multi-Trace Plot",
                 xaxis_title=x_label,
                 yaxis_title=y_label,
-                height=500,  # Default, will be overridden if custom size is enabled
+                height=400,  # Default, will be overridden if custom size is enabled
                 margin=dict(l=60, r=20, t=40, b=55),
             )
             layout_kwargs = apply_axis_limits(layout_kwargs, ps)
@@ -905,13 +1013,38 @@ def main():
             # Apply full plot style (fonts, ticks, grids, backgrounds, etc.)
             fig = apply_plot_style(fig, ps)
             
-            # Override y-axis tick format to show original values without SI prefixes
+            # Determine tick format based on user preferences and normalization
+            def get_tick_format(axis_format, decimals, is_normalized):
+                """Get tick format string based on user preference and normalization state."""
+                if axis_format == "integer":
+                    return ".0f"  # Integer format (no decimals)
+                elif axis_format == "float":
+                    return f".{decimals}f"  # Float with specified decimal places
+                else:  # "auto"
+                    # Auto: use fewer decimals for normalized, more for non-normalized
+                    return ".3f" if is_normalized else ".4g"
+            
+            x_format_pref = ps.get("x_tick_format", "auto")
+            x_decimals = ps.get("x_tick_decimals", 2)
+            x_tick_format = get_tick_format(x_format_pref, x_decimals, normalize_x)
+            
+            y_format_pref = ps.get("y_tick_format", "auto")
+            y_decimals = ps.get("y_tick_decimals", 2)
+            y_tick_format = get_tick_format(y_format_pref, y_decimals, normalize_y)
+            
+            fig.update_xaxes(
+                tickformat=x_tick_format,  # Format based on user preference and normalization
+                separatethousands=False,  # Don't add thousand separators
+            )
             fig.update_yaxes(
-                tickformat=".10g",  # Show original values without automatic SI unit prefixes (no μ, m, k, etc.)
+                tickformat=y_tick_format,  # Format based on user preference and normalization
                 separatethousands=False,  # Don't add thousand separators
             )
             
-            st.plotly_chart(fig, width='stretch')
+            # Display plot in a container with constrained width for better sizing
+            col1, col2, col3 = st.columns([1, 10, 1])
+            with col2:
+                st.plotly_chart(fig, use_container_width=True)
             capture_button(fig, title="Custom Multi-Trace Plot", source_page="Other Turbulence Stats")
             
             # Export panel
