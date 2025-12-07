@@ -134,9 +134,9 @@ def main():
         knudsen_number = None
         is_les = sim['is_les']
         
-        if files['eps_validation']:
+        if files['spectral_turb_stats']:
             # Load validation data for u_rms_real
-            val_df = read_eps_validation_csv(str(files['eps_validation'][0]))
+            val_df = read_eps_validation_csv(str(files['spectral_turb_stats'][0]))
             if 'u_rms_real' in val_df.columns and len(val_df) > 0:
                 u_rms_latest = val_df['u_rms_real'].iloc[-1]
                 c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
@@ -201,7 +201,7 @@ def main():
                 if sim['mach_number'] is not None:
                     row['Mach Number'] = f"{sim['mach_number']:.4f}"
                 else:
-                    if not files['eps_validation']:
+                    if not files['spectral_turb_stats']:
                         row['Mach Number'] = "N/A (no eps_real_validation*.csv)"
                     else:
                         row['Mach Number'] = "N/A (missing u_rms_real)"
@@ -290,13 +290,13 @@ def main():
         for sim in all_simulations_data:
             files = sim['files']
             row = {'Directory': sim['directory']}
-            row['CSV Statistics'] = "✅" if len(files['csv']) > 0 else "❌"
+            row['Real Turbulence Stats'] = "✅" if len(files['real_turb_stats']) > 0 else "❌"
             row['Energy Spectra'] = "✅" if len(files['spectrum']) > 0 else "❌"
             row['Normalized Spectra'] = "✅" if len(files['norm_spectrum']) > 0 else "❌"
             row['Structure Functions'] = "✅" if (len(files['structure_functions_txt']) > 0 or len(files['structure_functions_bin']) > 0) else "❌"
             row['Flatness'] = "✅" if len(files['flatness']) > 0 else "❌"
             row['Isotropy'] = "✅" if len(files['isotropy']) > 0 else "❌"
-            row['Energy Balance'] = "✅" if len(files['eps_validation']) > 0 else "❌"
+            row['Spectral Turbulence Stats'] = "✅" if len(files['spectral_turb_stats']) > 0 else "❌"
             availability_data.append(row)
         
         availability_df = pd.DataFrame(availability_data)
@@ -306,13 +306,13 @@ def main():
         # Single simulation - original checklist
         files = all_simulations_data[0]['files']
     checklist = {
-        'CSV Statistics': len(files['csv']) > 0,
+        'Real Turbulence Stats': len(files['real_turb_stats']) > 0,
         'Energy Spectra': len(files['spectrum']) > 0,
         'Normalized Spectra': len(files['norm_spectrum']) > 0,
         'Structure Functions': len(files['structure_functions_txt']) > 0 or len(files['structure_functions_bin']) > 0,
         'Flatness': len(files['flatness']) > 0,
         'Isotropy': len(files['isotropy']) > 0,
-        'Energy Balance Validation': len(files['eps_validation']) > 0,
+        'Spectral Turbulence Stats': len(files['spectral_turb_stats']) > 0,
     }
     
     for item, available in checklist.items():

@@ -25,7 +25,8 @@ def detect_simulation_files(directory: str) -> Dict[str, List[str]]:
         return {}
     
     files = {
-        'csv': [],
+        'real_turb_stats': [],
+        'spectral_turb_stats': [],
         'parameters': [],
         'spectrum': [],
         'norm_spectrum': [],
@@ -33,15 +34,14 @@ def detect_simulation_files(directory: str) -> Dict[str, List[str]]:
         'structure_functions_bin': [],
         'flatness': [],
         'isotropy': [],
-        'eps_validation': [],
         'tau_analysis': [],
     }
     
-    # Find CSV files
-    files['csv'] = sorted(dir_path.glob('turbulence_stats*.csv'), key=lambda f: natural_sort_key(str(f)))
-    # Find eps_real_validation files (both exact name and with wildcard)
+    # Find real-space turbulence statistics files (turbulence_stats*.csv)
+    files['real_turb_stats'] = sorted(dir_path.glob('turbulence_stats*.csv'), key=lambda f: natural_sort_key(str(f)))
+    # Find spectral turbulence statistics files (eps_real_validation*.csv)
     eps_files = list(dir_path.glob('eps_real_validation*.csv'))
-    files['eps_validation'] = sorted(eps_files, key=lambda f: natural_sort_key(str(f)))
+    files['spectral_turb_stats'] = sorted(eps_files, key=lambda f: natural_sort_key(str(f)))
     
     # Find parameter file
     files['parameters'] = list(dir_path.glob('simulation.input'))

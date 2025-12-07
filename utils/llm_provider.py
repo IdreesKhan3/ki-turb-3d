@@ -1,6 +1,6 @@
 """
 LLM Provider Abstraction Layer
-Supports Ollama (default, free), Google Gemini, OpenAI, and Anthropic
+Supports Ollama (default, free) and Google Gemini (free tier)
 """
 
 import os
@@ -199,85 +199,12 @@ class GeminiLLM(LLMProvider):
                 raise Exception(f"Gemini error: {error_msg}")
 
 
-class OpenAILLM(LLMProvider):
-    """OpenAI API provider (paid)"""
-    
-    def __init__(self, model: str = "gpt-4o-mini", api_key: Optional[str] = None):
-        self.model = model
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
-        
-        try:
-            from openai import OpenAI
-            self.client = OpenAI(api_key=self.api_key)
-        except ImportError:
-            raise ImportError("Install openai: pip install openai")
-    
-    def is_available(self) -> bool:
-        """Check if OpenAI API is available"""
-        return self.api_key is not None
-    
-    def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
-        """Generate response using OpenAI"""
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-        
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=kwargs.get("temperature", 0.7),
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            raise Exception(f"OpenAI error: {e}")
-
-
-class AnthropicLLM(LLMProvider):
-    """Anthropic Claude API provider (paid)"""
-    
-    def __init__(self, model: str = "claude-3-haiku-20240307", api_key: Optional[str] = None):
-        self.model = model
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY environment variable not set")
-        
-        try:
-            from anthropic import Anthropic
-            self.client = Anthropic(api_key=self.api_key)
-        except ImportError:
-            raise ImportError("Install anthropic: pip install anthropic")
-    
-    def is_available(self) -> bool:
-        """Check if Anthropic API is available"""
-        return self.api_key is not None
-    
-    def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
-        """Generate response using Anthropic"""
-        messages = [{"role": "user", "content": prompt}]
-        
-        try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=kwargs.get("max_tokens", 1024),
-                system=system_prompt,
-                messages=messages,
-                temperature=kwargs.get("temperature", 0.7),
-            )
-            return response.content[0].text
-        except Exception as e:
-            raise Exception(f"Anthropic error: {e}")
-
-
 def get_llm_provider(provider_name: Optional[str] = None) -> LLMProvider:
     """
     Get LLM provider instance
     
     Args:
-        provider_name: 'ollama', 'gemini', 'openai', 'anthropic', or None (auto-detect)
+        provider_name: 'ollama', 'gemini', or None (auto-detect, defaults to ollama)
     
     Returns:
         LLMProvider instance
@@ -295,16 +222,8 @@ def get_llm_provider(provider_name: Optional[str] = None) -> LLMProvider:
         model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         return GeminiLLM(model=model)
     
-    elif provider_name == "openai":
-        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        return OpenAILLM(model=model)
-    
-    elif provider_name == "anthropic":
-        model = os.getenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307")
-        return AnthropicLLM(model=model)
-    
     else:
-        raise ValueError(f"Unknown provider: {provider_name}")
+        raise ValueError(f"Unknown provider: {provider_name}. Supported: 'ollama', 'gemini'")
 
 
 def get_available_providers() -> Dict[str, bool]:
@@ -329,20 +248,6 @@ def get_available_providers() -> Dict[str, bool]:
             providers["gemini"] = False
     except Exception:
         providers["gemini"] = False
-    
-    # Check OpenAI
-    try:
-        openai = OpenAILLM()
-        providers["openai"] = openai.is_available()
-    except:
-        providers["openai"] = False
-    
-    # Check Anthropic
-    try:
-        anthropic = AnthropicLLM()
-        providers["anthropic"] = anthropic.is_available()
-    except:
-        providers["anthropic"] = False
     
     return providers
 

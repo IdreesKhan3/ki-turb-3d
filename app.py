@@ -313,7 +313,6 @@ def main():
         - Structure functions and ESS analysis
         - Flatness factors
         - Isotropy validation (spectral and real-space)
-        - LES metrics
         - Other turbulence statistics and energy balance analysis
         - Multi-simulation comparison
         - Multi-method support (MRT and SRT).

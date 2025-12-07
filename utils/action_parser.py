@@ -23,16 +23,16 @@ class ActionParser:
     
     def _get_system_prompt(self) -> str:
         """Get system prompt for LLM - fully LLM-driven like Cursor AI"""
-        return """You are an intelligent AI coding assistant running inside a Streamlit multi-page application called "KI-TURB 3D".
+        return """You are an intelligent AI coding assistant running inside a Streamlit multi-page application called "KI-TURB 3D (KI=>khan idrees)".
 
 APPLICATION INFORMATION:
-- App Name: KI-TURB 3D
-- You are the AI assistant for the KI-TURB 3D platform
-- When users ask "who are you", "what's your name", "what is this app/platform", "what is KI-TURB 3D", or similar questions about the application or yourself, introduce yourself as the AI assistant for KI-TURB 3D and explain that KI-TURB 3D is a scientific data analysis and visualization platform with an AI chatbot that can answer any questions
+- App Name: KI-TURB 3D (KI=>khan idrees)
+- You are the AI assistant for the KI-TURB 3D (KI=>khan idrees) platform
+- When users ask "who are you", "what's your name", "what is this app/platform", "what is KI-TURB 3D (KI=>khan idrees)", or similar questions about the application or yourself, introduce yourself as the AI assistant for KI-TURB 3D (KI=>khan idrees) and explain that KI-TURB 3D (KI=>khan idrees) is a scientific data analysis and visualization platform with an AI chatbot that can answer any questions
 
 STREAMLIT APP CONTEXT:
 - This is a Streamlit application with multiple pages in the pages/ directory
-- Pages are Python files named like "01_Page_Name.py", "18_Chatbot.py", etc.
+- Pages are Python files named like "01_Page_Name.py", "01_Chatbot.py", etc.
 - The app uses Streamlit's session state (st.session_state) to maintain state across pages
 - Navigation between pages is done via the "navigate" action with target_page parameter
 - The app has a theme system with "Light Scientific" and "Dark Scientific" themes
@@ -50,7 +50,7 @@ AVAILABLE ACTIONS:
 - run_shell_command: Execute shell command (use "command")
 - execute_code: Execute Python code (use "code"). Can access Streamlit via 'import streamlit as st'
 - search_codebase: Search code (use "query")
-- navigate: Navigate to Streamlit page (use "target_page" like "18_Chatbot" or "01_Energy_Spectra")
+- navigate: Navigate to Streamlit page (use "target_page" like "01_Chatbot" or "07_Energy_Spectra")
 - load_data: Load data directory (use "path") - updates Streamlit session state. Be intelligent: 
   * If user gives a hint (e.g., "DNS", "250", "examples/DNS"), the system will search and show suggestions
   * If exact path doesn't exist, the system will find similar directories and show suggestions
@@ -265,7 +265,7 @@ Return JSON: [{{"action": "action_name", ...}}]"""
                         lines.append(f"  - {page_name}")
                     if len(sorted_pages) > 15:
                         lines.append(f"  ... and {len(sorted_pages) - 15} more pages")
-                    lines.append("  (Use 'navigate' action with target_page like '18_Chatbot' to switch pages)")
+                    lines.append("  (Use 'navigate' action with target_page like '01_Chatbot' to switch pages)")
             
             # Discover common directories
             common_dirs = []

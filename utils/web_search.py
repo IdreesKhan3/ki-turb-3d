@@ -370,6 +370,15 @@ class WebSearchTools:
         Returns:
             Dictionary with page content
         """
+        # Check if this is a file:// URL - these should use read_file action instead
+        if url.startswith("file://") or (not url.startswith(("http://", "https://")) and Path(url).exists()):
+            file_path = url.replace("file://", "") if url.startswith("file://") else url
+            return {
+                "success": False,
+                "error": "file:// URLs are not supported for web browsing",
+                "message": f"❌ Cannot browse file:// URLs. Use 'read_file' action instead to read: {file_path}\n\nExample: 'read file {file_path}' or 'open {file_path}'"
+            }
+        
         try:
             response = self.session.get(url, timeout=15)
             response.raise_for_status()

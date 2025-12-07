@@ -585,7 +585,7 @@ def main():
     table_data = {}  # Store table data for display later
     
     # Load turbulence_stats CSV from all directories
-    csv_files = files.get('csv', [])
+    csv_files = files.get('real_turb_stats', [])
     
     if csv_files:
         if len(data_dirs) > 1:
@@ -623,7 +623,7 @@ def main():
         else:
             # Single directory: original behavior
             try:
-                df_stats = read_csv_data(str(files['csv'][0]))
+                df_stats = read_csv_data(str(files['real_turb_stats'][0]))
                 all_dataframes['turbulence_stats'] = df_stats
                 available_columns['turbulence_stats'] = list(df_stats.columns)
                 table_data['turbulence_stats'] = {'df': df_stats, 'dir_name': None, 'type': 'turbulence_stats'}
@@ -631,7 +631,7 @@ def main():
                 st.warning(f"Could not load turbulence stats: {e}")
 
     # Load eps_real_validation CSV files from all directories
-    eps_files = files.get("eps_validation", [])
+    eps_files = files.get("spectral_turb_stats", [])
     if not eps_files:
         # Fallback: search in first directory
         eps_files = glob.glob(str(data_dir / "eps_real_validation*.csv"))
@@ -902,6 +902,25 @@ def main():
                 y_max = np.max(np.abs(y_data)) if len(y_data) > 0 else 1.0
                 if y_max > 0:
                     y_data = y_data / y_max
+            
+            # Filter out non-positive values if log scale is selected (log requires > 0)
+            x_axis_type = ps.get("x_axis_type", "linear")
+            y_axis_type = ps.get("y_axis_type", "linear")
+            
+            if x_axis_type == "log":
+                # Log scale requires strictly positive values
+                log_x_mask = x_data > 0
+                x_data = x_data[log_x_mask]
+                y_data = y_data[log_x_mask]
+            
+            if y_axis_type == "log":
+                # Log scale requires strictly positive values
+                log_y_mask = y_data > 0
+                x_data = x_data[log_y_mask]
+                y_data = y_data[log_y_mask]
+            
+            if len(x_data) == 0 or len(y_data) == 0:
+                continue
             
             # Build hover template showing original column names and transformations
             hover_x_label = x_col
