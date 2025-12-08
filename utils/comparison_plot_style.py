@@ -9,6 +9,10 @@ import plotly.colors as pc
 from plotly.colors import hex_to_rgb
 from pathlib import Path
 from utils.plot_style import render_per_sim_style_ui, render_axis_limits_ui, render_figure_size_ui
+from utils.export_figs import export_panel as _export_panel
+
+# Re-export export_panel for backward compatibility
+export_panel = _export_panel
 
 
 # ==========================================================
@@ -406,92 +410,7 @@ def plot_style_sidebar(data_dir: Path, file_list, plot_names: list):
 
 
 # ==========================================================
-# Research-grade export system
+# Export system - now uses shared export_figs module
 # ==========================================================
-_EXPORT_FORMATS = {
-    "PNG (raster)": "png",
-    "PDF (vector)": "pdf",
-    "SVG (vector)": "svg",
-    "EPS (vector)": "eps",
-    "JPG/JPEG (raster)": "jpg",
-    "WEBP (raster)": "webp",
-    "TIFF (raster)": "tiff",
-    "HTML (interactive)": "html",
-}
-
-def export_panel(fig, out_dir: Path, base_name: str):
-    """Export figure to multiple research formats."""
-    with st.expander(f"📤 Export figure: {base_name}", expanded=False):
-        fmts = st.multiselect(
-            "Select export format(s)",
-            list(_EXPORT_FORMATS.keys()),
-            default=["PNG (raster)", "PDF (vector)", "SVG (vector)"],
-            key=f"{base_name}_fmts"
-        )
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            scale = st.slider("Scale (DPI-like)", 1.0, 6.0, 3.0, 0.5, key=f"{base_name}_scale")
-        with c2:
-            width_px = st.number_input("Width px (0=auto)", 0, 6000, 0, 100, key=f"{base_name}_wpx")
-        with c3:
-            height_px = st.number_input("Height px (0=auto)", 0, 6000, 0, 100, key=f"{base_name}_hpx")
-
-        if st.button("Export selected formats", key=f"{base_name}_doexport"):
-            if not fmts:
-                st.warning("Please select at least one format.")
-                return
-
-            errors = []
-            chrome_error = False
-            for f_label in fmts:
-                ext = _EXPORT_FORMATS[f_label]
-                out = out_dir / f"{base_name}.{ext}"
-                try:
-                    if ext == "html":
-                        fig.write_html(str(out))
-                        continue
-
-                    kwargs = {}
-                    if width_px > 0:
-                        kwargs["width"] = int(width_px)
-                    if height_px > 0:
-                        kwargs["height"] = int(height_px)
-
-                    fig.write_image(str(out), scale=scale, **kwargs)
-                except Exception as e:
-                    error_msg = str(e)
-                    errors.append((out.name, error_msg))
-                    if "Chrome" in error_msg or "chrome" in error_msg.lower():
-                        chrome_error = True
-
-            if errors:
-                error_text = "Some exports failed.\n\n"
-                
-                if chrome_error:
-                    error_text += (
-                        "**Issue:** Kaleido (the image export library) requires Google Chrome to be installed on your system.\n\n"
-                        "**What you need:** Google Chrome browser installed on your computer.\n\n"
-                        "**Solution - Choose one:**\n\n"
-                        "**Option 1 (Recommended):** Auto-install Chrome via command:\n"
-                        "```bash\n"
-                        "kaleido_get_chrome\n"
-                        "```\n"
-                        "This command downloads and installs Chrome automatically.\n\n"
-                        "**Option 2:** Install Chrome manually:\n"
-                        "1. Download Chrome from: https://www.google.com/chrome/\n"
-                        "2. Install it following the installer instructions\n"
-                        "3. Restart your application\n\n"
-                        "**Note:** After installing Chrome, you may need to update kaleido:\n"
-                        "```bash\n"
-                        "pip install -U kaleido\n"
-                        "```\n\n"
-                    )
-                else:
-                    error_text += "Ensure kaleido is installed:\n```bash\npip install -U kaleido\n```\n\n"
-                
-                error_text += "**Failed exports:**\n" + "\n".join([f"- {n}: {msg}" for n, msg in errors])
-                st.error(error_text)
-            else:
-                st.success("All selected exports saved to dataset folder.")
+# export_panel is imported and re-exported above for backward compatibility
 

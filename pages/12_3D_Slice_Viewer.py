@@ -34,6 +34,7 @@ from data_readers.vti_reader import read_vti_file, compute_velocity_magnitude, c
 from data_readers.hdf5_reader import read_hdf5_file
 from utils.file_detector import natural_sort_key
 from utils.iso_surfaces import compute_qs_s, compute_q_invariant, compute_r_invariant
+from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
 
 
@@ -787,20 +788,8 @@ def main():
             
             st.markdown("where $A_{ij} = \\partial u_i/\\partial x_j$ is the velocity gradient tensor.")
 
-        # Export options
-        with st.expander("💾 Export Options", expanded=False):
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("📥 Download as HTML"):
-                    html_str = fig.to_html(include_plotlyjs='cdn')
-                    st.download_button(
-                        label="Download HTML file",
-                        data=html_str,
-                        file_name=f"{Path(selected_file).stem}_3d.html",
-                        mime="text/html"
-                    )
-            with col2:
-                st.info("Use the camera icon (📷) in the plot toolbar to export as PNG/JPEG/SVG")
+        # Export options - using shared export function
+        export_panel(fig, data_dir, base_name=f"{Path(selected_file).stem}_3d_view")
 
     except Exception as e:
         file_type = "HDF5" if Path(selected_file).suffix.lower() in ['.h5', '.hdf5'] else "VTI"

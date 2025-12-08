@@ -38,7 +38,12 @@ sys.path.insert(0, str(project_root))
 from utils.file_detector import detect_simulation_files
 from utils.theme_config import inject_theme_css
 from utils.report_builder import capture_button
-from utils.plot_style import render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
+from utils.plot_style import (
+    default_plot_style, apply_plot_style as apply_plot_style_base,
+    render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
+    _get_palette
+)
+from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
 
 
@@ -78,6 +83,7 @@ def _load_ui_metadata(data_dir: Path):
             "dev": "Absolute deviation",
             "lumley_x": "ξ = (III<sub>b</sub>/2)<sup>1/3</sup>",
             "lumley_y": "η = (-II<sub>b</sub>/3)<sup>1/2</sup>",
+            "convergence": "Running standard deviation",
         }
         # Start with defaults, then update with saved values
         loaded_legends = default_legends.copy()
@@ -118,139 +124,32 @@ def _save_ui_metadata(data_dir: Path):
 
 
 # ==========================================================
-# Plot styling system (shared keys with other pages)
+# Plot styling system (using centralized module)
 # ==========================================================
-def _default_plot_style():
-    return {
-        "font_family": "Arial",
-        "font_size": 14,
-        "title_size": 16,
-        "legend_size": 12,
-        "tick_font_size": 12,
-        "axis_title_size": 14,
-
-        "tick_len": 6,
-        "tick_w": 1.2,
-        "ticks_outside": True,
-
-        "plot_bgcolor": "#FFFFFF",
-        "paper_bgcolor": "#FFFFFF",
-
-        "show_grid": True,
-        "grid_on_x": True,
-        "grid_on_y": True,
-        "grid_w": 0.6,
-        "grid_dash": "dot",
-        "grid_color": "#B0B0B0",
-        "grid_opacity": 0.6,
-
-        "show_minor_grid": False,
-        "minor_grid_w": 0.4,
-        "minor_grid_dash": "dot",
-        "minor_grid_color": "#D0D0D0",
-        "minor_grid_opacity": 0.4,
-
-        "line_width": 2.2,
-        "marker_size": 6,
-
-        "palette": "Plotly",
-        "custom_colors": ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd",
-                          "#8c564b", "#e377c2", "#7f7f7f"],
-        "template": "plotly_white",
-
-        "enable_per_curve_style": False,
-        
-        # Axis limits
-        "enable_x_limits": False,
-        "x_min": None,
-        "x_max": None,
-        "enable_y_limits": False,
-        "y_min": None,
-        "y_max": None,
-        
-        # Figure size
-        "enable_custom_size": False,
-        "figure_width": 800,
-        "figure_height": 500,
-        
-        # Frame/Margin size
-        "margin_left": 60,
-        "margin_right": 20,
-        "margin_top": 40,
-        "margin_bottom": 50,
-    }
-
-def _get_palette(ps):
-    if ps["palette"] == "Custom":
-        cols = ps.get("custom_colors", [])
-        return cols if cols else pc.qualitative.Plotly
-
-    mapping = {
-        "Plotly": pc.qualitative.Plotly,
-        "D3": pc.qualitative.D3,
-        "G10": pc.qualitative.G10,
-        "T10": pc.qualitative.T10,
-        "Dark2": pc.qualitative.Dark2,
-        "Set1": pc.qualitative.Set1,
-        "Set2": pc.qualitative.Set2,
-        "Pastel1": pc.qualitative.Pastel1,
-        "Bold": pc.qualitative.Bold,
-        "Prism": pc.qualitative.Prism,
-    }
-    return mapping.get(ps["palette"], pc.qualitative.Plotly)
-
-def _axis_title_font(ps):
-    return dict(family=ps["font_family"], size=ps["axis_title_size"])
-
-def _tick_font(ps):
-    return dict(family=ps["font_family"], size=ps["tick_font_size"])
+def _normalize_plot_name(plot_name: str) -> str:
+    """Normalize plot name to a valid key format (extends centralized version to handle '/')."""
+    # Use centralized logic but also handle '/' replacement
+    normalized = plot_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+    return normalized.replace("/", "_")
 
 def apply_plot_style(fig, ps):
-    fig.update_layout(
-        template=ps["template"],
-        font=dict(family=ps["font_family"], size=ps["font_size"]),
-        legend=dict(font=dict(size=ps["legend_size"])),
-        hovermode="x unified",
-        plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
-        paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
-        margin=dict(
+    if not ps.get("show_plot_title", False):
+        ps["plot_title"] = ""
+    
+    fig = apply_plot_style_base(fig, ps)
+    
+    if not ps.get("show_plot_title", False):
+        fig.update_layout(title=None)
+    
+    if any(k in ps for k in ["margin_left", "margin_right", "margin_top", "margin_bottom"]):
+        fig.update_layout(margin=dict(
             l=ps.get("margin_left", 60),
             r=ps.get("margin_right", 20),
             t=ps.get("margin_top", 40),
             b=ps.get("margin_bottom", 50)
-        ),
-    )
-
-    tick_dir = "outside" if ps["ticks_outside"] else "inside"
-
-    show_x_grid = ps["show_grid"] and ps.get("grid_on_x", True)
-    show_y_grid = ps["show_grid"] and ps.get("grid_on_y", True)
-    grid_rgba = f"rgba{hex_to_rgb(ps['grid_color']) + (ps['grid_opacity'],)}"
-
-    show_minor = ps.get("show_minor_grid", False)
-    minor_rgba = f"rgba{hex_to_rgb(ps['minor_grid_color']) + (ps['minor_grid_opacity'],)}"
-
-    fig.update_xaxes(
-        ticks=tick_dir, ticklen=ps["tick_len"], tickwidth=ps["tick_w"],
-        tickfont=_tick_font(ps), title_font=_axis_title_font(ps),
-        showgrid=show_x_grid, gridwidth=ps["grid_w"],
-        griddash=ps["grid_dash"], gridcolor=grid_rgba,
-        minor=dict(showgrid=show_minor, gridwidth=ps["minor_grid_w"],
-                   griddash=ps["minor_grid_dash"], gridcolor=minor_rgba)
-    )
-    fig.update_yaxes(
-        ticks=tick_dir, ticklen=ps["tick_len"], tickwidth=ps["tick_w"],
-        tickfont=_tick_font(ps), title_font=_axis_title_font(ps),
-        showgrid=show_y_grid, gridwidth=ps["grid_w"],
-        griddash=ps["grid_dash"], gridcolor=grid_rgba,
-        minor=dict(showgrid=show_minor, gridwidth=ps["minor_grid_w"],
-                   griddash=ps["minor_grid_dash"], gridcolor=minor_rgba)
-    )
+        ))
+    
     return fig
-
-def _normalize_plot_name(plot_name: str) -> str:
-    """Normalize plot name to a valid key format."""
-    return plot_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_").replace("/", "_")
 
 def _ensure_curve_defaults(ps, curves, plot_name: str):
     # Use plot-specific key for per-curve styles
@@ -270,7 +169,17 @@ def _ensure_curve_defaults(ps, curves, plot_name: str):
 
 def get_plot_style(plot_name: str):
     """Get plot-specific style, merging defaults with plot-specific overrides."""
-    default = _default_plot_style()
+    # Use centralized default_plot_style, then add page-specific defaults
+    default = default_plot_style()
+    # Add page-specific defaults (margins and per-curve style)
+    default.update({
+        "enable_per_curve_style": False,
+        "margin_left": 60,
+        "margin_right": 20,
+        "margin_top": 40,
+        "margin_bottom": 50,
+    })
+    
     plot_styles = st.session_state.get("plot_styles", {})
     plot_style = plot_styles.get(plot_name, {})
     # Deep merge: start with defaults, then update with plot-specific overrides
@@ -416,6 +325,22 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                 ps["paper_bgcolor"] = "#FFFFFF"
 
         st.markdown("---")
+        st.markdown("**Plot Title**")
+        ps["show_plot_title"] = st.checkbox(
+            "Show plot title",
+            bool(ps.get("show_plot_title", False)),
+            help="Enable to add a title above the plot",
+            key=f"{key_prefix}_show_plot_title"
+        )
+        if ps["show_plot_title"]:
+            ps["plot_title"] = st.text_input(
+                "Title text",
+                value=ps.get("plot_title", ""),
+                help="Enter the title text for this plot",
+                key=f"{key_prefix}_plot_title"
+            )
+
+        st.markdown("---")
         render_axis_limits_ui(ps, key_prefix=key_prefix)
         st.markdown("---")
         render_figure_size_ui(ps, key_prefix=key_prefix)
@@ -487,7 +412,97 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                 st.success(f"Saved style for '{selected_plot}'.")
         with b2:
             if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+                # 1) Reset the underlying style dict
                 st.session_state.plot_styles[selected_plot] = {}
+                
+                # 2) Clear widget state so widgets re-read from defaults next run
+                widget_keys = [
+                    # Fonts
+                    f"{key_prefix}_font_family",
+                    f"{key_prefix}_font_size",
+                    f"{key_prefix}_title_size",
+                    f"{key_prefix}_legend_size",
+                    f"{key_prefix}_tick_font_size",
+                    f"{key_prefix}_axis_title_size",
+                    # Backgrounds
+                    f"{key_prefix}_plot_bgcolor",
+                    f"{key_prefix}_paper_bgcolor",
+                    # Ticks
+                    f"{key_prefix}_tick_len",
+                    f"{key_prefix}_tick_w",
+                    f"{key_prefix}_ticks_outside",
+                    # Major grid
+                    f"{key_prefix}_show_grid",
+                    f"{key_prefix}_grid_on_x",
+                    f"{key_prefix}_grid_on_y",
+                    f"{key_prefix}_grid_w",
+                    f"{key_prefix}_grid_dash",
+                    f"{key_prefix}_grid_color",
+                    f"{key_prefix}_grid_opacity",
+                    # Minor grid
+                    f"{key_prefix}_show_minor_grid",
+                    f"{key_prefix}_minor_grid_w",
+                    f"{key_prefix}_minor_grid_dash",
+                    f"{key_prefix}_minor_grid_color",
+                    f"{key_prefix}_minor_grid_opacity",
+                    # Curves
+                    f"{key_prefix}_line_width",
+                    f"{key_prefix}_marker_size",
+                    # Palette
+                    f"{key_prefix}_palette",
+                    # Theme
+                    f"{key_prefix}_template",
+                    # Plot title
+                    f"{key_prefix}_show_plot_title",
+                    f"{key_prefix}_plot_title",
+                    # Margins
+                    f"{key_prefix}_margin_left",
+                    f"{key_prefix}_margin_right",
+                    f"{key_prefix}_margin_top",
+                    f"{key_prefix}_margin_bottom",
+                    # Per-curve toggle
+                    f"{key_prefix}_enable_per_curve",
+                ]
+                
+                # Custom color inputs
+                for i in range(10):
+                    widget_keys.append(f"{key_prefix}_cust_color_{i}")
+                
+                # Per-curve style widgets
+                for c in curves:
+                    for suffix in [
+                        "over_on",
+                        "over_color",
+                        "over_width",
+                        "over_dash",
+                        "over_marker",
+                        "over_msize",
+                    ]:
+                        widget_keys.append(f"{key_prefix}_{suffix}_{c}")
+                
+                # Axis limits widgets (from render_axis_limits_ui)
+                widget_keys.extend([
+                    f"{key_prefix}_enable_x_limits",
+                    f"{key_prefix}_x_min",
+                    f"{key_prefix}_x_max",
+                    f"{key_prefix}_enable_y_limits",
+                    f"{key_prefix}_y_min",
+                    f"{key_prefix}_y_max",
+                ])
+                
+                # Figure size widgets (from render_figure_size_ui)
+                widget_keys.extend([
+                    f"{key_prefix}_enable_custom_size",
+                    f"{key_prefix}_figure_width",
+                    f"{key_prefix}_figure_height",
+                ])
+                
+                # Delete all widget state keys
+                for k in widget_keys:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                
+                # Save the reset state
                 _save_ui_metadata(data_dir)
                 st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
                 reset_pressed = True
@@ -521,56 +536,6 @@ def _resolve_curve_style(curve, idx, colors, ps, plot_name: str):
         s.get("marker") or default_marker,
         int(s.get("msize") or default_msize),
     )
-
-
-# ==========================================================
-# Export system
-# ==========================================================
-_EXPORT_FORMATS = {
-    "PNG (raster)": "png",
-    "PDF (vector)": "pdf",
-    "SVG (vector)": "svg",
-    "EPS (vector)": "eps",
-    "JPG/JPEG (raster)": "jpg",
-    "WEBP (raster)": "webp",
-    "TIFF (raster)": "tiff",
-    "HTML (interactive)": "html",
-}
-
-def export_panel(fig, out_dir: Path, base_name: str):
-    with st.expander(f"📤 Export figure: {base_name}", expanded=False):
-        fmts = st.multiselect("Formats", list(_EXPORT_FORMATS.keys()),
-                              default=["PNG (raster)", "PDF (vector)", "SVG (vector)"],
-                              key=f"{base_name}_fmts")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            scale = st.slider("Scale", 1.0, 6.0, 3.0, 0.5, key=f"{base_name}_scale")
-        with c2:
-            width_px = st.number_input("Width px (0=auto)", 0, 6000, 0, 100, key=f"{base_name}_wpx")
-        with c3:
-            height_px = st.number_input("Height px (0=auto)", 0, 6000, 0, 100, key=f"{base_name}_hpx")
-
-        if st.button("Export", key=f"{base_name}_doexport"):
-            errors = []
-            for fl in fmts:
-                ext = _EXPORT_FORMATS[fl]
-                out = out_dir / f"{base_name}.{ext}"
-                try:
-                    if ext == "html":
-                        fig.write_html(str(out))
-                    else:
-                        kwargs = {}
-                        if width_px > 0: kwargs["width"] = int(width_px)
-                        if height_px > 0: kwargs["height"] = int(height_px)
-                        fig.write_image(str(out), scale=scale, **kwargs)
-                except Exception as e:
-                    errors.append((out.name, str(e)))
-
-            if errors:
-                st.error("Some exports failed (install kaleido):\n" +
-                         "\n".join([f"- {n}: {m}" for n, m in errors]))
-            else:
-                st.success("Exports saved in dataset folder.")
 
 
 # ==========================================================
@@ -801,6 +766,15 @@ def main():
 
         st.markdown("---")
         st.markdown("### Axis labels")
+        st.caption("**Which subplot uses each label:**")
+        st.caption("• time → X-axis for plots A, C, D, E, F")
+        st.caption("• energy_frac → Y-axis for plot A")
+        st.caption("• lumley_x → X-axis for plot B")
+        st.caption("• lumley_y → Y-axis for plot B")
+        st.caption("• bij → Y-axis for plot C")
+        st.caption("• cross → Y-axis for plot D")
+        st.caption("• dev → Y-axis for plot E")
+        st.markdown("")
         for k in st.session_state.axis_labels_real_iso:
             st.session_state.axis_labels_real_iso[k] = st.text_input(
                 k, st.session_state.axis_labels_real_iso[k], key=f"realiso_ax_{k}"
@@ -833,6 +807,7 @@ def main():
                     "dev": "Absolute deviation",
                     "lumley_x": "ξ = (III<sub>b</sub>/2)<sup>1/3</sup>",
                     "lumley_y": "η = (-II<sub>b</sub>/3)<sup>1/2</sup>",
+                    "convergence": "Running standard deviation",
                 }
                 _save_ui_metadata(data_dir)
                 st.toast("Reset + saved.", icon="♻️")
@@ -904,6 +879,9 @@ def main():
             yaxis_title=st.session_state.axis_labels_real_iso["energy_frac"],
             height=420,  # Default, will be overridden if custom size is enabled
         )
+        # Add plot title if enabled
+        if ps_a.get("show_plot_title") and ps_a.get("plot_title"):
+            layout_kwargs_a["title"] = ps_a["plot_title"]
         layout_kwargs_a = apply_axis_limits(layout_kwargs_a, ps_a)
         layout_kwargs_a = apply_figure_size(layout_kwargs_a, ps_a)
         fig_a.update_layout(**layout_kwargs_a)
@@ -952,6 +930,9 @@ def main():
             height=420,  # Default, will be overridden if custom size is enabled
             showlegend=False,
         )
+        # Add plot title if enabled
+        if ps_b.get("show_plot_title") and ps_b.get("plot_title"):
+            layout_kwargs_b["title"] = ps_b["plot_title"]
         layout_kwargs_b = apply_axis_limits(layout_kwargs_b, ps_b)
         layout_kwargs_b = apply_figure_size(layout_kwargs_b, ps_b)
         fig_b.update_layout(**layout_kwargs_b)
@@ -986,6 +967,9 @@ def main():
             yaxis_title=st.session_state.axis_labels_real_iso["bij"],
             height=360,  # Default, will be overridden if custom size is enabled
         )
+        # Add plot title if enabled
+        if ps_c.get("show_plot_title") and ps_c.get("plot_title"):
+            layout_kwargs_c["title"] = ps_c["plot_title"]
         layout_kwargs_c = apply_axis_limits(layout_kwargs_c, ps_c)
         layout_kwargs_c = apply_figure_size(layout_kwargs_c, ps_c)
         fig_c.update_layout(**layout_kwargs_c)
@@ -1019,6 +1003,9 @@ def main():
             yaxis_type="log",
             height=360,  # Default, will be overridden if custom size is enabled
         )
+        # Add plot title if enabled
+        if ps_d.get("show_plot_title") and ps_d.get("plot_title"):
+            layout_kwargs_d["title"] = ps_d["plot_title"]
         layout_kwargs_d = apply_axis_limits(layout_kwargs_d, ps_d)
         layout_kwargs_d = apply_figure_size(layout_kwargs_d, ps_d)
         fig_d.update_layout(**layout_kwargs_d)
@@ -1067,6 +1054,9 @@ def main():
             yaxis_type="log",
             height=360,  # Default, will be overridden if custom size is enabled
         )
+        # Add plot title if enabled
+        if ps_e.get("show_plot_title") and ps_e.get("plot_title"):
+            layout_kwargs_e["title"] = ps_e["plot_title"]
         layout_kwargs_e = apply_axis_limits(layout_kwargs_e, ps_e)
         layout_kwargs_e = apply_figure_size(layout_kwargs_e, ps_e)
         fig_e.update_layout(**layout_kwargs_e)
@@ -1099,10 +1089,13 @@ def main():
 
         layout_kwargs_f = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
-            yaxis_title="Running standard deviation",
+            yaxis_title=st.session_state.axis_labels_real_iso.get("convergence", "Running standard deviation"),
             yaxis_type="log",
             height=360,  # Default, will be overridden if custom size is enabled
         )
+        # Add plot title if enabled
+        if ps_f.get("show_plot_title") and ps_f.get("plot_title"):
+            layout_kwargs_f["title"] = ps_f["plot_title"]
         layout_kwargs_f = apply_axis_limits(layout_kwargs_f, ps_f)
         layout_kwargs_f = apply_figure_size(layout_kwargs_f, ps_f)
         fig_f.update_layout(**layout_kwargs_f)

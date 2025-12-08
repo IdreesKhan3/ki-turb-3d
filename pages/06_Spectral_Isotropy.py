@@ -40,6 +40,7 @@ from utils.file_detector import detect_simulation_files, natural_sort_key
 from utils.theme_config import inject_theme_css
 from utils.report_builder import capture_button
 from utils.plot_style import render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
+from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
 
 
@@ -513,56 +514,6 @@ def _resolve_curve_style(curve, idx, colors, ps, plot_name: str):
         s.get("marker") or default_marker,
         int(s.get("msize") or default_msize),
     )
-
-
-# ==========================================================
-# Export system
-# ==========================================================
-_EXPORT_FORMATS = {
-    "PNG (raster)": "png",
-    "PDF (vector)": "pdf",
-    "SVG (vector)": "svg",
-    "EPS (vector)": "eps",
-    "JPG/JPEG (raster)": "jpg",
-    "WEBP (raster)": "webp",
-    "TIFF (raster)": "tiff",
-    "HTML (interactive)": "html",
-}
-
-def export_panel(fig, out_dir: Path, base_name: str):
-    with st.expander(f"📤 Export figure: {base_name}", expanded=False):
-        fmts = st.multiselect("Formats", list(_EXPORT_FORMATS.keys()),
-                              default=["PNG (raster)", "PDF (vector)", "SVG (vector)"],
-                              key=f"{base_name}_fmts")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            scale = st.slider("Scale", 1.0, 6.0, 3.0, 0.5, key=f"{base_name}_scale")
-        with c2:
-            width_px = st.number_input("Width px (0=auto)", 0, 6000, 0, 100, key=f"{base_name}_wpx")
-        with c3:
-            height_px = st.number_input("Height px (0=auto)", 0, 6000, 0, 100, key=f"{base_name}_hpx")
-
-        if st.button("Export", key=f"{base_name}_doexport"):
-            errors = []
-            for fl in fmts:
-                ext = _EXPORT_FORMATS[fl]
-                out = out_dir / f"{base_name}.{ext}"
-                try:
-                    if ext == "html":
-                        fig.write_html(str(out))
-                    else:
-                        kwargs = {}
-                        if width_px > 0: kwargs["width"] = int(width_px)
-                        if height_px > 0: kwargs["height"] = int(height_px)
-                        fig.write_image(str(out), scale=scale, **kwargs)
-                except Exception as e:
-                    errors.append((out.name, str(e)))
-
-            if errors:
-                st.error("Some exports failed (install kaleido):\n" +
-                         "\n".join([f"- {n}: {m}" for n, m in errors]))
-            else:
-                st.success("Exports saved in dataset folder.")
 
 
 # ==========================================================

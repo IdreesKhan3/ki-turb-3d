@@ -16,6 +16,8 @@ sys.path.insert(0, str(project_root))
 from data_readers.csv_reader import read_eps_validation_csv
 from data_readers.parameter_reader import read_parameters, format_parameters_for_display
 from data_readers.binary_reader import read_tau_analysis_file
+from data_readers.vti_reader import read_vti_file, compute_compressibility_metrics as compute_compressibility_vti
+from data_readers.hdf5_reader import read_hdf5_file, compute_compressibility_metrics as compute_compressibility_h5
 from utils.file_detector import detect_simulation_files
 from utils.theme_config import inject_theme_css
 
@@ -183,9 +185,30 @@ def main():
         
         sim['mach_number'] = mach_number
         sim['knudsen_number'] = knudsen_number
+        
+        # Compute compressibility from velocity field files
+        compressibility_metrics = None
+        if files['velocity_vti']:
+            # Try to read first VTI file
+            try:
+                vti_data = read_vti_file(str(files['velocity_vti'][0]))
+                velocity = vti_data['velocity']
+                compressibility_metrics = compute_compressibility_vti(velocity)
+            except Exception as e:
+                compressibility_metrics = None
+        elif files['velocity_h5']:
+            # Try to read first H5 file
+            try:
+                h5_data = read_hdf5_file(str(files['velocity_h5'][0]))
+                velocity = h5_data['velocity']
+                compressibility_metrics = compute_compressibility_h5(velocity)
+            except Exception as e:
+                compressibility_metrics = None
+        
+        sim['compressibility'] = compressibility_metrics
     
     # Display physics validation
-    has_validation = any(sim['mach_number'] is not None or sim['knudsen_number'] is not None for sim in all_simulations_data)
+    has_validation = any(sim['mach_number'] is not None or sim['knudsen_number'] is not None or sim['compressibility'] is not None for sim in all_simulations_data)
     
     if has_validation:
         st.header("🔬 Physics Validation")
@@ -217,6 +240,16 @@ def main():
                     else:
                         row['Knudsen Number'] = "N/A (computation failed)"
                 
+                # Compressibility (Max Divergence) with reason if N/A
+                if sim['compressibility'] is not None:
+                    max_div = sim['compressibility']['max_divergence']
+                    row['Max Divergence |∇·u|'] = f"{max_div:.6e}"
+                else:
+                    if not files['velocity_vti'] and not files['velocity_h5']:
+                        row['Max Divergence |∇·u|'] = "N/A (no .vti or .h5 files)"
+                    else:
+                        row['Max Divergence |∇·u|'] = "N/A (computation failed)"
+                
                 validation_data.append(row)
             
             if validation_data:
@@ -228,8 +261,9 @@ def main():
             sim = all_simulations_data[0]
             mach_number = sim['mach_number']
             knudsen_number = sim['knudsen_number']
-        
-        col1, col2 = st.columns(2)
+            compressibility = sim['compressibility']
+            
+            col1, col2, col3 = st.columns(3)
         
         with col1:
             if mach_number is not None:
@@ -250,36 +284,72 @@ def main():
                 st.metric(
                     "Mach Number", 
                     f"{mach_number:.4f}",
-                    delta=None,
-                    help="Ma = u_rms / c_s, where c_s = 1/√3 is the lattice sound speed"
+                    delta=None
                 )
                 st.markdown(f"{status_color} {status_text}")
                 st.caption(status_msg)
-        
-        with col2:
-            if knudsen_number is not None:
-                # Knudsen number traffic light logic
-                if knudsen_number > 0.1:
-                    status_color = "🔴"
-                    status_text = "**Invalid:** Kn > 0.1"
-                    status_msg = "Transition regime. Boltzmann equation is not recovering Navier-Stokes hydrodynamics correctly for this scale."
-                elif knudsen_number > 0.01:
-                    status_color = "🟡"
-                    status_text = "**Warning:** 0.01 < Kn < 0.1"
-                    status_msg = "Slip regime. Boundary conditions might be inaccurate; fine for some bulk flows but risky for DNS."
+            
+            with col2:
+                if knudsen_number is not None:
+                    # Knudsen number traffic light logic
+                    if knudsen_number > 0.1:
+                        status_color = "🔴"
+                        status_text = "**Invalid:** Kn > 0.1"
+                        status_msg = "Transition regime. Boltzmann equation is not recovering Navier-Stokes hydrodynamics correctly for this scale."
+                    elif knudsen_number > 0.01:
+                        status_color = "🟡"
+                        status_text = "**Warning:** 0.01 < Kn < 0.1"
+                        status_msg = "Slip regime. Boundary conditions might be inaccurate; fine for some bulk flows but risky for DNS."
+                    else:
+                        status_color = "🟢"
+                        status_text = "**Valid:** Kn < 0.01"
+                        status_msg = "Continuum regime. Navier-Stokes valid."
+                    
+                    st.metric(
+                        "Knudsen Number", 
+                        f"{knudsen_number:.6f}",
+                        delta=None
+                    )
+                    st.markdown(f"{status_color} {status_text}")
+                    st.caption(status_msg)
+            
+            with col3:
+                if compressibility is not None:
+                    max_div = compressibility['max_divergence']
+                    rms_div = compressibility['rms_divergence']
+                    
+                    # Compressibility traffic light logic
+                    # For incompressible flow, divergence should be very small
+                    # Typical threshold: |∇·u| < 1e-6 for well-resolved DNS
+                    if max_div > 1e-3:
+                        status_color = "🔴"
+                        status_text = "**Invalid:** |∇·u| > 1e-3"
+                        status_msg = "Significant compressibility. Flow violates incompressibility assumption."
+                    elif max_div > 1e-5:
+                        status_color = "🟡"
+                        status_text = "**Warning:** 1e-5 < |∇·u| < 1e-3"
+                        status_msg = "Moderate compressibility. May indicate numerical errors or compressibility effects."
+                    else:
+                        status_color = "🟢"
+                        status_text = "**Valid:** |∇·u| < 1e-5"
+                        status_msg = "Incompressible flow. Divergence is within acceptable limits."
+                    
+                    st.metric(
+                        "Max Divergence |∇·u|", 
+                        f"{max_div:.6e}",
+                        delta=None
+                    )
+                    st.caption(f"RMS: {rms_div:.6e}")
+                    st.markdown(f"{status_color} {status_text}")
+                    st.caption(status_msg)
                 else:
-                    status_color = "🟢"
-                    status_text = "**Valid:** Kn < 0.01"
-                    status_msg = "Continuum regime. Navier-Stokes valid."
-                
-                st.metric(
-                    "Knudsen Number", 
-                    f"{knudsen_number:.6f}",
-                    delta=None,
-                        help="Kn = (τ - 0.5) / L"
-                )
-                st.markdown(f"{status_color} {status_text}")
-                st.caption(status_msg)
+                    files = all_simulations_data[0]['files']
+                    if not files['velocity_vti'] and not files['velocity_h5']:
+                        st.metric("Max Divergence |∇·u|", "N/A")
+                        st.caption("No .vti or .h5 velocity field files found")
+                    else:
+                        st.metric("Max Divergence |∇·u|", "N/A")
+                        st.caption("Failed to compute compressibility")
     
     # File availability checklist
     st.header("Data Availability")
@@ -318,6 +388,57 @@ def main():
     for item, available in checklist.items():
         status = "✅" if available else "❌"
         st.markdown(f"{status} {item}")
+    
+    # Theory Equations Section
+    st.markdown("---")
+    st.header("📚 Theory Equations")
+    
+    with st.expander("**Physics Validation Equations**", expanded=False):
+        st.markdown("**Mach Number:**")
+        st.latex(r"""
+        \text{Ma} = \frac{u_{\text{rms}}}{c_s}
+        """)
+        st.markdown(r"""
+        where $u_{\text{rms}} = \sqrt{\langle u_x^2 + u_y^2 + u_z^2 \rangle}$ is the root-mean-square velocity and $c_s = 1/\sqrt{3}$ is the lattice sound speed. For incompressible flow: $\text{Ma} < 0.1$
+        """)
+        
+        st.markdown("---")
+        st.markdown("**Knudsen Number (DNS/Continuum Regime):**")
+        st.latex(r"""
+        \text{Kn} = \frac{c_s (\tau_0 - 1/2) \Delta x}{\Delta x} = c_s \left(\tau_0 - \frac{1}{2}\right)
+        """)
+        st.markdown(r"""
+        where $\tau_0 = \nu_0/c_s^2 + 1/2$ is the molecular relaxation time from the input parameters, $\nu_0$ is the molecular viscosity, and $c_s = 1/\sqrt{3}$ is the lattice sound speed. Continuum regime: $\text{Kn} < 0.01$
+        """)
+        
+        st.markdown("---")
+        st.markdown("**Knudsen Number (LES/Turbulent Regime):**")
+        st.latex(r"""
+        \text{Kn}_t = \frac{(\tau_e - 1/2) \sqrt{3} \Delta x}{\Delta x} = \sqrt{3} \left(\tau_e - \frac{1}{2}\right)
+        """)
+        st.markdown(r"""
+        where $\tau_e$ is the effective relaxation time computed from the turbulent viscosity analysis. For LES simulations, this uses the effective tau from tau_analysis files. Continuum regime: $\text{Kn}_t < 0.01$
+        """)
+        
+        st.markdown("---")
+        st.markdown("**Velocity Divergence (Compressibility Check):**")
+        st.latex(r"""
+        \nabla \cdot \mathbf{u} = \frac{\partial u_x}{\partial x} + \frac{\partial u_y}{\partial y} + \frac{\partial u_z}{\partial z}
+        """)
+        st.markdown(r"""
+        For incompressible flow, the divergence should be zero: $\nabla \cdot \mathbf{u} = 0$. The maximum absolute divergence $|\nabla \cdot \mathbf{u}|_{\max}$ is used to validate incompressibility.
+        """)
+        
+        st.markdown("**Compressibility Metrics:**")
+        st.latex(r"""
+        \begin{align}
+        |\nabla \cdot \mathbf{u}|_{\max} &= \max_{x,y,z} |\nabla \cdot \mathbf{u}| \\
+        \text{RMS}(\nabla \cdot \mathbf{u}) &= \sqrt{\frac{1}{V} \int_V (\nabla \cdot \mathbf{u})^2 \, dV}
+        \end{align}
+        """)
+        st.markdown(r"""
+        Validation thresholds: $|\nabla \cdot \mathbf{u}|_{\max} < 10^{-5}$ (valid), $10^{-5} < |\nabla \cdot \mathbf{u}|_{\max} < 10^{-3}$ (warning), $|\nabla \cdot \mathbf{u}|_{\max} > 10^{-3}$ (invalid)
+        """)
 
 if __name__ == "__main__":
     main()

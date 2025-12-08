@@ -13,6 +13,7 @@ from .structure_functions import plot_structure_functions, plot_ess
 from .isotropy import plot_spectral_isotropy, plot_real_space_isotropy
 from .isotropy_spectral import build_spectral_isotropy_fig
 from .isotropy_real import build_real_isotropy_figs
+from .d3q19_lattice import plot_d3q19_lattice
 
 __all__ = [
     'plot_energy_spectrum',
@@ -25,5 +26,6 @@ __all__ = [
     'plot_real_space_isotropy',
     'build_spectral_isotropy_fig',
     'build_real_isotropy_figs',
+    'plot_d3q19_lattice',
 ]
 

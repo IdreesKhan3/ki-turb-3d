@@ -178,3 +178,68 @@ def compute_vorticity(velocity: np.ndarray, dx: float = 1.0, dy: float = 1.0, dz
     
     return vorticity
 
+
+def compute_divergence(velocity: np.ndarray, dx: float = 1.0, dy: float = 1.0, dz: float = 1.0) -> np.ndarray:
+    """
+    Compute velocity divergence: ∇·u = ∂ux/∂x + ∂uy/∂y + ∂uz/∂z
+    
+    For incompressible flow, divergence should be close to zero.
+    
+    Args:
+        velocity: (nx, ny, nz, 3) array of velocity components
+        dx, dy, dz: Grid spacing (default 1.0)
+        
+    Returns:
+        (nx, ny, nz) array of divergence values
+    """
+    ux = velocity[:, :, :, 0]
+    uy = velocity[:, :, :, 1]
+    uz = velocity[:, :, :, 2]
+    
+    # Compute gradients using numpy gradient
+    dux_dx = np.gradient(ux, dx, axis=0)
+    duy_dy = np.gradient(uy, dy, axis=1)
+    duz_dz = np.gradient(uz, dz, axis=2)
+    
+    # Divergence = sum of diagonal terms
+    divergence = dux_dx + duy_dy + duz_dz
+    
+    return divergence
+
+
+def compute_compressibility_metrics(velocity: np.ndarray, dx: float = 1.0, dy: float = 1.0, dz: float = 1.0) -> Dict:
+    """
+    Compute compressibility metrics from velocity field
+    
+    Args:
+        velocity: (nx, ny, nz, 3) array of velocity components
+        dx, dy, dz: Grid spacing (default 1.0)
+        
+    Returns:
+        Dictionary with:
+        - 'max_divergence': Maximum absolute divergence
+        - 'mean_divergence': Mean divergence
+        - 'rms_divergence': RMS divergence
+        - 'max_relative_divergence': Maximum relative divergence (normalized by velocity magnitude)
+    """
+    divergence = compute_divergence(velocity, dx, dy, dz)
+    velocity_mag = compute_velocity_magnitude(velocity)
+    
+    max_div = np.max(np.abs(divergence))
+    mean_div = np.mean(divergence)
+    rms_div = np.sqrt(np.mean(divergence**2))
+    
+    # Relative divergence (normalized by velocity magnitude)
+    # Avoid division by zero
+    with np.errstate(divide='ignore', invalid='ignore'):
+        relative_div = np.abs(divergence) / (velocity_mag + 1e-10)
+    max_rel_div = np.max(relative_div)
+    
+    return {
+        'max_divergence': max_div,
+        'mean_divergence': mean_div,
+        'rms_divergence': rms_div,
+        'max_relative_divergence': max_rel_div,
+        'divergence_field': divergence
+    }
+

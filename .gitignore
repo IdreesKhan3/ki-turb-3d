@@ -138,7 +138,7 @@ docs/.doctrees/
 # Fortran source and simulation output directories
 SRC/
 RUN/
-
+no_chatboat_app/
 # Example data (temporarily ignored)
 examples/
 

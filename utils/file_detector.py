@@ -35,6 +35,8 @@ def detect_simulation_files(directory: str) -> Dict[str, List[str]]:
         'flatness': [],
         'isotropy': [],
         'tau_analysis': [],
+        'velocity_vti': [],
+        'velocity_h5': [],
     }
     
     # Find real-space turbulence statistics files (turbulence_stats*.csv)
@@ -62,6 +64,11 @@ def detect_simulation_files(directory: str) -> Dict[str, List[str]]:
     
     # Find tau_analysis files (for LES effective relaxation time)
     files['tau_analysis'] = sorted(dir_path.glob('tau_analysis_*.bin'), key=lambda f: natural_sort_key(str(f)))
+    
+    # Find velocity field files (.vti and .h5/.hdf5)
+    files['velocity_vti'] = sorted(dir_path.glob('*.vti'), key=lambda f: natural_sort_key(str(f)))
+    files['velocity_h5'] = sorted(dir_path.glob('*.h5'), key=lambda f: natural_sort_key(str(f))) + \
+                           sorted(dir_path.glob('*.hdf5'), key=lambda f: natural_sort_key(str(f)))
     
     return files
 

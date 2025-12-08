@@ -34,7 +34,13 @@ from data_readers.csv_reader import read_csv_data
 from utils.file_detector import detect_simulation_files
 from utils.theme_config import apply_theme_to_plot_style, inject_theme_css, template_selector
 from utils.report_builder import capture_button
-from utils.plot_style import resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
+from utils.plot_style import (
+    resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, 
+    render_figure_size_ui, apply_figure_size, default_plot_style, apply_plot_style,
+    plot_style_sidebar as shared_plot_style_sidebar, _get_palette, _axis_title_font, _tick_font,
+    get_tick_format, ensure_per_sim_defaults, render_legend_axis_labels_ui
+)
+from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
 
 # ==========================================================
@@ -91,428 +97,32 @@ def _save_ui_metadata(data_dir: Path):
 
 
 # ==========================================================
-# Plot styling (shared keys with other pages)
+# Plot styling (using shared utilities from utils.plot_style)
 # ==========================================================
-def _default_plot_style():
-    return {
-        "font_family": "Arial",
-        "font_size": 14,
-        "title_size": 16,
-        "legend_size": 12,
-        "tick_font_size": 12,
-        "axis_title_size": 14,
 
-        "tick_len": 6,
-        "tick_w": 1.2,
-        "ticks_outside": True,
-        
-        # Axis scale type (linear or logarithmic)
-        "x_axis_type": "linear",  # "linear" or "log"
-        "y_axis_type": "linear",  # "linear" or "log"
-        
-        # Tick number format (integer or float)
-        "x_tick_format": "auto",  # "auto", "integer", or "float"
-        "x_tick_decimals": 2,  # Number of decimal places when format is "float"
-        "y_tick_format": "auto",  # "auto", "integer", or "float"
-        "y_tick_decimals": 2,  # Number of decimal places when format is "float"
-
-        # Axis borders (spines) for scientific box appearance
-        "show_axis_lines": True,
-        "axis_line_width": 0.8,  # Thinner borders for cleaner look
-        "axis_line_color": "#000000",
-        "mirror_axes": True,  # Show borders on all sides (box)
-
-        "plot_bgcolor": "#FFFFFF",
-        "paper_bgcolor": "#FFFFFF",
-
-        "show_grid": True,
-        "grid_on_x": True,
-        "grid_on_y": True,
-        "grid_w": 0.6,
-        "grid_dash": "dot",
-        "grid_color": "#B0B0B0",
-        "grid_opacity": 0.6,
-
-        "show_minor_grid": False,
-        "minor_grid_w": 0.4,
-        "minor_grid_dash": "dot",
-        "minor_grid_color": "#D0D0D0",
-        "minor_grid_opacity": 0.45,
-
-        "line_width": 2.2,
-
-        "palette": "Plotly",
-        "custom_colors": ["#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e",
-                          "#8c564b", "#e377c2", "#7f7f7f"],
-        "template": "plotly_white",
-
-        "enable_per_sim_style": False,
-        "per_sim_style_energy": {},  # {sim: {enabled,color,width,dash,marker,msize}}
-        "marker_size": 6,
-        
-        # Axis limits
-        "enable_x_limits": False,
-        "x_min": None,
-        "x_max": None,
-        "enable_y_limits": False,
-        "y_min": None,
-        "y_max": None,
-        
-        # Figure size
-        "enable_custom_size": False,
-        "figure_width": 800,
-        "figure_height": 500,
-    }
-
-def _get_palette(ps):
-    if ps["palette"] == "Custom":
-        cols = ps.get("custom_colors", [])
-        return cols if cols else pc.qualitative.Plotly
-
-    mapping = {
-        "Plotly": pc.qualitative.Plotly,
-        "D3": pc.qualitative.D3,
-        "G10": pc.qualitative.G10,
-        "T10": pc.qualitative.T10,
-        "Dark2": pc.qualitative.Dark2,
-        "Set1": pc.qualitative.Set1,
-        "Set2": pc.qualitative.Set2,
-        "Pastel1": pc.qualitative.Pastel1,
-        "Bold": pc.qualitative.Bold,
-        "Prism": pc.qualitative.Prism,
-    }
-    return mapping.get(ps["palette"], pc.qualitative.Plotly)
-
-def _axis_title_font(ps):
-    return dict(family=ps["font_family"], size=ps["axis_title_size"])
-
-def _tick_font(ps):
-    return dict(family=ps["font_family"], size=ps["tick_font_size"])
-
-def apply_plot_style(fig, ps):
-    fig.update_layout(
-        template=ps["template"],
-        font=dict(family=ps["font_family"], size=ps["font_size"]),
-        legend=dict(font=dict(size=ps["legend_size"])),
-        hovermode="x unified",
-        plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
-        paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
-    )
-
-    tick_dir = "outside" if ps["ticks_outside"] else "inside"
-
-    show_x_grid = ps["show_grid"] and ps.get("grid_on_x", True)
-    show_y_grid = ps["show_grid"] and ps.get("grid_on_y", True)
-    grid_rgba = f"rgba{hex_to_rgb(ps['grid_color']) + (ps['grid_opacity'],)}"
-
-    show_minor = ps.get("show_minor_grid", False)
-    minor_rgba = f"rgba{hex_to_rgb(ps['minor_grid_color']) + (ps['minor_grid_opacity'],)}"
-
-    # Axis borders (spines) for scientific box appearance
-    show_axis_lines = ps.get("show_axis_lines", True)
-    axis_line_width = ps.get("axis_line_width", 0.8)
-    axis_line_color = ps.get("axis_line_color", "#000000")
-    mirror_axes = ps.get("mirror_axes", True)
-    
-    # Ensure ticks are visible - set tick color to match axis line color
-    tick_color = ps.get("tick_color", axis_line_color)
-    
-    # For mirror axes, use "ticks" to show ticks on all sides
-    mirror_mode = "ticks" if mirror_axes else False
-    
-    # Get axis scale types (linear or log)
-    x_axis_type = ps.get("x_axis_type", "linear")
-    y_axis_type = ps.get("y_axis_type", "linear")
-    
-    # Build axis update dictionaries - conditionally include linecolor
-    # Plotly doesn't accept "transparent" as a color, so we only set linecolor when showing lines
-    xaxis_update = dict(
-        type=x_axis_type,  # "linear" or "log" - controls axis scale type
-        ticks=tick_dir,  # "outside" or "inside" - controls tick visibility
-        ticklen=ps["tick_len"],
-        tickwidth=ps["tick_w"],
-        tickcolor=tick_color,  # Make ticks visible with explicit color
-        tickfont=_tick_font(ps),
-        title_font=_axis_title_font(ps),
-        showticklabels=True,  # Explicitly show tick labels
-        showgrid=show_x_grid,
-        gridwidth=ps["grid_w"],
-        griddash=ps["grid_dash"],
-        gridcolor=grid_rgba,
-        showline=show_axis_lines,
-        linewidth=axis_line_width if show_axis_lines else 0,
-        mirror=mirror_mode,  # "ticks" shows ticks on all sides when True, False shows only bottom/left
-        minor=dict(
-            showgrid=show_minor,
-            gridwidth=ps["minor_grid_w"],
-            griddash=ps["minor_grid_dash"],
-            gridcolor=minor_rgba,
-        )
-    )
-    # Only set linecolor when showing axis lines (avoids "transparent" error)
-    if show_axis_lines:
-        xaxis_update["linecolor"] = axis_line_color
-    
-    yaxis_update = dict(
-        type=y_axis_type,  # "linear" or "log" - controls axis scale type
-        ticks=tick_dir,  # "outside" or "inside" - controls tick visibility
-        ticklen=ps["tick_len"],
-        tickwidth=ps["tick_w"],
-        tickcolor=tick_color,  # Make ticks visible with explicit color
-        tickfont=_tick_font(ps),
-        title_font=_axis_title_font(ps),
-        showticklabels=True,  # Explicitly show tick labels
-        showgrid=show_y_grid,
-        gridwidth=ps["grid_w"],
-        griddash=ps["grid_dash"],
-        gridcolor=grid_rgba,
-        showline=show_axis_lines,
-        linewidth=axis_line_width if show_axis_lines else 0,
-        mirror=mirror_mode,  # "ticks" shows ticks on all sides when True, False shows only bottom/left
-        minor=dict(
-            showgrid=show_minor,
-            gridwidth=ps["minor_grid_w"],
-            griddash=ps["minor_grid_dash"],
-            gridcolor=minor_rgba,
-        )
-    )
-    # Only set linecolor when showing axis lines (avoids "transparent" error)
-    if show_axis_lines:
-        yaxis_update["linecolor"] = axis_line_color
-    
-    # Apply updates
-    fig.update_xaxes(**xaxis_update)
-    fig.update_yaxes(**yaxis_update)
-    return fig
-
-def _ensure_per_sim_defaults(ps, sim_groups):
-    ps.setdefault("per_sim_style_energy", {})
-    for k in sim_groups.keys():
-        ps["per_sim_style_energy"].setdefault(k, {
-            "enabled": False,
-            "color": None,
-            "width": None,
-            "dash": "solid",
-        })
+# Alias for backward compatibility
+_default_plot_style = default_plot_style
 
 def plot_style_sidebar(data_dir: Path, sim_groups):
-    ps = dict(st.session_state.plot_style)
-    _ensure_per_sim_defaults(ps, sim_groups)
-
-    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
-        st.markdown("**Fonts**")
-        fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
-        ps["font_family"] = st.selectbox("Font family", fonts, index=fonts.index(ps.get("font_family", "Arial")))
-        ps["font_size"] = st.slider("Base/global font size", 8, 26, int(ps.get("font_size", 14)))
-        ps["title_size"] = st.slider("Plot title size", 10, 32, int(ps.get("title_size", 16)))
-        ps["legend_size"] = st.slider("Legend font size", 8, 24, int(ps.get("legend_size", 12)))
-        ps["tick_font_size"] = st.slider("Tick label font size", 6, 24, int(ps.get("tick_font_size", 12)))
-        ps["axis_title_size"] = st.slider("Axis title font size", 8, 28, int(ps.get("axis_title_size", 14)))
-
-        st.markdown("---")
-        st.markdown("**Backgrounds**")
-        ps["plot_bgcolor"] = st.color_picker("Plot background (inside axes)", ps.get("plot_bgcolor", "#FFFFFF"))
-        ps["paper_bgcolor"] = st.color_picker("Paper background (outside axes)", ps.get("paper_bgcolor", "#FFFFFF"))
-
-        st.markdown("---")
-        st.markdown("**Ticks**")
-        ps["tick_len"] = st.slider("Tick length", 2, 14, int(ps.get("tick_len", 6)))
-        ps["tick_w"] = st.slider("Tick width", 0.5, 3.5, float(ps.get("tick_w", 1.2)))
-        ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)))
-
-        st.markdown("---")
-        st.markdown("**Axis Scale Type**")
-        axis_types = ["linear", "log"]
-        x_axis_type_idx = axis_types.index(ps.get("x_axis_type", "linear"))
-        y_axis_type_idx = axis_types.index(ps.get("y_axis_type", "linear"))
-        ps["x_axis_type"] = st.selectbox("X-axis scale", axis_types, index=x_axis_type_idx,
-                                         help="Linear: standard scale. Log: logarithmic scale (useful for wide data ranges)")
-        ps["y_axis_type"] = st.selectbox("Y-axis scale", axis_types, index=y_axis_type_idx,
-                                         help="Linear: standard scale. Log: logarithmic scale (useful for wide data ranges)")
-
-        st.markdown("---")
-        st.markdown("**Tick Number Format**")
-        tick_format_options = ["auto", "integer", "float"]
-        x_format_idx = tick_format_options.index(ps.get("x_tick_format", "auto"))
-        y_format_idx = tick_format_options.index(ps.get("y_tick_format", "auto"))
-        
-        ps["x_tick_format"] = st.selectbox("X-axis number format", tick_format_options, index=x_format_idx,
-                                          help="Auto: let Plotly decide. Integer: no decimals. Float: show decimals")
-        if ps["x_tick_format"] == "float":
-            ps["x_tick_decimals"] = st.slider("X-axis decimal places", 0, 6, int(ps.get("x_tick_decimals", 2)),
-                                             help="Number of decimal places for X-axis")
-        
-        ps["y_tick_format"] = st.selectbox("Y-axis number format", tick_format_options, index=y_format_idx,
-                                          help="Auto: let Plotly decide. Integer: no decimals. Float: show decimals")
-        if ps["y_tick_format"] == "float":
-            ps["y_tick_decimals"] = st.slider("Y-axis decimal places", 0, 6, int(ps.get("y_tick_decimals", 2)),
-                                             help="Number of decimal places for Y-axis")
-
-        st.markdown("---")
-        st.markdown("**Axis Borders (Box)**")
-        ps["show_axis_lines"] = st.checkbox("Show axis borders", bool(ps.get("show_axis_lines", True)), 
-                                           help="Enable to show axis border lines (scientific paper style)")
-        ps["axis_line_width"] = st.slider("Border line width", 0.5, 4.0, float(ps.get("axis_line_width", 0.8)), 
-                                          disabled=not ps.get("show_axis_lines", True))
-        ps["axis_line_color"] = st.color_picker("Border color", ps.get("axis_line_color", "#000000"), 
-                                                disabled=not ps.get("show_axis_lines", True))
-        ps["mirror_axes"] = st.checkbox("Box on all sides", bool(ps.get("mirror_axes", True)), 
-                                       help="Checked: 4 borders (box). Unchecked: 2 borders (bottom & left only)", 
-                                       disabled=not ps.get("show_axis_lines", True))
-
-        st.markdown("---")
-        st.markdown("**Grid (Major)**")
-        ps["show_grid"] = st.checkbox("Show major grid", bool(ps.get("show_grid", True)))
-        gcol1, gcol2 = st.columns(2)
-        with gcol1:
-            ps["grid_on_x"] = st.checkbox("Grid on X", bool(ps.get("grid_on_x", True)))
-        with gcol2:
-            ps["grid_on_y"] = st.checkbox("Grid on Y", bool(ps.get("grid_on_y", True)))
-        ps["grid_w"] = st.slider("Major grid width", 0.2, 2.5, float(ps.get("grid_w", 0.6)))
-        grid_styles = ["solid", "dot", "dash", "dashdot"]
-        ps["grid_dash"] = st.selectbox("Major grid type", grid_styles,
-                                       index=grid_styles.index(ps.get("grid_dash", "dot")))
-        ps["grid_color"] = st.color_picker("Major grid color", ps.get("grid_color", "#B0B0B0"))
-        ps["grid_opacity"] = st.slider("Major grid opacity", 0.0, 1.0, float(ps.get("grid_opacity", 0.6)))
-
-        st.markdown("---")
-        st.markdown("**Grid (Minor)**")
-        ps["show_minor_grid"] = st.checkbox("Show minor grid", bool(ps.get("show_minor_grid", False)))
-        ps["minor_grid_w"] = st.slider("Minor grid width", 0.1, 2.0, float(ps.get("minor_grid_w", 0.4)))
-        ps["minor_grid_dash"] = st.selectbox("Minor grid type", grid_styles,
-                                             index=grid_styles.index(ps.get("minor_grid_dash", "dot")),
-                                             key="minor_grid_dash_energy")
-        ps["minor_grid_color"] = st.color_picker("Minor grid color", ps.get("minor_grid_color", "#D0D0D0"))
-        ps["minor_grid_opacity"] = st.slider("Minor grid opacity", 0.0, 1.0,
-                                             float(ps.get("minor_grid_opacity", 0.45)))
-
-        st.markdown("---")
-        st.markdown("**Curves**")
-        ps["line_width"] = st.slider("Global line width", 0.5, 7.0, float(ps.get("line_width", 2.2)))
-
-        st.markdown("---")
-        st.markdown("**Colors**")
-        palettes = ["Plotly", "D3", "G10", "T10", "Dark2", "Set1", "Set2",
-                    "Pastel1", "Bold", "Prism", "Custom"]
-        ps["palette"] = st.selectbox("Palette", palettes,
-                                     index=palettes.index(ps.get("palette", "Plotly")))
-        if ps["palette"] == "Custom":
-            st.caption("Custom hex colors:")
-            current = ps.get("custom_colors", []) or ["#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e"]
-            new_cols = []
-            cols_ui = st.columns(3)
-            for i, c in enumerate(current):
-                new_cols.append(cols_ui[i % 3].text_input(f"Color {i+1}", c, key=f"cust_color_energy_{i}"))
-            ps["custom_colors"] = new_cols
-
-        st.markdown("---")
-        st.markdown("**Theme**")
-        template_selector(ps)
-
-        st.markdown("---")
-        render_axis_limits_ui(ps, key_prefix="energy")
-        st.markdown("---")
-        render_figure_size_ui(ps, key_prefix="energy")
-        st.markdown("---")
-        render_per_sim_style_ui(ps, sim_groups, style_key="per_sim_style_energy", 
-                                key_prefix="energy", include_marker=True)
-
-        st.markdown("---")
-        b1, b2 = st.columns(2)
-        reset_pressed = False
-        with b1:
-            if st.button("💾 Save Plot Style"):
-                st.session_state.plot_style = ps
-                _save_ui_metadata(data_dir)
-                st.success("Saved plot style.")
-        with b2:
-            if st.button("♻️ Reset Plot Style"):
-                st.session_state.plot_style = _default_plot_style()
-                _save_ui_metadata(data_dir)
-                st.toast("Reset + saved.", icon="♻️")
-                reset_pressed = True
-                st.rerun()  # Rerun to update sidebar with default values
+    """Plot style sidebar using shared utilities."""
+    # Ensure per_sim_style_energy key exists
+    if "plot_style" not in st.session_state:
+        st.session_state.plot_style = default_plot_style()
+    ps = st.session_state.plot_style
+    ensure_per_sim_defaults(ps, sim_groups, style_key="per_sim_style_energy", include_marker=True)
     
-    # Auto-save plot style changes (applies immediately) - but not if reset was pressed
-    if not reset_pressed:
-        st.session_state.plot_style = ps
+    # Use shared plot style sidebar
+    return shared_plot_style_sidebar(
+        data_dir=data_dir,
+        sim_groups=sim_groups,
+        style_key="per_sim_style_energy",
+        key_prefix="energy",
+        include_marker=True,
+        save_callback=_save_ui_metadata,
+        reset_callback=lambda: _save_ui_metadata(data_dir),
+        theme_selector=template_selector
+    )
 
-
-
-# ==========================================================
-# Export (research formats)
-# ==========================================================
-_EXPORT_FORMATS = {
-    "PNG (raster)": "png",
-    "PDF (vector)": "pdf",
-    "SVG (vector)": "svg",
-    "EPS (vector)": "eps",
-    "JPG/JPEG (raster)": "jpg",
-    "WEBP (raster)": "webp",
-    "TIFF (raster)": "tiff",
-    "HTML (interactive)": "html",
-}
-
-def export_panel(fig, out_dir: Path, base_name: str):
-    with st.expander(f"📤 Export figure: {base_name}", expanded=False):
-        # Show export directory path
-        st.info(f"📁 **Export directory:** `{out_dir.resolve()}`")
-        
-        fmts = st.multiselect(
-            "Select export format(s)",
-            list(_EXPORT_FORMATS.keys()),
-            default=["PNG (raster)", "PDF (vector)", "SVG (vector)"],
-            key=f"{base_name}_fmts"
-        )
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            scale = st.slider("Scale (DPI-like)", 1.0, 6.0, 3.0, 0.5, key=f"{base_name}_scale")
-        with c2:
-            width_px = st.number_input("Width px (0=auto)", 0, 6000, 0, 100, key=f"{base_name}_wpx")
-        with c3:
-            height_px = st.number_input("Height px (0=auto)", 0, 6000, 0, 100, key=f"{base_name}_hpx")
-
-        if st.button("Export selected formats", key=f"{base_name}_doexport"):
-            if not fmts:
-                st.warning("Please select at least one format.")
-                return
-
-            errors = []
-            saved_files = []
-            for f_label in fmts:
-                ext = _EXPORT_FORMATS[f_label]
-                out = out_dir / f"{base_name}.{ext}"
-                try:
-                    if ext == "html":
-                        fig.write_html(str(out))
-                        saved_files.append(out.name)
-                        continue
-
-                    kwargs = {}
-                    if width_px > 0:
-                        kwargs["width"] = int(width_px)
-                    if height_px > 0:
-                        kwargs["height"] = int(height_px)
-
-                    fig.write_image(str(out), scale=scale, **kwargs)
-                    saved_files.append(out.name)
-                except Exception as e:
-                    errors.append((out.name, str(e)))
-
-            if errors:
-                st.error(
-                    "Some exports failed. Ensure kaleido is installed:\n"
-                    "pip install -U kaleido\n\n"
-                    + "\n".join([f"- {n}: {msg}" for n, msg in errors])
-                )
-            else:
-                files_list = "\n".join([f"  • {f}" for f in saved_files])
-                st.success(
-                    f"✅ All selected exports saved!\n\n"
-                    f"**Location:** `{out_dir.resolve()}`\n\n"
-                    f"**Files saved:**\n{files_list}"
-                )
 
 
 # ==========================================================
@@ -556,7 +166,7 @@ def main():
     # Apply theme to plot style on page load
     current_theme = st.session_state.get("theme", "Light Scientific")
     if 'plot_style' not in st.session_state:
-        st.session_state.plot_style = _default_plot_style()
+        st.session_state.plot_style = default_plot_style()
     
     # Always apply current theme (in case theme changed)
     st.session_state.plot_style = apply_theme_to_plot_style(
@@ -714,50 +324,18 @@ def main():
             'y': 'Y'
         }
     
-    # Legend & Axis Labels (persistent)
-    with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
-        st.markdown("### Trace Legend Names")
-        if st.session_state.custom_plot_traces:
-            for idx, trace in enumerate(st.session_state.custom_plot_traces):
-                trace_key = f"{trace['data_source']}_{trace['x_col']}_{trace['y_col']}"
-                default_name = trace.get('label', f"{trace['data_source'].split('_')[-1]}: {trace['y_col']}")
-                st.session_state.custom_plot_legend_names.setdefault(trace_key, default_name)
-                st.session_state.custom_plot_legend_names[trace_key] = st.text_input(
-                    f"Trace {idx+1} label",
-                    value=st.session_state.custom_plot_legend_names[trace_key],
-                    key=f"custom_legend_{trace_key}"
-                )
-        else:
-            st.caption("Add traces to customize legend names")
-        
-        st.markdown("---")
-        st.markdown("### Axis Labels")
-        st.session_state.custom_plot_axis_labels['x'] = st.text_input(
-            "X-axis label",
-            value=st.session_state.custom_plot_axis_labels.get('x', 'X'),
-            key="custom_axis_x"
-        )
-        st.session_state.custom_plot_axis_labels['y'] = st.text_input(
-            "Y-axis label",
-            value=st.session_state.custom_plot_axis_labels.get('y', 'Y'),
-            key="custom_axis_y"
-        )
-        
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button("💾 Save labels/legends", key="save_custom_labels"):
-                _save_ui_metadata(data_dir)
-                st.success("Saved to legend_names.json")
-        with b2:
-            if st.button("♻️ Reset labels/legends", key="reset_custom_labels"):
-                st.session_state.custom_plot_legend_names = {}
-                st.session_state.custom_plot_axis_labels = {
-                    'x': 'X',
-                    'y': 'Y'
-                }
-                _save_ui_metadata(data_dir)
-                st.toast("Reset + saved.", icon="♻️")
-                st.rerun()
+    # Legend & Axis Labels (persistent) - using shared utility
+    # Capture returned values to ensure we use the latest state (especially after reset)
+    legend_names, axis_labels = render_legend_axis_labels_ui(
+        data_dir=data_dir,
+        traces=st.session_state.custom_plot_traces if st.session_state.custom_plot_traces else None,
+        legend_names_key="custom_plot_legend_names",
+        axis_labels_key="custom_plot_axis_labels",
+        trace_key_func=lambda trace: f"{trace['data_source']}_{trace['x_col']}_{trace['y_col']}",
+        save_callback=_save_ui_metadata,
+        reset_callback=lambda: _save_ui_metadata(data_dir),
+        key_prefix="custom"
+    )
     
     # Sidebar: Plot options (global for all traces)
     st.sidebar.subheader("Plot Options")
@@ -850,7 +428,7 @@ def main():
         st.markdown("---")
         
         # Create plot with all traces
-        ps = st.session_state.get("plot_style", _default_plot_style())
+        ps = st.session_state.get("plot_style", default_plot_style())
         colors = _get_palette(ps)
         fig = go.Figure()
         
@@ -862,8 +440,9 @@ def main():
             x_col = trace['x_col']
             y_col = trace['y_col']
             # Use custom legend name if available, otherwise use trace label
+            # Use returned legend_names dict to ensure latest state (especially after reset)
             trace_key = f"{data_source}_{x_col}_{y_col}"
-            label = st.session_state.custom_plot_legend_names.get(
+            label = legend_names.get(
                 trace_key, 
                 trace.get('label', f"{data_source.split('_')[-1]}: {y_col}")
             )
@@ -974,7 +553,8 @@ def main():
                     mode="lines",
                     name=label,
                     line=dict(width=ps.get("line_width", 2.2), color=color),
-                    hovertemplate=f"{hover_x_label}=%{{x:.4g}}<br>{hover_y_label}=%{{y:.4g}}<extra></extra>"
+                    hovertemplate=f"{hover_x_label}=%{{x:.4g}}<br>{hover_y_label}=%{{y:.4g}}<extra></extra>",
+                    showlegend=True  # Explicitly show in legend
                 ))
             
             all_x_labels.add(x_col)
@@ -983,9 +563,9 @@ def main():
         if len(fig.data) == 0:
             st.warning("No valid traces to plot. Please add traces with valid data.")
         else:
-            # Set axis labels - use custom labels from session state if available
-            custom_x_label = st.session_state.custom_plot_axis_labels.get('x', None)
-            custom_y_label = st.session_state.custom_plot_axis_labels.get('y', None)
+            # Set axis labels - use returned values from render_legend_axis_labels_ui (ensures latest state after reset)
+            custom_x_label = axis_labels.get('x', 'X')
+            custom_y_label = axis_labels.get('y', 'Y')
             
             if custom_x_label and custom_x_label != 'X':
                 x_label = custom_x_label
@@ -1017,7 +597,10 @@ def main():
                     if normalize_y:
                         y_label = f"{y_label} / max({y_label})"
             
-            # Apply theme styling using full apply_plot_style function
+            # Apply full plot style first (fonts, ticks, grids, backgrounds, etc.)
+            fig = apply_plot_style(fig, ps)
+            
+            # Then apply layout-specific settings (title, axis labels, size, limits)
             layout_kwargs = dict(
                 title="Custom Multi-Trace Plot",
                 xaxis_title=x_label,
@@ -1027,22 +610,16 @@ def main():
             )
             layout_kwargs = apply_axis_limits(layout_kwargs, ps)
             layout_kwargs = apply_figure_size(layout_kwargs, ps)
+            # Ensure legend is explicitly shown
+            if ps.get("show_legend", True):
+                layout_kwargs["showlegend"] = True
             fig.update_layout(**layout_kwargs)
             
-            # Apply full plot style (fonts, ticks, grids, backgrounds, etc.)
-            fig = apply_plot_style(fig, ps)
+            # Final check: explicitly ensure legend is visible
+            if ps.get("show_legend", True) and len(fig.data) > 0:
+                fig.update_layout(showlegend=True)
             
             # Determine tick format based on user preferences and normalization
-            def get_tick_format(axis_format, decimals, is_normalized):
-                """Get tick format string based on user preference and normalization state."""
-                if axis_format == "integer":
-                    return ".0f"  # Integer format (no decimals)
-                elif axis_format == "float":
-                    return f".{decimals}f"  # Float with specified decimal places
-                else:  # "auto"
-                    # Auto: use fewer decimals for normalized, more for non-normalized
-                    return ".3f" if is_normalized else ".4g"
-            
             x_format_pref = ps.get("x_tick_format", "auto")
             x_decimals = ps.get("x_tick_decimals", 2)
             x_tick_format = get_tick_format(x_format_pref, x_decimals, normalize_x)
