@@ -48,12 +48,12 @@ def validate_d3q19_directions(dirx, diry, dirz):
         
         # Check if speed is valid for D3Q19 (0, 1, or 2)
         if speed_sq not in [0, 1, 2]:
-            invalid_directions.append(f"α={i+1}: ({cx}, {cy}, {cz}) has invalid speed²={speed_sq:.2f} (must be 0, 1, or 2)")
+            invalid_directions.append(f"a={i+1}: ({cx}, {cy}, {cz}) has invalid speed²={speed_sq:.2f} (must be 0, 1, or 2)")
         
         # Check for duplicates
         direction_tuple = (int(cx), int(cy), int(cz))
         if direction_tuple in valid_directions:
-            duplicate_directions.append(f"α={i+1}: ({cx}, {cy}, {cz}) is a duplicate")
+            duplicate_directions.append(f"a={i+1}: ({cx}, {cy}, {cz}) is a duplicate")
         else:
             valid_directions.add(direction_tuple)
     
@@ -102,16 +102,16 @@ def compute_mrt_matrix(dirx, diry, dirz):
         e_alpha = np.array([dirx[alpha], diry[alpha], dirz[alpha]], dtype=np.float64)
         norm_sq = np.dot(e_alpha, e_alpha)
         
-        M[0, alpha] = 1.0
-        M[1, alpha] = 19.0 * norm_sq - 30.0
-        M[2, alpha] = 0.5 * (21.0 * norm_sq**2 - 53.0 * norm_sq + 24.0)
-        M[3, alpha] = e_alpha[0]
-        M[4, alpha] = (5.0 * norm_sq - 9.0) * e_alpha[0]
-        M[5, alpha] = e_alpha[1]
-        M[6, alpha] = (5.0 * norm_sq - 9.0) * e_alpha[1]
-        M[7, alpha] = e_alpha[2]
-        M[8, alpha] = (5.0 * norm_sq - 9.0) * e_alpha[2]
-        M[9, alpha] = 3.0 * e_alpha[0]**2 - norm_sq
+        M[ 0, alpha] = 1.0
+        M[ 1, alpha] = 19.0 * norm_sq - 30.0
+        M[ 2, alpha] = 0.5 * (21.0 * norm_sq**2 - 53.0 * norm_sq + 24.0)
+        M[ 3, alpha] = e_alpha[0]
+        M[ 4, alpha] = (5.0 * norm_sq - 9.0) * e_alpha[0]
+        M[ 5, alpha] = e_alpha[1]
+        M[ 6, alpha] = (5.0 * norm_sq - 9.0) * e_alpha[1]
+        M[ 7, alpha] = e_alpha[2]
+        M[ 8, alpha] = (5.0 * norm_sq - 9.0) * e_alpha[2]
+        M[ 9, alpha] = 3.0 * e_alpha[0]**2 - norm_sq
         M[10, alpha] = (3.0 * norm_sq - 5.0) * (3.0 * e_alpha[0]**2 - norm_sq)
         M[11, alpha] = e_alpha[1]**2 - e_alpha[2]**2
         M[12, alpha] = (3.0 * norm_sq - 5.0) * (e_alpha[1]**2 - e_alpha[2]**2)
@@ -315,7 +315,7 @@ def render_mrt_matrix_generator():
         
         nu = st.number_input("Kinematic viscosity (ν)", value=0.002546479089469996, format="%.10f", key="mrt_nu")
         tau = st.number_input("Relaxation time (τ)", value=3.0 * 0.002546479089469996 + 0.5, format="%.10f", key="mrt_tau",
-                              help="τ = 3ν + 0.5 (from Fortran: nu = (1/3)(1/s_ν - 1/2))")
+                              help=r"$\tau = 3\nu + 0.5$, $\quad \nu = \frac{1}{3}\left(\frac{1}{s_\nu} - \frac{1}{2}\right)$")
         
         st.markdown("**Mode-specific relaxation rates:**")
         s_e = st.number_input("s_e (energy mode)", value=1.19, format="%.2f", key="mrt_se")
@@ -391,13 +391,13 @@ def render_mrt_matrix_generator():
         column_colors = [base_colors[i % len(base_colors)] for i in range(19)]
         
         with tab_m:
-            st.markdown("**Transformation Matrix M (19×19)**")
+            st.markdown("**Transformation Matrix M (19x19)**")
             st.caption("Transforms distribution functions f to moment space: **m = M f**")
             
             # Display as DataFrame for better formatting
             df_M = pd.DataFrame(M, 
                                index=[f"Row {i+1}: {moment_names[i]}" for i in range(19)],
-                               columns=[f"α={i+1}" for i in range(19)])
+                               columns=[f"a={i+1}" for i in range(19)])
             
             # Apply column coloring and format as integers (no decimals)
             styled_M = df_M.style.apply(lambda df: get_column_styles(df, column_colors), axis=None).format("{:.0f}")
@@ -413,12 +413,12 @@ def render_mrt_matrix_generator():
             )
         
         with tab_minv:
-            st.markdown("**Inverse Transformation Matrix M⁻¹ (19×19)**")
+            st.markdown("**Inverse Transformation Matrix M⁻¹ (19x19)**")
             st.caption("Transforms moments back to distribution functions: **f = M⁻¹ m**")
             
             df_M_inv = pd.DataFrame(M_inv,
                                     index=[f"Row {i+1}: {moment_names[i]}" for i in range(19)],
-                                    columns=[f"α={i+1}" for i in range(19)])
+                                    columns=[f"a={i+1}" for i in range(19)])
             
             # Apply column coloring and format with 6 decimals
             styled_M_inv = df_M_inv.style.apply(lambda df: get_column_styles(df, column_colors), axis=None).format("{:.6f}")
@@ -459,13 +459,13 @@ def render_mrt_matrix_generator():
             )
             
             st.markdown("---")
-            st.markdown("**Diagonal Relaxation Matrix Diag(S) (19×19)**")
+            st.markdown("**Diagonal Relaxation Matrix Diag(S) (19x19)**")
             st.caption("Diagonal matrix with relaxation rates on the diagonal: **Diag(S) = diag(S)**")
             
             S_diag = np.diag(S)
             df_S_diag = pd.DataFrame(S_diag,
                                     index=[f"Row {i+1}: {moment_names[i]}" for i in range(19)],
-                                    columns=[f"α={i+1}" for i in range(19)])
+                                    columns=[f"a={i+1}" for i in range(19)])
             
             # Format: diagonal entries with decimals, off-diagonal (zeros) as integers
             # Apply column coloring
@@ -510,7 +510,8 @@ def render_mrt_matrix_generator():
         # Display direction summary
         st.markdown("**Lattice Directions Used:**")
         dir_df = pd.DataFrame({
-            "α": range(1, 20),
+
+            "a": range(1, 20),
             "cx": st.session_state.mrt_dirx,
             "cy": st.session_state.mrt_diry,
             "cz": st.session_state.mrt_dirz

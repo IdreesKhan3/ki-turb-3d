@@ -27,7 +27,7 @@ def main():
     st.title("📚 Theory & Equations")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📐 Governing Equations", "🔬 LBM Formulation", "📊 Analysis Equations", "⚛️ D3Q19 Lattice Visualization", "🔧 MRT Matrix Generator"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📐 NS-Equations", "🔬 LBM Formulation", "📊 Analysis Equations", "⚛️ D3Q19 Lattice Visualization", "🔧 MRT Matrix Generator"])
     
     with tab1:
         st.header("From Navier-Stokes to LBM")
@@ -38,10 +38,10 @@ def main():
             **Incompressible flow equations:**
             """)
             st.latex(r"""
-            \begin{align}
+            \begin{aligned}
             \nabla \cdot \mathbf{u} &= 0 \\
             \frac{\partial \mathbf{u}}{\partial t} + (\mathbf{u}\cdot\nabla)\mathbf{u} &= -\frac{1}{\rho}\nabla p + \nu\nabla^2\mathbf{u} + \mathbf{f}
-            \end{align}
+            \end{aligned}
             """)
             st.caption("Continuity and momentum conservation equations")
         
@@ -66,10 +66,10 @@ def main():
             st.markdown("---")
             st.markdown("**Eddy-viscosity closure (Smagorinsky):**")
             st.latex(r"""
-            \begin{align}
+            \begin{aligned}
             \tau_{ij}^{\mathrm{sgs}} - \tfrac{1}{3}\tau_{kk}^{\mathrm{sgs}} \, \delta_{ij} &= -2 \, \nu_t \, \bar{S}_{ij} \\
             \nu_t &= (C_s \, \Delta)^2 \, |\bar{S}|
-            \end{align}
+            \end{aligned}
             """)
             st.markdown(r"""
             where $\bar{S}_{ij} = \tfrac{1}{2}(\partial_i \bar{u}_j + \partial_j \bar{u}_i)$ and $|\bar{S}| = (2\,\bar{S}_{ij}\bar{S}_{ij})^{1/2}$
@@ -88,6 +88,12 @@ def main():
             + \delta t \left[ \mathbf{M}^{-1} \left( \mathbf{I} - \frac{\mathbf{\Lambda}}{2} \right) \mathbf{M} \mathbf{\Phi} \right]_\alpha
             """)
             st.caption("Multiple relaxation times provide better stability and accuracy")
+            
+            st.markdown(r"**Relationship between $\nu$ and $\tau$ in MRT:**")
+            st.latex(r"""
+            \tau = 3\nu + 0.5, \quad \nu = \frac{1}{3}\left(\frac{1}{s_\nu} - \frac{1}{2}\right)
+            """)
+            st.caption("General form relating relaxation time $\tau$ to kinematic viscosity $\nu$")
             
             st.markdown("**Transformation matrix $\mathbf{M}$ (D3Q19):**")
             st.markdown(r"""
@@ -153,10 +159,10 @@ def main():
         with st.expander("**MRT - LES Formulation** (Primary)", expanded=True):
             st.markdown("**Effective viscosity approach:**")
             st.latex(r"""
-            \begin{align}
+            \begin{aligned}
             \nu_e &= \nu_0 + \nu_t \\
             \frac{1}{s_\nu} &= \frac{1}{2} + 3(\nu_0 + \nu_t) \equiv \tau_e
-            \end{align}
+            \end{aligned}
             """)
             
             st.markdown("**LES-MRT evolution:**")
@@ -174,14 +180,14 @@ def main():
             The components of the filtered strain-rate tensor are computed from non-equilibrium moments:
             """)
             st.latex(r"""
-            \begin{align}
+            \begin{aligned}
             S_{xx} &= -\frac{s_1 m_1^{(neq)} + 19s_9 m_9^{(neq)}}{38\rho_0\delta_t} \\
             S_{yy} &= -\frac{2s_1 m_1^{(neq)} - 19s_9(m_9^{(neq)} - 3m_{11}^{(neq)})}{76\rho_0\delta_t} \\
             S_{zz} &= -\frac{2s_1 m_1^{(neq)} - 19s_9(m_9^{(neq)} + 3m_{11}^{(neq)})}{76\rho_0\delta_t} \\
             S_{xy} &= -\frac{3s_9}{2\rho_0\delta_t} m_{13}^{(neq)}, \quad
             S_{xz} = -\frac{3s_9}{2\rho_0\delta_t} m_{15}^{(neq)}, \quad
             S_{yz} = -\frac{3s_9}{2\rho_0\delta_t} m_{14}^{(neq)}
-            \end{align}
+            \end{aligned}
             """)
             st.markdown(r"""
             where $m_i^{(neq)}$ are non-equilibrium moments and $s_i$ are relaxation parameters

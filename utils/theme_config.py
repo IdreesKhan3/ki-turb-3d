@@ -453,15 +453,93 @@ def inject_theme_css(theme_name: str = None):
         }}
         
         /* Text area */
-        .stTextArea > div > div > textarea {{
+        .stTextArea > div > div > textarea,
+        .stTextArea textarea,
+        textarea[data-baseweb="textarea"] {{
             background-color: {input_bg} !important;
             color: {bright_text} !important;
             border-color: {border_color} !important;
             caret-color: {bright_text} !important;
         }}
         
+        /* Text area - disabled state - multiple specific selectors with highest priority */
+        .stTextArea > div > div > textarea:disabled,
+        .stTextArea textarea:disabled,
+        textarea[data-baseweb="textarea"]:disabled,
+        .stTextArea > div > div[data-baseweb="textarea"] textarea:disabled,
+        div[data-baseweb="textarea"] textarea:disabled,
+        textarea:disabled,
+        .stTextArea > div > div > textarea[disabled="true"],
+        .stTextArea textarea[disabled="true"],
+        textarea[disabled="true"] {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+            -webkit-text-fill-color: {bright_text} !important;
+            opacity: 1 !important;
+        }}
+        
+        /* Force white text in disabled textarea content - highest specificity */
+        .stTextArea > div > div > textarea[disabled],
+        .stTextArea textarea[disabled],
+        .stTextArea > div > div > textarea[disabled="true"],
+        .stTextArea textarea[disabled="true"] {{
+            color: {bright_text} !important;
+            -webkit-text-fill-color: {bright_text} !important;
+        }}
+        
+        /* Target all textarea elements within stTextArea regardless of nesting */
+        .stTextArea textarea {{
+            color: {bright_text} !important;
+        }}
+        
+        .stTextArea textarea[disabled],
+        .stTextArea textarea[disabled="true"] {{
+            color: {bright_text} !important;
+            -webkit-text-fill-color: {bright_text} !important;
+        }}
+        
+        /* Override any inline styles that might set text color to black */
+        .stTextArea textarea[style*="color"],
+        .stTextArea textarea[style*="Color"],
+        .stTextArea textarea[style*="COLOR"] {{
+            color: {bright_text} !important;
+            -webkit-text-fill-color: {bright_text} !important;
+        }}
+        
+        /* Universal rule for all textareas in dark theme - highest priority */
+        .stTextArea textarea,
+        .stTextArea > div textarea,
+        .stTextArea > div > div textarea,
+        .stTextArea > div > div > textarea {{
+            color: {bright_text} !important;
+        }}
+        
+        /* Text area - placeholder text */
+        .stTextArea > div > div > textarea::placeholder,
+        .stTextArea textarea::placeholder,
+        textarea[data-baseweb="textarea"]::placeholder {{
+            color: {text_color} !important;
+            opacity: 0.7 !important;
+        }}
+        
+        /* Text area - focus state */
+        .stTextArea > div > div > textarea:focus,
+        .stTextArea textarea:focus,
+        textarea[data-baseweb="textarea"]:focus {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+            border-color: {border_color} !important;
+        }}
+        
         .stTextArea label {{
             color: {text_color} !important;
+        }}
+        
+        /* Override any white backgrounds in text area containers */
+        .stTextArea [style*="background-color: white"],
+        .stTextArea [style*="background-color: #fff"],
+        .stTextArea [style*="background-color: #ffffff"] {{
+            background-color: {input_bg} !important;
         }}
         
         /* Multi-select */

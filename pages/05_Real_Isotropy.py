@@ -870,8 +870,15 @@ def main():
     stationary_iter = st.sidebar.number_input("Stationarity iteration", value=50000.0, step=5000.0)
     stationary_t = stationary_iter / (x_norm if normalize_x else t0_raw)
 
-    tol_list = st.sidebar.multiselect("Tolerance bands (fraction)", [0.005, 0.01, 0.02],
-                                      default=[0.005, 0.01, 0.02])
+    st.sidebar.markdown("**Tolerance bands**")
+    tol_list_a = st.sidebar.multiselect("Subplot A (Energy fractions)", [0.005, 0.01, 0.02],
+                                        default=[0.005, 0.01, 0.02], key="tol_a")
+    tol_list_c = st.sidebar.multiselect("Subplot C (Diagonal b_ii)", [0.005, 0.01, 0.02],
+                                        default=[0.005, 0.01, 0.02], key="tol_c")
+    tol_list_d = st.sidebar.multiselect("Subplot D (Cross-correlations)", [0.001, 0.005, 0.01],
+                                        default=[0.001, 0.01], key="tol_d")
+    tol_list_e = st.sidebar.multiselect("Subplot E (Deviations)", [0.005, 0.01, 0.02],
+                                        default=[0.01, 0.02], key="tol_e")
 
     # Calculate default moving average window (matching original script logic)
     min_len = len(turb["frac_x"])
@@ -968,8 +975,9 @@ def main():
         # Tolerance bands (matching original: ±0.005, ±0.01, ±0.02)
         # Add as shapes first, then add legend entries
         tol_colors = ["lightcoral", "lightpink", "mistyrose"]
-        for tol, color in zip([0.005, 0.01, 0.02], tol_colors):
-            if tol in tol_list:
+        tol_values_a = [0.005, 0.01, 0.02]
+        for tol, color in zip(tol_values_a, tol_colors):
+            if tol in tol_list_a:
                 # Add tolerance band as shape (layer="below" so it's behind curves)
                 fig_a.add_hrect(y0=1/3-tol, y1=1/3+tol, fillcolor=color, opacity=0.3, 
                                line_width=0, layer="below")
@@ -1217,19 +1225,22 @@ def main():
             showlegend=True,
         ))
         
-        # Add tolerance band ±0.005 (matching original script)
-        tolerance = 0.005
-        # Add tolerance band as shape (layer="below" so it's behind curves)
-        fig_c.add_hrect(y0=-tolerance, y1=tolerance, fillcolor="gray", opacity=0.2, 
-                       line_width=0, layer="below")
-        # Add invisible trace for legend entry
-        fig_c.add_trace(go.Scatter(
-            x=[None], y=[None],
-            mode="markers",
-            marker=dict(size=10, color="gray", opacity=0.2),
-            name=f"±{tolerance:.1%} tolerance",
-            showlegend=True,
-        ))
+        # Tolerance bands (using sidebar tol_list_c)
+        tol_colors_c = ["lightcoral", "lightpink", "mistyrose"]
+        tol_values_c = [0.005, 0.01, 0.02]
+        for tol, color in zip(tol_values_c, tol_colors_c):
+            if tol in tol_list_c:
+                # Add tolerance band as shape (layer="below" so it's behind curves)
+                fig_c.add_hrect(y0=-tol, y1=tol, fillcolor=color, opacity=0.3, 
+                               line_width=0, layer="below")
+                # Add invisible trace for legend entry
+                fig_c.add_trace(go.Scatter(
+                    x=[None], y=[None],
+                    mode="markers",
+                    marker=dict(size=10, color=color, opacity=0.3),
+                    name=f"±{tol:.1%} tolerance",
+                    showlegend=True,
+                ))
         layout_kwargs_c = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["bij"],
@@ -1263,21 +1274,22 @@ def main():
             name=st.session_state.real_iso_legends["anis"],
             line=dict(color="black", width=2.2),
         ))
-        # Add tolerance lines at 0.01 and 0.001 (matching original script)
-        # Add as shapes first, then add legend entries
-        tolerances = [0.01, 0.001]
-        for tol in tolerances:
-            # Add tolerance line as shape
-            fig_d.add_hline(y=tol, line_dash="dot", line_color="red", line_width=1.5,
-                           annotation_text="", showlegend=False)
-            # Add invisible trace for legend entry
-            fig_d.add_trace(go.Scatter(
-                x=[None], y=[None],
-                mode="lines",
-                line=dict(color="red", width=1.5, dash="dot"),
-                name=f"{tol:.1%} tolerance",
-                showlegend=True,
-            ))
+        # Tolerance lines (using sidebar tol_list_d)
+        tol_colors_d = ["lightcoral", "lightpink", "mistyrose"]
+        tol_values_d = [0.001, 0.005, 0.01]
+        for tol, color in zip(tol_values_d, tol_colors_d):
+            if tol in tol_list_d:
+                # Add tolerance line as shape
+                fig_d.add_hline(y=tol, line_dash="dot", line_color=color, line_width=1.5,
+                               annotation_text="", showlegend=False)
+                # Add invisible trace for legend entry
+                fig_d.add_trace(go.Scatter(
+                    x=[None], y=[None],
+                    mode="lines",
+                    line=dict(color=color, width=1.5, dash="dot"),
+                    name=f"{tol:.1%} tolerance",
+                    showlegend=True,
+                ))
         layout_kwargs_d = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["cross"],
@@ -1322,21 +1334,22 @@ def main():
             line=dict(color="black", width=1.5)
         ))
 
-        # Add tolerance lines at 0.01 and 0.02 (matching original script)
-        # Add as shapes first, then add legend entries
-        tolerances = [0.01, 0.02]
-        for tol in tolerances:
-            # Add tolerance line as shape
-            fig_e.add_hline(y=tol, line_dash="dot", line_color="gray", line_width=1.5,
-                           annotation_text="", showlegend=False)
-            # Add invisible trace for legend entry
-            fig_e.add_trace(go.Scatter(
-                x=[None], y=[None],
-                mode="lines",
-                line=dict(color="gray", width=1.5, dash="dot"),
-                name=f"{tol:.1%} tolerance",
-                showlegend=True,
-            ))
+        # Tolerance lines (using sidebar tol_list_e)
+        tol_colors_e = ["lightcoral", "lightpink", "mistyrose"]
+        tol_values_e = [0.005, 0.01, 0.02]
+        for tol, color in zip(tol_values_e, tol_colors_e):
+            if tol in tol_list_e:
+                # Add tolerance line as shape
+                fig_e.add_hline(y=tol, line_dash="dot", line_color=color, line_width=1.5,
+                               annotation_text="", showlegend=False)
+                # Add invisible trace for legend entry
+                fig_e.add_trace(go.Scatter(
+                    x=[None], y=[None],
+                    mode="lines",
+                    line=dict(color=color, width=1.5, dash="dot"),
+                    name=f"{tol:.1%} tolerance",
+                    showlegend=True,
+                ))
         
         # Statistical stationarity line (no annotation - label in legend only)
         fig_e.add_vline(x=stationary_t, line_dash="dash", line_color="purple", line_width=1.5,

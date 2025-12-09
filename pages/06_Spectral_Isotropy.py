@@ -39,7 +39,12 @@ sys.path.insert(0, str(project_root))
 from utils.file_detector import detect_simulation_files, natural_sort_key
 from utils.theme_config import inject_theme_css
 from utils.report_builder import capture_button
-from utils.plot_style import render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
+from utils.plot_style import (
+    default_plot_style, apply_plot_style as apply_plot_style_base,
+    render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
+    render_axis_scale_ui, render_tick_format_ui, render_axis_borders_ui,
+    _get_palette, _normalize_plot_name
+)
 from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
 
@@ -111,139 +116,20 @@ def _save_ui_metadata(data_dir: Path):
 
 
 # ==========================================================
-# Plot styling system (same keys as other pages)
+# Plot styling system (using centralized module)
 # ==========================================================
-def _default_plot_style():
-    return {
-        "font_family": "Arial",
-        "font_size": 14,
-        "title_size": 16,
-        "legend_size": 12,
-        "tick_font_size": 12,
-        "axis_title_size": 14,
-
-        "tick_len": 6,
-        "tick_w": 1.2,
-        "ticks_outside": True,
-
-        "plot_bgcolor": "#FFFFFF",
-        "paper_bgcolor": "#FFFFFF",
-
-        "show_grid": True,
-        "grid_on_x": True,
-        "grid_on_y": True,
-        "grid_w": 0.6,
-        "grid_dash": "dot",
-        "grid_color": "#B0B0B0",
-        "grid_opacity": 0.6,
-
-        "show_minor_grid": False,
-        "minor_grid_w": 0.4,
-        "minor_grid_dash": "dot",
-        "minor_grid_color": "#D0D0D0",
-        "minor_grid_opacity": 0.4,
-
-        "line_width": 2.2,
-        "marker_size": 6,
-
-        "palette": "Plotly",
-        "custom_colors": ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd",
-                          "#8c564b", "#e377c2", "#7f7f7f"],
-        "template": "plotly_white",
-
-        "enable_per_curve_style": False,
-        
-        # Axis limits
-        "enable_x_limits": False,
-        "x_min": None,
-        "x_max": None,
-        "enable_y_limits": False,
-        "y_min": None,
-        "y_max": None,
-        
-        # Figure size
-        "enable_custom_size": False,
-        "figure_width": 800,
-        "figure_height": 500,
-        
-        # Frame/Margin size
-        "margin_left": 60,
-        "margin_right": 20,
-        "margin_top": 40,
-        "margin_bottom": 50,
-    }
-
-def _get_palette(ps):
-    if ps["palette"] == "Custom":
-        cols = ps.get("custom_colors", [])
-        return cols if cols else pc.qualitative.Plotly
-
-    mapping = {
-        "Plotly": pc.qualitative.Plotly,
-        "D3": pc.qualitative.D3,
-        "G10": pc.qualitative.G10,
-        "T10": pc.qualitative.T10,
-        "Dark2": pc.qualitative.Dark2,
-        "Set1": pc.qualitative.Set1,
-        "Set2": pc.qualitative.Set2,
-        "Pastel1": pc.qualitative.Pastel1,
-        "Bold": pc.qualitative.Bold,
-        "Prism": pc.qualitative.Prism,
-    }
-    return mapping.get(ps["palette"], pc.qualitative.Plotly)
-
-def _axis_title_font(ps):
-    return dict(family=ps["font_family"], size=ps["axis_title_size"])
-
-def _tick_font(ps):
-    return dict(family=ps["font_family"], size=ps["tick_font_size"])
-
 def apply_plot_style(fig, ps):
-    fig.update_layout(
-        template=ps["template"],
-        font=dict(family=ps["font_family"], size=ps["font_size"]),
-        legend=dict(font=dict(size=ps["legend_size"])),
-        hovermode="x unified",
-        plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
-        paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
-        margin=dict(
+    fig = apply_plot_style_base(fig, ps)
+    
+    if any(k in ps for k in ["margin_left", "margin_right", "margin_top", "margin_bottom"]):
+        fig.update_layout(margin=dict(
             l=ps.get("margin_left", 60),
             r=ps.get("margin_right", 20),
             t=ps.get("margin_top", 40),
             b=ps.get("margin_bottom", 50)
-        ),
-    )
-
-    tick_dir = "outside" if ps["ticks_outside"] else "inside"
-
-    show_x_grid = ps["show_grid"] and ps.get("grid_on_x", True)
-    show_y_grid = ps["show_grid"] and ps.get("grid_on_y", True)
-    grid_rgba = f"rgba{hex_to_rgb(ps['grid_color']) + (ps['grid_opacity'],)}"
-
-    show_minor = ps.get("show_minor_grid", False)
-    minor_rgba = f"rgba{hex_to_rgb(ps['minor_grid_color']) + (ps['minor_grid_opacity'],)}"
-
-    fig.update_xaxes(
-        ticks=tick_dir, ticklen=ps["tick_len"], tickwidth=ps["tick_w"],
-        tickfont=_tick_font(ps), title_font=_axis_title_font(ps),
-        showgrid=show_x_grid, gridwidth=ps["grid_w"],
-        griddash=ps["grid_dash"], gridcolor=grid_rgba,
-        minor=dict(showgrid=show_minor, gridwidth=ps["minor_grid_w"],
-                   griddash=ps["minor_grid_dash"], gridcolor=minor_rgba)
-    )
-    fig.update_yaxes(
-        ticks=tick_dir, ticklen=ps["tick_len"], tickwidth=ps["tick_w"],
-        tickfont=_tick_font(ps), title_font=_axis_title_font(ps),
-        showgrid=show_y_grid, gridwidth=ps["grid_w"],
-        griddash=ps["grid_dash"], gridcolor=grid_rgba,
-        minor=dict(showgrid=show_minor, gridwidth=ps["minor_grid_w"],
-                   griddash=ps["minor_grid_dash"], gridcolor=minor_rgba)
-    )
+        ))
+    
     return fig
-
-def _normalize_plot_name(plot_name: str) -> str:
-    """Normalize plot name to a valid key format."""
-    return plot_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
 
 def _ensure_curve_defaults(ps, curves, plot_name: str):
     # Use plot-specific key for per-curve styles
@@ -263,7 +149,24 @@ def _ensure_curve_defaults(ps, curves, plot_name: str):
 
 def get_plot_style(plot_name: str):
     """Get plot-specific style, merging defaults with plot-specific overrides."""
-    default = _default_plot_style()
+    default = default_plot_style()
+    default.update({
+        "enable_per_curve_style": False,
+        "margin_left": 60,
+        "margin_right": 20,
+        "margin_top": 40,
+        "margin_bottom": 50,
+        "line_width": 2.2,
+    })
+    
+    # Set default axis scale types based on plot name
+    if plot_name == "IC(k) Time-Avg":
+        default["x_axis_type"] = "log"
+        default["y_axis_type"] = "linear"
+    elif plot_name == "Component Spectra":
+        default["x_axis_type"] = "log"
+        default["y_axis_type"] = "log"
+    
     plot_styles = st.session_state.get("plot_styles", {})
     plot_style = plot_styles.get(plot_name, {})
     # Deep merge: start with defaults, then update with plot-specific overrides
@@ -330,6 +233,15 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                                   key=f"{key_prefix}_tick_w")
         ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)),
                                            key=f"{key_prefix}_ticks_outside")
+
+        st.markdown("---")
+        render_axis_scale_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
+        render_tick_format_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
+        render_axis_borders_ui(ps, key_prefix=key_prefix)
 
         st.markdown("---")
         st.markdown("**Grid (Major)**")
@@ -481,6 +393,85 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
         with b2:
             if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
                 st.session_state.plot_styles[selected_plot] = {}
+                
+                # Clear widget state so widgets re-read from defaults on next run
+                # This list is page-specific because each page has different key prefixes
+                # and may have page-specific widgets (e.g., raw_data_opacity, show_plot_title)
+                widget_keys = [
+                    f"{key_prefix}_font_family",
+                    f"{key_prefix}_font_size",
+                    f"{key_prefix}_title_size",
+                    f"{key_prefix}_legend_size",
+                    f"{key_prefix}_tick_font_size",
+                    f"{key_prefix}_axis_title_size",
+                    f"{key_prefix}_plot_bgcolor",
+                    f"{key_prefix}_paper_bgcolor",
+                    f"{key_prefix}_tick_len",
+                    f"{key_prefix}_tick_w",
+                    f"{key_prefix}_ticks_outside",
+                    f"{key_prefix}_x_axis_type",
+                    f"{key_prefix}_y_axis_type",
+                    f"{key_prefix}_x_tick_format",
+                    f"{key_prefix}_x_tick_decimals",
+                    f"{key_prefix}_y_tick_format",
+                    f"{key_prefix}_y_tick_decimals",
+                    f"{key_prefix}_show_axis_lines",
+                    f"{key_prefix}_axis_line_width",
+                    f"{key_prefix}_axis_line_color",
+                    f"{key_prefix}_mirror_axes",
+                    f"{key_prefix}_show_grid",
+                    f"{key_prefix}_grid_on_x",
+                    f"{key_prefix}_grid_on_y",
+                    f"{key_prefix}_grid_w",
+                    f"{key_prefix}_grid_dash",
+                    f"{key_prefix}_grid_color",
+                    f"{key_prefix}_grid_opacity",
+                    f"{key_prefix}_show_minor_grid",
+                    f"{key_prefix}_minor_grid_w",
+                    f"{key_prefix}_minor_grid_dash",
+                    f"{key_prefix}_minor_grid_color",
+                    f"{key_prefix}_minor_grid_opacity",
+                    f"{key_prefix}_line_width",
+                    f"{key_prefix}_marker_size",
+                    f"{key_prefix}_palette",
+                    f"{key_prefix}_template",
+                    f"{key_prefix}_margin_left",
+                    f"{key_prefix}_margin_right",
+                    f"{key_prefix}_margin_top",
+                    f"{key_prefix}_margin_bottom",
+                    f"{key_prefix}_enable_per_curve",
+                ]
+                
+                for i in range(10):
+                    widget_keys.append(f"{key_prefix}_cust_color_{i}")
+                
+                for c in curves:
+                    for suffix in [
+                        "over_on",
+                        "over_color",
+                        "over_width",
+                        "over_dash",
+                        "over_marker",
+                        "over_msize",
+                    ]:
+                        widget_keys.append(f"{key_prefix}_{suffix}_{c}")
+                
+                widget_keys.extend([
+                    f"{key_prefix}_enable_x_limits",
+                    f"{key_prefix}_x_min",
+                    f"{key_prefix}_x_max",
+                    f"{key_prefix}_enable_y_limits",
+                    f"{key_prefix}_y_min",
+                    f"{key_prefix}_y_max",
+                    f"{key_prefix}_enable_custom_size",
+                    f"{key_prefix}_figure_width",
+                    f"{key_prefix}_figure_height",
+                ])
+                
+                for k in widget_keys:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                
                 _save_ui_metadata(data_dir)
                 st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
                 reset_pressed = True
@@ -548,13 +539,13 @@ def _avg_isotropy_coeff(files):
         E22 = d[:, 2] if d.shape[1] > 2 else None
         E33 = d[:, 3] if d.shape[1] > 3 else None
 
-        # Use the derivative-based IC from Fortran (column 6, 0-indexed)
+        # Use the derivative-based Spectral Isotropy Ratio from Fortran (column 6, 0-indexed)
         # Expected columns: k, E11, E22, E33, dE11/dk, IC_standard, IC_deriv
         if d.shape[1] >= 7:
             IC = d[:, 6]   # IC_deriv from Fortran (column 6, 0-indexed)
         else:
-            # Fallback to simple IC if derivative-based not available
-            IC = np.divide(E22, E11, out=np.zeros_like(E22), where=E11 != 0)
+            # Fallback to spectral isotropy ratio if derivative-based not available
+            IC = np.divide(E11, E22, out=np.zeros_like(E11), where=E22 != 0)
 
         # Filter valid data (matching auxiliary script criteria)
         valid = (k > 0.5) & np.isfinite(IC) & (E11 > 1e-15)
@@ -749,7 +740,7 @@ def main():
     # Tab 1: IC(k)
     # ======================================================
     with tabs[0]:
-        st.subheader("Time-averaged Isotropy Coefficient")
+        st.subheader("Time-averaged Spectral Isotropy Ratio")
 
         # Get plot-specific style
         plot_name_ic = "IC(k) Time-Avg"
@@ -768,7 +759,8 @@ def main():
                 if d.shape[1] >= 7:
                     IC0 = d[:,6]
                 else:
-                    IC0 = np.divide(d[:,2], d[:,1], out=np.zeros_like(d[:,2]), where=d[:,1]!=0)
+                    # Compute spectral isotropy ratio = E11/E22
+                    IC0 = np.divide(d[:,1], d[:,2], out=np.zeros_like(d[:,1]), where=d[:,2]!=0)
 
                 fig_ic.add_trace(go.Scatter(
                     x=k0, y=IC0, mode="lines",
@@ -799,7 +791,6 @@ def main():
         layout_kwargs_ic = dict(
             xaxis_title=st.session_state.axis_labels_spec_iso["k"],
             yaxis_title=st.session_state.axis_labels_spec_iso["ic"],
-            xaxis_type="log",
             height=500,  # Default, will be overridden if custom size is enabled
         )
         layout_kwargs_ic = apply_axis_limits(layout_kwargs_ic, ps_ic)
@@ -837,8 +828,6 @@ def main():
             layout_kwargs_eii = dict(
                 xaxis_title=st.session_state.axis_labels_spec_iso["k"],
                 yaxis_title=st.session_state.axis_labels_spec_iso["ek"],
-                xaxis_type="log",
-                yaxis_type="log",
                 width=700,
                 height=600,
             )
@@ -871,13 +860,17 @@ def main():
         )
 
     with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown("**Isotropy coefficient in spectral space:**")
-        st.latex(r"IC(k) = \frac{E_{22}(k)}{E_{11}(k)}")
+        st.markdown("**Spectral Isotropy Ratio:**")
+        st.latex(r"IC(k) = \frac{E_{11}(k)}{E_{22}(k)}")
+        
+        st.markdown("**Derivative-based Spectral Isotropy Ratio (more robust):**")
+        st.latex(r"IC_{deriv}(k) = \frac{2E_{11}(k)}{2E_{22}(k) - k \frac{dE_{11}}{dk}}")
+        st.markdown("The derivative-based formula includes the spectral derivative term, making it less sensitive to numerical noise when $E_{22}(k)$ is small.")
         
         st.markdown("**For isotropic turbulence:**")
         st.latex(r"E_{11}(k) = E_{22}(k) = E_{33}(k) \quad \Rightarrow \quad IC(k) \approx 1")
         
-        st.markdown("**Note:** Derivative-based IC from Fortran provides a more robust estimate when available.")
+        st.markdown("**Note:** The code automatically uses the derivative-based ratio from Fortran (column 7) when available, otherwise falls back to spectral isotropy ratio.")
 
 
 if __name__ == "__main__":
