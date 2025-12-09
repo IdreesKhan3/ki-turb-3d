@@ -29,6 +29,7 @@ from plotly.colors import hex_to_rgb
 from pathlib import Path
 import json
 import sys
+import matplotlib.cm as cm
 
 
 # --- Project imports ---
@@ -41,6 +42,7 @@ from utils.report_builder import capture_button
 from utils.plot_style import (
     default_plot_style, apply_plot_style as apply_plot_style_base,
     render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
+    render_axis_scale_ui, render_tick_format_ui, render_axis_borders_ui,
     _get_palette
 )
 from utils.export_figs import export_panel
@@ -178,7 +180,18 @@ def get_plot_style(plot_name: str):
         "margin_right": 20,
         "margin_top": 40,
         "margin_bottom": 50,
+        "line_width": 1.6,  # Reduced from 2.2 for better visibility
     })
+    
+    # Set default y-axis type to log for plots that use log scale in original script
+    # (d) Cross-correlations, (e) Deviations, (f) Convergence
+    if plot_name in ["Cross-correlations (D)", "Deviations (E)", "Convergence (F)"]:
+        default["y_axis_type"] = "log"
+    
+    # Set default tick format to "normal" (not "auto") for Deviations plot to avoid SI unit prefixes
+    if plot_name == "Deviations (E)":
+        default["y_tick_format"] = "normal"
+        default["y_tick_decimals"] = 3  # More decimals for small deviation values
     
     plot_styles = st.session_state.get("plot_styles", {})
     plot_style = plot_styles.get(plot_name, {})
@@ -248,6 +261,15 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                                            key=f"{key_prefix}_ticks_outside")
 
         st.markdown("---")
+        render_axis_scale_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
+        render_tick_format_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
+        render_axis_borders_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
         st.markdown("**Grid (Major)**")
         ps["show_grid"] = st.checkbox("Show major grid", bool(ps.get("show_grid", True)),
                                        key=f"{key_prefix}_show_grid")
@@ -285,10 +307,13 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
 
         st.markdown("---")
         st.markdown("**Curves**")
-        ps["line_width"] = st.slider("Global line width", 0.5, 7.0, float(ps.get("line_width", 2.2)),
+        ps["line_width"] = st.slider("Global line width", 0.5, 7.0, float(ps.get("line_width", 1.6)),
                                       key=f"{key_prefix}_line_width")
         ps["marker_size"] = st.slider("Global marker size", 0, 14, int(ps.get("marker_size", 6)),
                                        key=f"{key_prefix}_marker_size")
+        ps["raw_data_opacity"] = st.slider("Raw data opacity", 0.0, 1.0, float(ps.get("raw_data_opacity", 0.5)),
+                                            key=f"{key_prefix}_raw_data_opacity",
+                                            help="Opacity for raw fluctuation lines and markers (0.0 = transparent, 1.0 = fully opaque)")
 
         st.markdown("---")
         st.markdown("**Colors**")
@@ -431,6 +456,19 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                     f"{key_prefix}_tick_len",
                     f"{key_prefix}_tick_w",
                     f"{key_prefix}_ticks_outside",
+                    # Axis scale
+                    f"{key_prefix}_x_axis_type",
+                    f"{key_prefix}_y_axis_type",
+                    # Tick format
+                    f"{key_prefix}_x_tick_format",
+                    f"{key_prefix}_x_tick_decimals",
+                    f"{key_prefix}_y_tick_format",
+                    f"{key_prefix}_y_tick_decimals",
+                    # Axis borders
+                    f"{key_prefix}_show_axis_lines",
+                    f"{key_prefix}_axis_line_width",
+                    f"{key_prefix}_axis_line_color",
+                    f"{key_prefix}_mirror_axes",
                     # Major grid
                     f"{key_prefix}_show_grid",
                     f"{key_prefix}_grid_on_x",
@@ -448,6 +486,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                     # Curves
                     f"{key_prefix}_line_width",
                     f"{key_prefix}_marker_size",
+                    f"{key_prefix}_raw_data_opacity",
                     # Palette
                     f"{key_prefix}_palette",
                     # Theme
@@ -645,7 +684,7 @@ def main():
     # Apply theme CSS (persists across pages)
     inject_theme_css()
     
-    st.title("⚖️ Isotropy Validation — Real Space")
+    st.title("Isotropy Validation — Real Space")
 
     data_dir = st.session_state.get("data_directory", None)
     if not data_dir:
@@ -754,7 +793,7 @@ def main():
     inv = invariants(b)
 
     t0_raw = turb["iter"][0] if turb["iter"][0] != 0 else 1.0
-    time_norm = turb["iter"] / t0_raw
+    # time_norm will be computed after user selects normalization option
 
     # Sidebar: labels/legends persistence
     with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
@@ -814,13 +853,30 @@ def main():
 
     # Sidebar: analysis controls
     st.sidebar.subheader("Analysis Controls")
+    
+    # Normalize X-axis option (matching other turbulence stats pages)
+    normalize_x = st.sidebar.checkbox("Normalize X-axis (t/t₀)", value=True, key="real_iso_norm_x",
+                                      help="Use normalized time (t/t₀) instead of raw iteration numbers")
+    x_norm = st.sidebar.number_input("X normalization constant", value=float(t0_raw), min_value=1.0, 
+                                     step=1000.0, disabled=not normalize_x, key="real_iso_x_norm",
+                                     help="Normalization constant for X-axis (default: first iteration value)")
+    
+    # Compute time axis based on normalization option
+    if normalize_x:
+        time_norm = turb["iter"] / x_norm
+    else:
+        time_norm = turb["iter"]
+    
     stationary_iter = st.sidebar.number_input("Stationarity iteration", value=50000.0, step=5000.0)
-    stationary_t = stationary_iter / t0_raw
+    stationary_t = stationary_iter / (x_norm if normalize_x else t0_raw)
 
     tol_list = st.sidebar.multiselect("Tolerance bands (fraction)", [0.005, 0.01, 0.02],
                                       default=[0.005, 0.01, 0.02])
 
-    ma_win = st.sidebar.slider("Moving average window (0=off)", 0, 500, 0, 5)
+    # Calculate default moving average window (matching original script logic)
+    min_len = len(turb["frac_x"])
+    default_ma_win = max(10, min_len // 10) if min_len > 20 else 0
+    ma_win = st.sidebar.slider("Moving average window (0=off)", 0, 500, default_ma_win, 5)
 
     # curve list for overrides
     curves = ["Ex","Ey","Ez","b11","b22","b33","b12","b13","b23","anis","devx","devy","devz","maxdev"]
@@ -828,31 +884,56 @@ def main():
                   "Cross-correlations (D)", "Deviations (E)", "Convergence (F)"]
     plot_style_sidebar(data_dir, curves, plot_names)
 
-    # Layout - 3 rows x 2 cols like your matplotlib GridSpec
+    # Layout - 3 tabs with vertically stacked figures
     st.markdown("### Real-space isotropy diagnostics")
-    colA, colB = st.columns([3,1])
+    
+    # Prepare data that's needed across tabs
+    E_x, E_y, E_z = turb["frac_x"], turb["frac_y"], turb["frac_z"]
+    
+    tab1, tab2, tab3 = st.tabs(["Energy & Lumley", "Anisotropy Tensor", "Deviations & Convergence"])
 
     # ======================================================
-    # (a) Temporal energy fractions
+    # Tab 1: Energy Fractions (A) + Lumley Triangle (B)
     # ======================================================
-    with colA:
-        # Get plot-specific style
+    with tab1:
+        # (a) Temporal energy fractions
         plot_name_a = "Energy Fractions (A)"
         ps_a = get_plot_style(plot_name_a)
-        colors_a = _get_palette(ps_a)
+        
+        # Use exact colors from original script (not palette) to avoid dimming
+        colors_orig = {
+            'primary': '#1f77b4',   # Blue
+            'secondary': '#ff7f0e', # Orange
+            'tertiary': '#2ca02c'   # Green
+        }
+        color_list = [colors_orig['primary'], colors_orig['secondary'], colors_orig['tertiary']]
         
         fig_a = go.Figure()
-        E_x, E_y, E_z = turb["frac_x"], turb["frac_y"], turb["frac_z"]
 
-        for i, (curve, arr) in enumerate([("Ex",E_x),("Ey",E_y),("Ez",E_z)]):
-            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_a, ps_a, plot_name_a)
+        # Raw data with markers (matching original script: opacity 0.4, markersize 1.5)
+        # Also add lines for better visibility
+        markers = ["circle", "square", "triangle-up"]
+        for i, ((curve, arr), marker) in enumerate(zip([("Ex",E_x),("Ey",E_y),("Ez",E_z)], markers)):
+            c = color_list[i]  # Use original script colors directly
+            # Raw data: clearly visible fluctuations behind the MA curves
+            rgb = hex_to_rgb(c)
+            # Use configurable opacity from plot style
+            raw_opacity = ps_a.get("raw_data_opacity", 0.5)
+            line_color_rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {raw_opacity})"
+            # Use plot style line width - reasonable width (0.8x) for visibility
+            raw_line_width = ps_a.get("line_width", 1.6) * 0.8
+            # Use plot style marker size scaled appropriately
+            raw_marker_size = max(2, ps_a.get("marker_size", 6) * 0.4)
             fig_a.add_trace(go.Scatter(
-                x=time_norm, y=arr, mode="lines",
-                name=st.session_state.real_iso_legends[curve],
-                line=dict(color=c, width=lw, dash=dash),
+                x=time_norm, y=arr, mode="lines+markers",
+                line=dict(color=line_color_rgba, width=raw_line_width),
+                marker=dict(symbol=marker, size=raw_marker_size, color=c, opacity=raw_opacity, line=dict(width=0)),
+                name=f"{st.session_state.real_iso_legends[curve]} (raw)",
+                showlegend=True,
             ))
 
-        # Moving average (optional)
+        # Moving average (optional) - matching original script style
+        # Original uses alpha=0.7-0.9 for moving averages, so use full color (opacity=1.0)
         if ma_win and ma_win > 1 and len(E_x) > ma_win:
             def _ma(x):
                 k = np.ones(ma_win)/ma_win
@@ -860,77 +941,243 @@ def main():
             t_ma = time_norm[ma_win//2: ma_win//2 + len(_ma(E_x))]
 
             for i, (curve, arr) in enumerate([("Ex",E_x),("Ey",E_y),("Ez",E_z)]):
-                c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_a, ps_a, plot_name_a)
+                c = color_list[i]  # Use original script colors directly
+                # Use plot style line width for moving average lines
+                ma_line_width = ps_a.get("line_width", 1.6) * 1.1  # Slightly thicker than default
+                # Full color for moving average lines - explicitly set opacity=1.0
                 fig_a.add_trace(go.Scatter(
                     x=t_ma, y=_ma(arr), mode="lines",
-                    showlegend=False,
-                    line=dict(color=c, width=max(1,lw*1.4)),
+                    name=f"{st.session_state.real_iso_legends[curve]} (MA-{ma_win})",
+                    line=dict(color=c, width=ma_line_width),
+                    marker=dict(opacity=1.0),  # Ensure full opacity
+                    opacity=1.0,  # Explicitly set trace opacity to 1.0
                 ))
 
-        # isotropic line + tolerance
-        fig_a.add_hline(y=1/3, line_dash="dash", line_color="red", line_width=1.5)
-        for tol in tol_list:
-            fig_a.add_hrect(y0=1/3-tol, y1=1/3+tol, fillcolor="red", opacity=0.12, line_width=0)
+        # Isotropic reference line (no annotation - label in legend only)
+        fig_a.add_hline(y=1/3, line_dash="dash", line_color="red", line_width=1.5, 
+                       opacity=0.8, annotation_text="", showlegend=False)
+        # Add as trace for legend
+        fig_a.add_trace(go.Scatter(
+            x=[None], y=[None],
+            mode="lines",
+            line=dict(color="red", width=1.5, dash="dash"),
+            name="Isotropic (1/3)",
+            showlegend=True,
+        ))
+        
+        # Tolerance bands (matching original: ±0.005, ±0.01, ±0.02)
+        # Add as shapes first, then add legend entries
+        tol_colors = ["lightcoral", "lightpink", "mistyrose"]
+        for tol, color in zip([0.005, 0.01, 0.02], tol_colors):
+            if tol in tol_list:
+                # Add tolerance band as shape (layer="below" so it's behind curves)
+                fig_a.add_hrect(y0=1/3-tol, y1=1/3+tol, fillcolor=color, opacity=0.3, 
+                               line_width=0, layer="below")
+                # Add invisible trace for legend entry
+                fig_a.add_trace(go.Scatter(
+                    x=[None], y=[None],
+                    mode="markers",
+                    marker=dict(size=10, color=color, opacity=0.3),
+                    name=f"±{tol:.1%} tolerance",
+                    showlegend=True,
+                ))
 
-        fig_a.add_vline(x=stationary_t, line_dash="dash", line_color="purple", line_width=1.2)
+        # Statistical stationarity line (no annotation - label in legend only)
+        fig_a.add_vline(x=stationary_t, line_dash="dash", line_color="purple", line_width=1.5, 
+                       opacity=0.8, annotation_text="", showlegend=False)
+        # Add as trace for legend
+        fig_a.add_trace(go.Scatter(
+            x=[None], y=[None],
+            mode="lines",
+            line=dict(color="purple", width=1.5, dash="dash"),
+            name="Statistical stationarity",
+            showlegend=True,
+        ))
 
         layout_kwargs_a = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["energy_frac"],
-            height=420,  # Default, will be overridden if custom size is enabled
+            height=420,
         )
-        # Add plot title if enabled
         if ps_a.get("show_plot_title") and ps_a.get("plot_title"):
             layout_kwargs_a["title"] = ps_a["plot_title"]
         layout_kwargs_a = apply_axis_limits(layout_kwargs_a, ps_a)
         layout_kwargs_a = apply_figure_size(layout_kwargs_a, ps_a)
         fig_a.update_layout(**layout_kwargs_a)
         fig_a = apply_plot_style(fig_a, ps_a)
+        
+        # Re-apply colors after plot style to prevent dimming
+        # Update moving average traces to ensure full color and use plot style line width
+        ma_line_width = ps_a.get("line_width", 2.2) * 1.1  # Slightly thicker than default
+        raw_opacity = ps_a.get("raw_data_opacity", 0.5)  # Get opacity from plot style
+        raw_marker_size = max(2, ps_a.get("marker_size", 6) * 0.4)  # Scaled marker size for raw data
+        for trace in fig_a.data:
+            if trace.name and "(MA-" in trace.name:
+                # Restore original colors and full opacity
+                if "Ex" in trace.name or "E<sub>x</sub>" in trace.name:
+                    trace.line.color = colors_orig['primary']
+                elif "Ey" in trace.name or "E<sub>y</sub>" in trace.name:
+                    trace.line.color = colors_orig['secondary']
+                elif "Ez" in trace.name or "E<sub>z</sub>" in trace.name:
+                    trace.line.color = colors_orig['tertiary']
+                trace.line.width = ma_line_width  # Use plot style line width
+                trace.opacity = 1.0
+            elif trace.name and "(raw)" in trace.name:
+                # Update opacity and marker size based on plot style settings
+                if "Ex" in trace.name or "E<sub>x</sub>" in trace.name:
+                    rgb = hex_to_rgb(colors_orig['primary'])
+                    trace.line.color = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {raw_opacity})"
+                    trace.marker.color = colors_orig['primary']
+                elif "Ey" in trace.name or "E<sub>y</sub>" in trace.name:
+                    rgb = hex_to_rgb(colors_orig['secondary'])
+                    trace.line.color = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {raw_opacity})"
+                    trace.marker.color = colors_orig['secondary']
+                elif "Ez" in trace.name or "E<sub>z</sub>" in trace.name:
+                    rgb = hex_to_rgb(colors_orig['tertiary'])
+                    trace.line.color = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {raw_opacity})"
+                    trace.marker.color = colors_orig['tertiary']
+                if hasattr(trace, 'marker') and trace.marker:
+                    trace.marker.size = raw_marker_size  # Use plot style marker size
+                    trace.marker.opacity = raw_opacity  # Use plot style opacity
+                trace.opacity = 1.0  # Trace-level opacity = 1.0, marker/line opacity controlled separately
+        
         st.plotly_chart(fig_a, width='stretch')
         capture_button(fig_a, title="Real-Space Isotropy Analysis (Part A)", source_page="Real Isotropy")
         export_panel(fig_a, data_dir, "real_iso_energy_fractions")
 
-    # ======================================================
-    # (b) Lumley triangle
-    # ======================================================
-    with colB:
-        # Get plot-specific style
+        # (b) Lumley triangle
         plot_name_b = "Lumley Triangle (B)"
         ps_b = get_plot_style(plot_name_b)
         
         fig_b = go.Figure()
         xi, eta = inv["xi"], inv["eta"]
 
-        # realizability boundaries
+        # Realizability boundaries (matching original code exactly)
         xi_vals = np.linspace(-1/6, 1/3, 300)
-        eta_two = np.sqrt(1/27 + 2*xi_vals**3)
-        eta_low = np.where(xi_vals < 0, -xi_vals, xi_vals)
-
-        fig_b.add_trace(go.Scatter(x=xi_vals, y=eta_two, mode="lines", line=dict(color="red", width=2),
-                                   name="Two-comp limit", showlegend=False))
-        fig_b.add_trace(go.Scatter(x=xi_vals, y=eta_low, mode="lines", line=dict(color="black", width=2),
-                                   name="Axisym limits", showlegend=False))
-
+        eta_two_comp = np.sqrt(1/27 + 2*xi_vals**3)
+        # Axisymmetric boundaries
+        eta_axi_exp = -xi_vals[xi_vals <= 0]  # Expansion (ξ ≤ 0): η = -ξ
+        eta_axi_con = xi_vals[xi_vals >= 0]    # Contraction (ξ ≥ 0): η = ξ
+        
+        # Plot boundaries (matching original: 3 boundary lines)
         fig_b.add_trace(go.Scatter(
-            x=xi, y=eta, mode="lines+markers",
-            marker=dict(size=4, color=np.linspace(0,1,len(xi)), colorscale="Viridis"),
-            line=dict(color="rgba(0,0,0,0.4)", width=1),
-            name="DNS trajectory"
+            x=xi_vals[xi_vals <= 0], y=eta_axi_exp, mode="lines",
+            line=dict(color="black", width=1.5),
+            name="Axisymmetric expansion",
+            showlegend=True
         ))
-        fig_b.add_trace(go.Scatter(x=[xi[0]], y=[eta[0]], mode="markers",
-                                   marker=dict(size=9, color="red", line=dict(width=1,color="black")),
-                                   name="Start"))
-        fig_b.add_trace(go.Scatter(x=[xi[-1]], y=[eta[-1]], mode="markers",
-                                   marker=dict(size=9, color="green", line=dict(width=1,color="black")),
-                                   name="End"))
+        fig_b.add_trace(go.Scatter(
+            x=xi_vals[xi_vals >= 0], y=eta_axi_con, mode="lines",
+            line=dict(color="black", width=1.5),
+            name="Axisymmetric contraction",
+            showlegend=True
+        ))
+        fig_b.add_trace(go.Scatter(
+            x=xi_vals, y=eta_two_comp, mode="lines",
+            line=dict(color="red", width=1.5),
+            name="Two-component limit",
+            showlegend=True
+        ))
+        
+        # Fill realizability region (matching original)
+        eta_lower = np.where(xi_vals < 0, -xi_vals, xi_vals)
+        # Add lower boundary as invisible trace for fill
+        fig_b.add_trace(go.Scatter(
+            x=xi_vals, y=eta_lower, mode="lines",
+            line=dict(width=0),
+            showlegend=False,
+            hoverinfo="skip"
+        ))
+        # Add filled area (fills between lower boundary and two-component limit)
+        # Note: Original code uses fill_between without label, so not in legend
+        fig_b.add_trace(go.Scatter(
+            x=xi_vals, y=eta_two_comp, mode="lines",
+            fill="tonexty", fillcolor="lightgray", opacity=0.3,
+            line=dict(width=0),
+            showlegend=False,  # Not in legend (matching original fill_between behavior)
+            hoverinfo="skip"
+        ))
+        
+        # Plot DNS trajectory with time-coloring (matching original: wire-like appearance)
+        # Original plots line segments between consecutive points, each colored by time
+        # This creates a "wire" effect where the trajectory follows different paths
+        n = len(xi)
+        viridis = cm.get_cmap('viridis')
+        # Plot line segments between consecutive points (wire-like appearance)
+        # Each segment is colored according to time using viridis colormap (alpha=0.8 matching original)
+        for i in range(1, n):
+            # Color each segment by time (viridis colormap)
+            color_val = i / n
+            rgba = viridis(color_val)
+            color_rgb = f"rgba({int(rgba[0]*255)}, {int(rgba[1]*255)}, {int(rgba[2]*255)}, 0.8)"
+            fig_b.add_trace(go.Scatter(
+                x=xi[i-1:i+1], y=eta[i-1:i+1], mode="lines",
+                line=dict(color=color_rgb, width=1.5),
+                showlegend=False,
+                hoverinfo="skip"
+            ))
+        
+        # Add scatter points for visibility with time-coloring (matching original)
+        # Original: s=8, edgecolor='k', linewidth=0.6, alpha=0.9
+        # Note: Matplotlib s=8 appears smaller than Plotly size=8, so using smaller size
+        fig_b.add_trace(go.Scatter(
+            x=xi, y=eta, mode="markers",
+            marker=dict(
+                size=3,  # Reduced to match matplotlib s=8 visual appearance
+                color=np.linspace(0, 1, len(xi)),
+                colorscale="Viridis",
+                line=dict(width=0.5, color="black"),  # Also reduced linewidth slightly
+                opacity=0.9
+            ),
+            name="DNS trajectory",
+            showlegend=True
+        ))
+        
+        # Mark start and end points (matching original)
+        fig_b.add_trace(go.Scatter(
+            x=[xi[0]], y=[eta[0]], mode="markers",
+            marker=dict(size=12, color="red", symbol="circle", 
+                       line=dict(width=2, color="black")),
+            name="Start",
+            showlegend=True
+        ))
+        fig_b.add_trace(go.Scatter(
+            x=[xi[-1]], y=[eta[-1]], mode="markers",
+            marker=dict(size=12, color="green", symbol="circle",
+                       line=dict(width=2, color="black")),
+            name="End",
+            showlegend=True
+        ))
+        
+        # Mark special points (matching original: Table 11.1)
+        fig_b.add_trace(go.Scatter(
+            x=[0], y=[0], mode="markers",
+            marker=dict(size=12, color="yellow", symbol="star",
+                       line=dict(width=1.5, color="black")),
+            name="Isotropic",
+            showlegend=True
+        ))
+        fig_b.add_trace(go.Scatter(
+            x=[-1/6], y=[1/6], mode="markers",
+            marker=dict(size=10, color="magenta", symbol="circle",
+                       line=dict(width=1.5, color="black")),
+            name="2-component axisym",
+            showlegend=True
+        ))
+        fig_b.add_trace(go.Scatter(
+            x=[1/3], y=[1/3], mode="markers",
+            marker=dict(size=10, color="blue", symbol="circle",
+                       line=dict(width=1.5, color="black")),
+            name="1-component",
+            showlegend=True
+        ))
 
         layout_kwargs_b = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["lumley_x"],
             yaxis_title=st.session_state.axis_labels_real_iso["lumley_y"],
-            height=420,  # Default, will be overridden if custom size is enabled
-            showlegend=False,
+            height=420,
+            showlegend=True,  # Show all 9 legends (matching original)
         )
-        # Add plot title if enabled
         if ps_b.get("show_plot_title") and ps_b.get("plot_title"):
             layout_kwargs_b["title"] = ps_b["plot_title"]
         layout_kwargs_b = apply_axis_limits(layout_kwargs_b, ps_b)
@@ -941,14 +1188,11 @@ def main():
         capture_button(fig_b, title="Real-Space Isotropy Analysis (Part B)", source_page="Real Isotropy")
         export_panel(fig_b, data_dir, "real_iso_lumley_triangle")
 
-
     # ======================================================
-    # Second row (c) + (d)
+    # Tab 2: Diagonal b_ii (C) + Cross-correlations (D)
     # ======================================================
-    colC, colD = st.columns(2)
-
-    with colC:
-        # Get plot-specific style
+    with tab2:
+        # (c) Diagonal b_ii
         plot_name_c = "Diagonal b_ii (C)"
         ps_c = get_plot_style(plot_name_c)
         colors_c = _get_palette(ps_c)
@@ -961,13 +1205,36 @@ def main():
                 name=st.session_state.real_iso_legends[curve],
                 line=dict(color=c, width=lw, dash=dash),
             ))
-        fig_c.add_hline(y=0, line_dash="dash", line_color="black")
+        # Isotropic reference line (no annotation - label in legend only)
+        fig_c.add_hline(y=0, line_dash="dash", line_color="black", line_width=1.5,
+                       annotation_text="", showlegend=False)
+        # Add as trace for legend
+        fig_c.add_trace(go.Scatter(
+            x=[None], y=[None],
+            mode="lines",
+            line=dict(color="black", width=1.5, dash="dash"),
+            name="Isotropic value (0)",
+            showlegend=True,
+        ))
+        
+        # Add tolerance band ±0.005 (matching original script)
+        tolerance = 0.005
+        # Add tolerance band as shape (layer="below" so it's behind curves)
+        fig_c.add_hrect(y0=-tolerance, y1=tolerance, fillcolor="gray", opacity=0.2, 
+                       line_width=0, layer="below")
+        # Add invisible trace for legend entry
+        fig_c.add_trace(go.Scatter(
+            x=[None], y=[None],
+            mode="markers",
+            marker=dict(size=10, color="gray", opacity=0.2),
+            name=f"±{tolerance:.1%} tolerance",
+            showlegend=True,
+        ))
         layout_kwargs_c = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["bij"],
-            height=360,  # Default, will be overridden if custom size is enabled
+            height=360,
         )
-        # Add plot title if enabled
         if ps_c.get("show_plot_title") and ps_c.get("plot_title"):
             layout_kwargs_c["title"] = ps_c["plot_title"]
         layout_kwargs_c = apply_axis_limits(layout_kwargs_c, ps_c)
@@ -977,8 +1244,7 @@ def main():
         st.plotly_chart(fig_c, width='stretch')
         export_panel(fig_c, data_dir, "real_iso_bii_diag")
 
-    with colD:
-        # Get plot-specific style
+        # (d) Cross-correlations
         plot_name_d = "Cross-correlations (D)"
         ps_d = get_plot_style(plot_name_d)
         colors_d = _get_palette(ps_d)
@@ -995,15 +1261,28 @@ def main():
         fig_d.add_trace(go.Scatter(
             x=time_norm, y=inv["anis_index"], mode="lines",
             name=st.session_state.real_iso_legends["anis"],
-            line=dict(color=c, width=max(2,lw*1.2)),
+            line=dict(color="black", width=2.2),
         ))
+        # Add tolerance lines at 0.01 and 0.001 (matching original script)
+        # Add as shapes first, then add legend entries
+        tolerances = [0.01, 0.001]
+        for tol in tolerances:
+            # Add tolerance line as shape
+            fig_d.add_hline(y=tol, line_dash="dot", line_color="red", line_width=1.5,
+                           annotation_text="", showlegend=False)
+            # Add invisible trace for legend entry
+            fig_d.add_trace(go.Scatter(
+                x=[None], y=[None],
+                mode="lines",
+                line=dict(color="red", width=1.5, dash="dot"),
+                name=f"{tol:.1%} tolerance",
+                showlegend=True,
+            ))
         layout_kwargs_d = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["cross"],
-            yaxis_type="log",
-            height=360,  # Default, will be overridden if custom size is enabled
+            height=360,
         )
-        # Add plot title if enabled
         if ps_d.get("show_plot_title") and ps_d.get("plot_title"):
             layout_kwargs_d["title"] = ps_d["plot_title"]
         layout_kwargs_d = apply_axis_limits(layout_kwargs_d, ps_d)
@@ -1013,14 +1292,11 @@ def main():
         st.plotly_chart(fig_d, width='stretch')
         export_panel(fig_d, data_dir, "real_iso_cross_corr")
 
-
     # ======================================================
-    # Third row (e) + (f)
+    # Tab 3: Deviations (E) + Convergence (F)
     # ======================================================
-    colE, colF = st.columns(2)
-
-    with colE:
-        # Get plot-specific style
+    with tab3:
+        # (e) Deviations
         plot_name_e = "Deviations (E)"
         ps_e = get_plot_style(plot_name_e)
         colors_e = _get_palette(ps_e)
@@ -1043,18 +1319,42 @@ def main():
         fig_e.add_trace(go.Scatter(
             x=time_norm, y=maxdev, mode="lines",
             name="Max deviation",
-            line=dict(color=c, width=max(2,lw))
+            line=dict(color="black", width=1.5)
         ))
 
-        fig_e.add_vline(x=stationary_t, line_dash="dash", line_color="purple", line_width=1)
+        # Add tolerance lines at 0.01 and 0.02 (matching original script)
+        # Add as shapes first, then add legend entries
+        tolerances = [0.01, 0.02]
+        for tol in tolerances:
+            # Add tolerance line as shape
+            fig_e.add_hline(y=tol, line_dash="dot", line_color="gray", line_width=1.5,
+                           annotation_text="", showlegend=False)
+            # Add invisible trace for legend entry
+            fig_e.add_trace(go.Scatter(
+                x=[None], y=[None],
+                mode="lines",
+                line=dict(color="gray", width=1.5, dash="dot"),
+                name=f"{tol:.1%} tolerance",
+                showlegend=True,
+            ))
+        
+        # Statistical stationarity line (no annotation - label in legend only)
+        fig_e.add_vline(x=stationary_t, line_dash="dash", line_color="purple", line_width=1.5,
+                       annotation_text="", showlegend=False)
+        # Add as trace for legend
+        fig_e.add_trace(go.Scatter(
+            x=[None], y=[None],
+            mode="lines",
+            line=dict(color="purple", width=1.5, dash="dash"),
+            name="Statistical stationarity",
+            showlegend=True,
+        ))
 
         layout_kwargs_e = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["dev"],
-            yaxis_type="log",
-            height=360,  # Default, will be overridden if custom size is enabled
+            height=360,
         )
-        # Add plot title if enabled
         if ps_e.get("show_plot_title") and ps_e.get("plot_title"):
             layout_kwargs_e["title"] = ps_e["plot_title"]
         layout_kwargs_e = apply_axis_limits(layout_kwargs_e, ps_e)
@@ -1064,36 +1364,43 @@ def main():
         st.plotly_chart(fig_e, width='stretch')
         export_panel(fig_e, data_dir, "real_iso_deviation")
 
-    with colF:
-        # Get plot-specific style
+        # (f) Convergence - matching original code exactly
         plot_name_f = "Convergence (F)"
         ps_f = get_plot_style(plot_name_f)
         
         fig_f = go.Figure()
-        if len(E_x) > 20:
-            conv_win = st.sidebar.slider("Convergence window", 10, max(20,len(E_x)//2), max(20,len(E_x)//10), 5)
-            running_stds = []
-            for i in range(conv_win, len(E_x)+1):
-                sx = np.std(E_x[i-conv_win:i])
-                sy = np.std(E_y[i-conv_win:i])
-                sz = np.std(E_z[i-conv_win:i])
-                running_stds.append((sx+sy+sz)/3.0)
-            running_stds = np.asarray(running_stds)
-            t_conv = time_norm[conv_win-1: conv_win-1+len(running_stds)]
-
-            fig_f.add_trace(go.Scatter(
-                x=t_conv, y=running_stds, mode="lines",
-                name=f"Running σ (win={conv_win})",
-                line=dict(color="black", width=2.2)
-            ))
+        min_len = len(E_x)
+        if min_len > 20:
+            # Original code: conv_windows = [max(10, min_len // 10), max(20, min_len // 5)]
+            conv_windows = [max(10, min_len // 10), max(20, min_len // 5)]
+            # Use matplotlib default color cycle: first curve blue, second orange
+            colors_conv = ['#1f77b4', '#ff7f0e']  # Blue, Orange (matplotlib default cycle)
+            
+            for idx, window in enumerate(conv_windows):
+                if window < min_len:
+                    # Calculate running standard deviation (matching original exactly)
+                    running_stds = []
+                    for i in range(window, min_len + 1):
+                        std_x = np.std(E_x[i-window:i])
+                        std_y = np.std(E_y[i-window:i])
+                        std_z = np.std(E_z[i-window:i])
+                        avg_std = (std_x + std_y + std_z) / 3
+                        running_stds.append(avg_std)
+                    
+                    conv_time = time_norm[window-1:window-1+len(running_stds)]
+                    # Original: ax4.semilogy(conv_time, running_stds, '-', linewidth=2, label=f'Running σ (window={window})')
+                    # Matplotlib uses default color cycle, so each curve gets different color
+                    fig_f.add_trace(go.Scatter(
+                        x=conv_time, y=running_stds, mode="lines",
+                        name=f"Running std (window={window})",
+                        line=dict(color=colors_conv[idx % len(colors_conv)], width=1.5)
+                    ))
 
         layout_kwargs_f = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso.get("convergence", "Running standard deviation"),
-            yaxis_type="log",
-            height=360,  # Default, will be overridden if custom size is enabled
+            height=360,
         )
-        # Add plot title if enabled
         if ps_f.get("show_plot_title") and ps_f.get("plot_title"):
             layout_kwargs_f["title"] = ps_f["plot_title"]
         layout_kwargs_f = apply_axis_limits(layout_kwargs_f, ps_f)

@@ -380,7 +380,19 @@ def inject_theme_css(theme_name: str = None):
             background-color: transparent !important;
         }}
         
-        /* Number input */
+        /* Number input - comprehensive styling */
+        .stNumberInput {{
+            background-color: transparent !important;
+        }}
+        
+        .stNumberInput > div {{
+            background-color: {input_bg} !important;
+        }}
+        
+        .stNumberInput > div > div {{
+            background-color: {input_bg} !important;
+        }}
+        
         .stNumberInput > div > div > input {{
             background-color: {input_bg} !important;
             color: {bright_text} !important;
@@ -388,8 +400,56 @@ def inject_theme_css(theme_name: str = None):
             caret-color: {bright_text} !important;
         }}
         
+        .stNumberInput input {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+            border-color: {border_color} !important;
+        }}
+        
+        /* BaseWeb number input components */
+        .stNumberInput [data-baseweb="input"] {{
+            background-color: {input_bg} !important;
+        }}
+        
+        .stNumberInput [data-baseweb="input"] > div {{
+            background-color: {input_bg} !important;
+        }}
+        
+        .stNumberInput [data-baseweb="input"] input {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+        }}
+        
+        /* Number input increment/decrement buttons */
+        .stNumberInput button {{
+            background-color: {container_bg} !important;
+            color: {bright_text} !important;
+            border-color: {border_color} !important;
+        }}
+        
+        .stNumberInput button:hover {{
+            background-color: {border_color} !important;
+        }}
+        
+        .stNumberInput button svg {{
+            fill: {bright_text} !important;
+        }}
+        
+        /* All nested elements in number input */
+        .stNumberInput * {{
+            color: {bright_text} !important;
+        }}
+        
         .stNumberInput label {{
             color: {text_color} !important;
+            background-color: transparent !important;
+        }}
+        
+        /* Override any white backgrounds in number input containers */
+        .stNumberInput [style*="background-color: white"],
+        .stNumberInput [style*="background-color: #fff"],
+        .stNumberInput [style*="background-color: #ffffff"] {{
+            background-color: {input_bg} !important;
         }}
         
         /* Text area */
@@ -671,7 +731,7 @@ def inject_theme_css(theme_name: str = None):
             background-color: transparent !important;
         }}
         
-        /* Metric boxes */
+        /* Metric boxes - comprehensive styling */
         [data-testid="stMetricValue"], [data-testid="stMetricLabel"] {{
             color: {bright_text} !important;
         }}
@@ -680,22 +740,68 @@ def inject_theme_css(theme_name: str = None):
             color: {text_color} !important;
         }}
         
-        /* Dataframes */
+        [data-testid="stMetricContainer"] {{
+            background-color: {container_bg} !important;
+            border: 1px solid {border_color} !important;
+        }}
+        
+        [data-testid="stMetricContainer"] > div {{
+            background-color: {container_bg} !important;
+        }}
+        
+        /* Dataframes - comprehensive styling */
         .dataframe {{
             background-color: {input_bg} !important;
             color: {bright_text} !important;
+            border: 1px solid {border_color} !important;
         }}
         
         .dataframe th {{
             background-color: {container_bg} !important;
             color: {bright_text} !important;
+            border: 1px solid {border_color} !important;
         }}
         
         .dataframe td {{
             color: {text_color} !important;
+            border: 1px solid {border_color} !important;
+            background-color: {input_bg} !important;
         }}
         
-        /* Info/Warning boxes */
+        .dataframe tr:nth-child(even) {{
+            background-color: {container_bg} !important;
+        }}
+        
+        .dataframe tr:hover {{
+            background-color: {border_color} !important;
+        }}
+        
+        /* Styled dataframes (pandas .style) */
+        [data-testid="stDataFrame"] {{
+            background-color: {input_bg} !important;
+        }}
+        
+        [data-testid="stDataFrame"] table {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+        }}
+        
+        [data-testid="stDataFrame"] th {{
+            background-color: {container_bg} !important;
+            color: {bright_text} !important;
+        }}
+        
+        [data-testid="stDataFrame"] td {{
+            background-color: {input_bg} !important;
+            color: {text_color} !important;
+        }}
+        
+        /* DataFrame container */
+        [data-testid="stDataFrame"] > div {{
+            background-color: {input_bg} !important;
+        }}
+        
+        /* Info/Warning/Success/Error boxes - comprehensive styling */
         .stAlert {{
             background-color: {input_bg} !important;
             border-color: {border_color} !important;
@@ -707,6 +813,16 @@ def inject_theme_css(theme_name: str = None):
             background-color: {input_bg} !important;
         }}
         
+        .stAlert * {{
+            color: {text_color} !important;
+        }}
+        
+        /* Success boxes */
+        [data-baseweb="notification"] {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+        }}
+        
         /* Info boxes inside expanders */
         .streamlit-expanderContent .stAlert {{
             background-color: {input_bg} !important;
@@ -714,6 +830,16 @@ def inject_theme_css(theme_name: str = None):
         
         .streamlit-expanderContent .stAlert * {{
             background-color: {input_bg} !important;
+            color: {text_color} !important;
+        }}
+        
+        /* All alert types */
+        [data-testid="stAlert"] {{
+            background-color: {input_bg} !important;
+            border-color: {border_color} !important;
+        }}
+        
+        [data-testid="stAlert"] * {{
             color: {text_color} !important;
         }}
         
@@ -915,9 +1041,66 @@ def inject_theme_css(theme_name: str = None):
             background-color: {border_color} !important;
         }}
         
-        /* Spinner */
+        /* Spinner - comprehensive styling */
         .stSpinner > div {{
             border-color: {text_color} !important;
+        }}
+        
+        .stSpinner {{
+            background-color: transparent !important;
+        }}
+        
+        /* Download buttons */
+        .stDownloadButton > button {{
+            background-color: #0e639c !important;
+            color: white !important;
+            border-color: {border_color} !important;
+        }}
+        
+        .stDownloadButton > button:hover {{
+            background-color: #1177bb !important;
+        }}
+        
+        /* LaTeX rendering */
+        .katex {{
+            color: {bright_text} !important;
+        }}
+        
+        .katex * {{
+            color: {bright_text} !important;
+        }}
+        
+        /* LaTeX in markdown */
+        .stMarkdown .katex,
+        .stMarkdown .katex * {{
+            color: {bright_text} !important;
+        }}
+        
+        /* LaTeX in expanders */
+        .streamlit-expanderContent .katex,
+        .streamlit-expanderContent .katex * {{
+            color: {bright_text} !important;
+        }}
+        
+        /* Help text and tooltips */
+        [data-testid="stTooltip"] {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+            border: 1px solid {border_color} !important;
+        }}
+        
+        [data-testid="stTooltip"] * {{
+            color: {bright_text} !important;
+        }}
+        
+        /* Help icon tooltips */
+        [data-baseweb="tooltip"] {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+        }}
+        
+        [data-baseweb="tooltip"] * {{
+            color: {bright_text} !important;
         }}
         
         /* All nested text elements */

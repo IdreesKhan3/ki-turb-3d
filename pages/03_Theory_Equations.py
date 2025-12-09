@@ -5,6 +5,7 @@ D3Q19 lattice visualization, MRT matrix generator, all mathematical equations
 
 import streamlit as st
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import sys
@@ -16,6 +17,7 @@ sys.path.insert(0, str(project_root))
 
 from utils.theme_config import inject_theme_css
 from utils.export_figs import export_panel
+from utils.mrt_matrix import render_mrt_matrix_generator
 from visualizations.d3q19_lattice import plot_d3q19_lattice, DEFAULT_LATTICE_COLORS
 st.set_page_config(page_icon="⚫")
 
@@ -25,7 +27,7 @@ def main():
     st.title("📚 Theory & Equations")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📐 Governing Equations", "🔬 LBM Formulation", "📊 Analysis Equations", "🎯 D3Q19 Lattice Visualization"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📐 Governing Equations", "🔬 LBM Formulation", "📊 Analysis Equations", "⚛️ D3Q19 Lattice Visualization", "🔧 MRT Matrix Generator"])
     
     with tab1:
         st.header("From Navier-Stokes to LBM")
@@ -294,7 +296,7 @@ def main():
     
     # D3Q19 Lattice Visualization Tab
     with tab4:
-        st.header("🎯 D3Q19 Lattice Stencil Visualization")
+        st.header("⚛️ D3Q19 Lattice Stencil Visualization")
         st.markdown("Interactive 3D visualization of the D3Q19 lattice stencil with full customization controls.")
         
         # Initialize session state for D3Q19 settings
@@ -603,12 +605,10 @@ def main():
         # Export options - using comprehensive export panel like other pages
         export_panel(fig, project_root, "d3q19_lattice")
     
-    # Additional sections (placeholders for now)
-    st.markdown("---")
-    st.header("Additional Tools")
+    # MRT Matrix Generator Tab
+    with tab5:
+        render_mrt_matrix_generator()
     
-    with st.expander("**MRT Matrix Generator**", expanded=False):
-        st.info("MRT matrix generator - Implementation in progress")
 
 
 def _default_d3q19_settings():

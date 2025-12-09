@@ -457,11 +457,11 @@ def default_plot_style():
         "x_axis_type": "linear",  # "linear" or "log"
         "y_axis_type": "linear",  # "linear" or "log"
         
-        # Tick number format (integer or float)
-        "x_tick_format": "auto",  # "auto", "integer", or "float"
-        "x_tick_decimals": 2,  # Number of decimal places when format is "float"
-        "y_tick_format": "auto",  # "auto", "integer", or "float"
-        "y_tick_decimals": 2,  # Number of decimal places when format is "float"
+        # Tick number format (integer, float, scientific, or normal)
+        "x_tick_format": "auto",  # "auto", "integer", "float", "scientific", or "normal"
+        "x_tick_decimals": 2,  # Number of decimal places when format is "float" or "scientific"
+        "y_tick_format": "auto",  # "auto", "integer", "float", "scientific", or "normal"
+        "y_tick_decimals": 2,  # Number of decimal places when format is "float" or "scientific"
 
         # Axis borders (spines) for scientific box appearance
         "show_axis_lines": True,
@@ -563,18 +563,20 @@ def render_tick_format_ui(ps, key_prefix=""):
         Updated ps dictionary (also modifies in place)
     """
     st.markdown("**Tick Number Format**")
-    tick_format_options = ["auto", "integer", "float"]
-    x_format_idx = tick_format_options.index(ps.get("x_tick_format", "auto"))
-    y_format_idx = tick_format_options.index(ps.get("y_tick_format", "auto"))
+    tick_format_options = ["auto", "integer", "float", "scientific", "normal"]
+    x_format_default = ps.get("x_tick_format", "auto")
+    y_format_default = ps.get("y_tick_format", "auto")
+    x_format_idx = tick_format_options.index(x_format_default) if x_format_default in tick_format_options else 0
+    y_format_idx = tick_format_options.index(y_format_default) if y_format_default in tick_format_options else 0
     
     ps["x_tick_format"] = st.selectbox(
         "X-axis number format", 
         tick_format_options, 
         index=x_format_idx,
-        help="Auto: let Plotly decide. Integer: no decimals. Float: show decimals",
+        help="Auto: let Plotly decide. Integer: no decimals. Float/Normal: show decimals. Scientific: exponential notation",
         key=f"{key_prefix}_x_tick_format"
     )
-    if ps["x_tick_format"] == "float":
+    if ps["x_tick_format"] in ["float", "scientific", "normal"]:
         ps["x_tick_decimals"] = st.slider(
             "X-axis decimal places", 
             0, 6, 
@@ -587,10 +589,10 @@ def render_tick_format_ui(ps, key_prefix=""):
         "Y-axis number format", 
         tick_format_options, 
         index=y_format_idx,
-        help="Auto: let Plotly decide. Integer: no decimals. Float: show decimals",
+        help="Auto: let Plotly decide. Integer: no decimals. Float/Normal: show decimals. Scientific: exponential notation",
         key=f"{key_prefix}_y_tick_format"
     )
-    if ps["y_tick_format"] == "float":
+    if ps["y_tick_format"] in ["float", "scientific", "normal"]:
         ps["y_tick_decimals"] = st.slider(
             "Y-axis decimal places", 
             0, 6, 
@@ -785,13 +787,39 @@ def apply_plot_style(fig, ps):
     elif x_format_pref == "float":
         decimals = ps.get("x_tick_decimals", 2)
         fig.update_xaxes(tickformat=f".{decimals}f")
+    elif x_format_pref == "scientific":
+        decimals = ps.get("x_tick_decimals", 2)
+        fig.update_xaxes(tickformat=f".{decimals}e")
+    elif x_format_pref == "normal":
+        decimals = ps.get("x_tick_decimals", 2)
+        fig.update_xaxes(tickformat=f".{decimals}f")
+    elif x_format_pref == "auto":
+        # For "auto", let Plotly decide but prevent SI unit prefixes
+        # Using ".4g" format without SI prefix support
+        pass  # Let Plotly use default, but we'll handle y-axis specially for log scale
     
     y_format_pref = ps.get("y_tick_format", "auto")
+    y_axis_type = ps.get("y_axis_type", "linear")
+    
     if y_format_pref == "integer":
         fig.update_yaxes(tickformat=".0f")
     elif y_format_pref == "float":
         decimals = ps.get("y_tick_decimals", 2)
         fig.update_yaxes(tickformat=f".{decimals}f")
+    elif y_format_pref == "scientific":
+        decimals = ps.get("y_tick_decimals", 2)
+        fig.update_yaxes(tickformat=f".{decimals}e")
+    elif y_format_pref == "normal":
+        decimals = ps.get("y_tick_decimals", 2)
+        fig.update_yaxes(tickformat=f".{decimals}f")
+    elif y_format_pref == "auto":
+        # For "auto" on log scale, use scientific notation to avoid SI prefixes (like μ)
+        # For linear scale, let Plotly decide
+        if y_axis_type == "log":
+            # Use scientific notation for log scale to prevent SI prefixes
+            decimals = ps.get("y_tick_decimals", 2)
+            fig.update_yaxes(tickformat=f".{decimals}e")
+        # For linear scale with auto, let Plotly use default (no explicit format)
     
     return fig
 
@@ -1195,6 +1223,12 @@ def plot_style_sidebar(data_dir=None, sim_groups=None, style_key="per_sim_style"
             float(ps.get("line_width", 2.2)),
             key=f"{key_prefix}_line_width"
         )
+        ps["marker_size"] = st.slider(
+            "Global marker size", 
+            0, 18, 
+            int(ps.get("marker_size", 6)),
+            key=f"{key_prefix}_marker_size"
+        )
 
         st.markdown("---")
         st.markdown("**Colors**")
@@ -1317,6 +1351,7 @@ def plot_style_sidebar(data_dir=None, sim_groups=None, style_key="per_sim_style"
                         f"{key_prefix}_minor_grid_opacity",
                         # Curves
                         f"{key_prefix}_line_width",
+                        f"{key_prefix}_marker_size",
                         # Palette
                         f"{key_prefix}_palette",
                         # Axis limits
