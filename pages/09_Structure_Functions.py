@@ -49,7 +49,13 @@ from utils.file_detector import (
 )
 from utils.report_builder import capture_button
 from utils.export_figs import export_panel
-from utils.plot_style import resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
+from utils.plot_style import (
+    default_plot_style, apply_plot_style as apply_plot_style_base,
+    render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
+    render_axis_scale_ui, render_tick_format_ui, render_axis_borders_ui,
+    _get_palette, _normalize_plot_name,
+    resolve_line_style, render_per_sim_style_ui, ensure_per_sim_defaults
+)
 
 # Binary/text readers (binary is required by plan, text is optional)
 from data_readers.binary_reader import read_structure_function_file
@@ -222,166 +228,56 @@ def _compute_time_avg_structure(files: tuple, kind: str):
 
 
 # ==========================================================
-# Plot styling system
+# Plot styling system (using centralized module)
 # ==========================================================
-def _default_plot_style():
-    return {
-        "font_family": "Arial",
-        "font_size": 14,
-        "title_size": 16,
-        "legend_size": 12,
-        "tick_font_size": 12,
-        "axis_title_size": 14,
-
-        "tick_len": 6,
-        "tick_w": 1.2,
-        "ticks_outside": True,
-
-        "plot_bgcolor": "#FFFFFF",
-        "paper_bgcolor": "#FFFFFF",
-
-        "show_grid": True,
-        "grid_on_x": True,
-        "grid_on_y": True,
-        "grid_w": 0.6,
-        "grid_dash": "dot",
-        "grid_color": "#B0B0B0",
-        "grid_opacity": 0.6,
-
-        "show_minor_grid": False,
-        "minor_grid_w": 0.4,
-        "minor_grid_dash": "dot",
-        "minor_grid_color": "#D0D0D0",
-        "minor_grid_opacity": 0.45,
-
-        "line_width": 2.4,
-        "marker_size": 6,
-        "std_alpha": 0.18,
-
-        "palette": "Plotly",
-        "custom_colors": ["#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e",
-                          "#8c564b", "#e377c2", "#7f7f7f"],
-        "template": "plotly_white",
-
-        "enable_per_sim_style": False,
-        "per_sim_style_structure": {},
-        
-        # Axis limits
-        "enable_x_limits": False,
-        "x_min": None,
-        "x_max": None,
-        "enable_y_limits": False,
-        "y_min": None,
-        "y_max": None,
-        
-        # Figure size
-        "enable_custom_size": False,
-        "figure_width": 800,
-        "figure_height": 500,
-        
-        # Frame/Margin size
-        "margin_left": 50,
-        "margin_right": 20,
-        "margin_top": 30,
-        "margin_bottom": 50,
-    }
-
-def _get_palette(ps):
-    if ps["palette"] == "Custom":
-        cols = ps.get("custom_colors", [])
-        return cols if cols else pc.qualitative.Plotly
-
-    mapping = {
-        "Plotly": pc.qualitative.Plotly,
-        "D3": pc.qualitative.D3,
-        "G10": pc.qualitative.G10,
-        "T10": pc.qualitative.T10,
-        "Dark2": pc.qualitative.Dark2,
-        "Set1": pc.qualitative.Set1,
-        "Set2": pc.qualitative.Set2,
-        "Pastel1": pc.qualitative.Pastel1,
-        "Bold": pc.qualitative.Bold,
-        "Prism": pc.qualitative.Prism,
-    }
-    return mapping.get(ps["palette"], pc.qualitative.Plotly)
-
-def _axis_title_font(ps):
-    return dict(family=ps["font_family"], size=ps["axis_title_size"])
-
-def _tick_font(ps):
-    return dict(family=ps["font_family"], size=ps["tick_font_size"])
-
 def apply_plot_style(fig, ps):
-    fig.update_layout(
-        template=ps["template"],
-        font=dict(family=ps["font_family"], size=ps["font_size"]),
-        legend=dict(font=dict(size=ps["legend_size"])),
-        hovermode="x unified",
-        plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
-        paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
-        margin=dict(
+    fig = apply_plot_style_base(fig, ps)
+    
+    if any(k in ps for k in ["margin_left", "margin_right", "margin_top", "margin_bottom"]):
+        fig.update_layout(margin=dict(
             l=ps.get("margin_left", 50),
             r=ps.get("margin_right", 20),
             t=ps.get("margin_top", 30),
             b=ps.get("margin_bottom", 50)
-        ),
-    )
-
-    tick_dir = "outside" if ps["ticks_outside"] else "inside"
-
-    show_x_grid = ps["show_grid"] and ps.get("grid_on_x", True)
-    show_y_grid = ps["show_grid"] and ps.get("grid_on_y", True)
-    grid_rgba = f"rgba{hex_to_rgb(ps['grid_color']) + (ps['grid_opacity'],)}"
-
-    show_minor = ps.get("show_minor_grid", False)
-    minor_rgba = f"rgba{hex_to_rgb(ps['minor_grid_color']) + (ps['minor_grid_opacity'],)}"
-
-    fig.update_xaxes(
-        ticks=tick_dir,
-        ticklen=ps["tick_len"],
-        tickwidth=ps["tick_w"],
-        tickfont=_tick_font(ps),
-        title_font=_axis_title_font(ps),
-        showgrid=show_x_grid,
-        gridwidth=ps["grid_w"],
-        griddash=ps["grid_dash"],
-        gridcolor=grid_rgba,
-        minor=dict(
-            showgrid=show_minor,
-            gridwidth=ps["minor_grid_w"],
-            griddash=ps["minor_grid_dash"],
-            gridcolor=minor_rgba,
-        )
-    )
-    fig.update_yaxes(
-        ticks=tick_dir,
-        ticklen=ps["tick_len"],
-        tickwidth=ps["tick_w"],
-        tickfont=_tick_font(ps),
-        title_font=_axis_title_font(ps),
-        showgrid=show_y_grid,
-        gridwidth=ps["grid_w"],
-        griddash=ps["grid_dash"],
-        gridcolor=grid_rgba,
-        minor=dict(
-            showgrid=show_minor,
-            gridwidth=ps["minor_grid_w"],
-            griddash=ps["minor_grid_dash"],
-            gridcolor=minor_rgba,
-        )
-    )
+        ))
+    
     return fig
 
-def _normalize_plot_name(plot_name: str) -> str:
-    """Normalize plot name to a valid key format."""
-    return plot_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_").replace("ₚ", "p").replace("ξ", "xi").replace("/", "_")
+def _normalize_plot_name_local(plot_name: str) -> str:
+    """Normalize plot name to a valid key format (handles special characters)."""
+    # First replace special characters, then use the centralized function
+    cleaned = plot_name.replace("ₚ", "p").replace("ξ", "xi").replace("/", "_")
+    return _normalize_plot_name(cleaned)
 
 def get_plot_style(plot_name: str):
     """Get plot-specific style, merging defaults with plot-specific overrides."""
-    default = _default_plot_style()
+    default = default_plot_style()
+    default.update({
+        "line_width": 2.4,
+        "marker_size": 6,
+        "margin_left": 50,
+        "margin_right": 20,
+        "margin_top": 30,
+        "margin_bottom": 50,
+        "std_alpha": 0.18,
+        "per_sim_style_structure": {},
+    })
+    
+    # Set default axis types based on plot
+    if plot_name == "Anomalies (ξₚ − p/3)":
+        default.update({
+            "x_axis_type": "linear",
+            "y_axis_type": "linear",
+        })
+    else:
+        # Default to log for S_p and ESS plots
+        default.update({
+            "x_axis_type": "log",
+            "y_axis_type": "log",
+        })
+    
     plot_styles = st.session_state.get("plot_styles", {})
     plot_style = plot_styles.get(plot_name, {})
-    # Deep merge: start with defaults, then update with plot-specific overrides
     merged = default.copy()
     for key, value in plot_style.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
@@ -390,18 +286,6 @@ def get_plot_style(plot_name: str):
         else:
             merged[key] = value
     return merged
-
-def _ensure_per_sim_defaults(ps, sim_groups):
-    ps.setdefault("per_sim_style_structure", {})
-    for k in sim_groups.keys():
-        ps["per_sim_style_structure"].setdefault(k, {
-            "enabled": False,
-            "color": None,
-            "width": None,
-            "dash": None,
-            "marker": "circle",
-            "msize": None,
-        })
 
 def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
     # Plot selector
@@ -419,8 +303,10 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
     
     # Start with defaults, merge with plot-specific overrides
     ps = get_plot_style(selected_plot)
-    plot_key = _normalize_plot_name(selected_plot)
-    _ensure_per_sim_defaults(ps, sim_groups)
+    plot_key = _normalize_plot_name_local(selected_plot)
+    
+    # Ensure per-sim defaults
+    ensure_per_sim_defaults(ps, sim_groups, style_key="per_sim_style_structure", include_marker=True)
     
     # Create unique key prefix for all widgets
     key_prefix = f"structure_{plot_key}"
@@ -429,7 +315,8 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
-        ps["font_family"] = st.selectbox("Font family", fonts, index=fonts.index(ps.get("font_family", "Arial")),
+        font_idx = fonts.index(ps.get("font_family", "Arial")) if ps.get("font_family", "Arial") in fonts else 0
+        ps["font_family"] = st.selectbox("Font family", fonts, index=font_idx,
                                          key=f"{key_prefix}_font_family")
         ps["font_size"] = st.slider("Base/global font size", 8, 26, int(ps.get("font_size", 14)),
                                      key=f"{key_prefix}_font_size")
@@ -437,6 +324,12 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                                       key=f"{key_prefix}_title_size")
         ps["legend_size"] = st.slider("Legend font size", 8, 24, int(ps.get("legend_size", 12)),
                                        key=f"{key_prefix}_legend_size")
+        ps["show_legend"] = st.checkbox(
+            "Show legend", 
+            bool(ps.get("show_legend", True)),
+            help="Display legend on the plot",
+            key=f"{key_prefix}_show_legend"
+        )
         ps["tick_font_size"] = st.slider("Tick label font size", 6, 24, int(ps.get("tick_font_size", 12)),
                                           key=f"{key_prefix}_tick_font_size")
         ps["axis_title_size"] = st.slider("Axis title font size", 8, 28, int(ps.get("axis_title_size", 14)),
@@ -459,6 +352,15 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                                            key=f"{key_prefix}_ticks_outside")
 
         st.markdown("---")
+        render_axis_scale_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
+        render_tick_format_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
+        render_axis_borders_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
         st.markdown("**Grid (Major)**")
         ps["show_grid"] = st.checkbox("Show major grid", bool(ps.get("show_grid", True)),
                                        key=f"{key_prefix}_show_grid")
@@ -472,8 +374,9 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
         ps["grid_w"] = st.slider("Major grid width", 0.2, 2.5, float(ps.get("grid_w", 0.6)),
                                   key=f"{key_prefix}_grid_w")
         grid_styles = ["solid", "dot", "dash", "dashdot"]
+        grid_dash_idx = grid_styles.index(ps.get("grid_dash", "dot")) if ps.get("grid_dash", "dot") in grid_styles else 1
         ps["grid_dash"] = st.selectbox("Major grid type", grid_styles,
-                                       index=grid_styles.index(ps.get("grid_dash", "dot")),
+                                       index=grid_dash_idx,
                                        key=f"{key_prefix}_grid_dash")
         ps["grid_color"] = st.color_picker("Major grid color", ps.get("grid_color", "#B0B0B0"),
                                            key=f"{key_prefix}_grid_color")
@@ -486,8 +389,9 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                                              key=f"{key_prefix}_show_minor_grid")
         ps["minor_grid_w"] = st.slider("Minor grid width", 0.1, 2.0, float(ps.get("minor_grid_w", 0.4)),
                                         key=f"{key_prefix}_minor_grid_w")
+        minor_grid_dash_idx = grid_styles.index(ps.get("minor_grid_dash", "dot")) if ps.get("minor_grid_dash", "dot") in grid_styles else 1
         ps["minor_grid_dash"] = st.selectbox("Minor grid type", grid_styles,
-                                             index=grid_styles.index(ps.get("minor_grid_dash", "dot")),
+                                             index=minor_grid_dash_idx,
                                              key=f"{key_prefix}_minor_grid_dash")
         ps["minor_grid_color"] = st.color_picker("Minor grid color", ps.get("minor_grid_color", "#D0D0D0"),
                                                   key=f"{key_prefix}_minor_grid_color")
@@ -499,7 +403,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
         st.markdown("**Curves**")
         ps["line_width"] = st.slider("Global line width", 0.5, 7.0, float(ps.get("line_width", 2.4)),
                                       key=f"{key_prefix}_line_width")
-        ps["marker_size"] = st.slider("Global marker size", 0, 14, int(ps.get("marker_size", 6)),
+        ps["marker_size"] = st.slider("Global marker size", 0, 18, int(ps.get("marker_size", 6)),
                                        key=f"{key_prefix}_marker_size")
         ps["std_alpha"] = st.slider("Std band opacity", 0.05, 0.6, float(ps.get("std_alpha", 0.18)),
                                     key=f"{key_prefix}_std_alpha")
@@ -508,8 +412,9 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
         st.markdown("**Colors**")
         palettes = ["Plotly", "D3", "G10", "T10", "Dark2", "Set1", "Set2",
                     "Pastel1", "Bold", "Prism", "Custom"]
+        palette_idx = palettes.index(ps.get("palette", "Plotly")) if ps.get("palette", "Plotly") in palettes else 0
         ps["palette"] = st.selectbox("Palette", palettes,
-                                     index=palettes.index(ps.get("palette", "Plotly")),
+                                     index=palette_idx,
                                      key=f"{key_prefix}_palette")
         if ps["palette"] == "Custom":
             st.caption("Custom hex colors:")
@@ -525,7 +430,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
         old_template = ps.get("template", "plotly_white")
         templates = ["plotly_white", "simple_white", "plotly_dark"]
         ps["template"] = st.selectbox("Template", templates,
-                                      index=templates.index(old_template),
+                                      index=templates.index(old_template) if old_template in templates else 0,
                                       key=f"{key_prefix}_template")
         # Auto-update backgrounds when template changes
         if ps["template"] != old_template:
@@ -559,7 +464,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                                                    step=5, key=f"{key_prefix}_margin_bottom")
         st.markdown("---")
         render_per_sim_style_ui(ps, sim_groups, style_key="per_sim_style_structure", 
-                                key_prefix=f"{key_prefix}_sim", include_marker=True)
+                                key_prefix=f"{key_prefix}_sim", include_marker=True, show_enable_checkbox=True)
 
         st.markdown("---")
         b1, b2 = st.columns(2)
@@ -572,6 +477,100 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
         with b2:
             if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
                 st.session_state.plot_styles[selected_plot] = {}
+                
+                # Clear widget state so widgets re-read from defaults on next run
+                widget_keys = [
+                    # Fonts
+                    f"{key_prefix}_font_family",
+                    f"{key_prefix}_font_size",
+                    f"{key_prefix}_title_size",
+                    f"{key_prefix}_legend_size",
+                    f"{key_prefix}_show_legend",
+                    f"{key_prefix}_tick_font_size",
+                    f"{key_prefix}_axis_title_size",
+                    # Backgrounds
+                    f"{key_prefix}_plot_bgcolor",
+                    f"{key_prefix}_paper_bgcolor",
+                    # Ticks
+                    f"{key_prefix}_tick_len",
+                    f"{key_prefix}_tick_w",
+                    f"{key_prefix}_ticks_outside",
+                    # Axis scale
+                    f"{key_prefix}_x_axis_type",
+                    f"{key_prefix}_y_axis_type",
+                    # Tick format
+                    f"{key_prefix}_x_tick_format",
+                    f"{key_prefix}_x_tick_decimals",
+                    f"{key_prefix}_y_tick_format",
+                    f"{key_prefix}_y_tick_decimals",
+                    # Axis borders
+                    f"{key_prefix}_show_axis_lines",
+                    f"{key_prefix}_axis_line_width",
+                    f"{key_prefix}_axis_line_color",
+                    f"{key_prefix}_mirror_axes",
+                    # Major grid
+                    f"{key_prefix}_show_grid",
+                    f"{key_prefix}_grid_on_x",
+                    f"{key_prefix}_grid_on_y",
+                    f"{key_prefix}_grid_w",
+                    f"{key_prefix}_grid_dash",
+                    f"{key_prefix}_grid_color",
+                    f"{key_prefix}_grid_opacity",
+                    # Minor grid
+                    f"{key_prefix}_show_minor_grid",
+                    f"{key_prefix}_minor_grid_w",
+                    f"{key_prefix}_minor_grid_dash",
+                    f"{key_prefix}_minor_grid_color",
+                    f"{key_prefix}_minor_grid_opacity",
+                    # Curves
+                    f"{key_prefix}_line_width",
+                    f"{key_prefix}_marker_size",
+                    f"{key_prefix}_std_alpha",
+                    # Colors
+                    f"{key_prefix}_palette",
+                    # Theme
+                    f"{key_prefix}_template",
+                    # Axis limits
+                    f"{key_prefix}_enable_x_limits",
+                    f"{key_prefix}_x_min",
+                    f"{key_prefix}_x_max",
+                    f"{key_prefix}_enable_y_limits",
+                    f"{key_prefix}_y_min",
+                    f"{key_prefix}_y_max",
+                    # Figure size
+                    f"{key_prefix}_enable_custom_size",
+                    f"{key_prefix}_figure_width",
+                    f"{key_prefix}_figure_height",
+                    # Margins
+                    f"{key_prefix}_margin_left",
+                    f"{key_prefix}_margin_right",
+                    f"{key_prefix}_margin_top",
+                    f"{key_prefix}_margin_bottom",
+                    # Per-sim global toggle
+                    f"{key_prefix}_enable_per_sim",
+                ]
+                
+                # Custom color inputs
+                for i in range(10):
+                    widget_keys.append(f"{key_prefix}_cust_color_{i}")
+                
+                # Per-simulation style widgets
+                if sim_groups:
+                    for sim_prefix in sim_groups.keys():
+                        for suffix in [
+                            "over_on",
+                            "over_color",
+                            "over_width",
+                            "over_dash",
+                            "over_marker",
+                            "over_msize",
+                        ]:
+                            widget_keys.append(f"{key_prefix}_sim_{suffix}_{sim_prefix}")
+                
+                for k in widget_keys:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                
                 _save_ui_metadata(data_dir)
                 st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
                 reset_pressed = True
@@ -964,8 +963,6 @@ def main():
             layout_kwargs = dict(
                 xaxis_title=st.session_state.axis_labels_structure.get("x_r", "Separation distance $r$"),
                 yaxis_title=st.session_state.axis_labels_structure.get("y_sp", "Structure functions $S_p(r)$"),
-                xaxis_type="log",
-                yaxis_type="log",
                 legend_title="Simulation / Order",
                 height=500,  # Default, will be overridden if custom size is enabled
             )
@@ -1111,8 +1108,6 @@ def main():
             layout_kwargs = dict(
                 xaxis_title=st.session_state.axis_labels_structure.get("x_ess", r"$S_3(r)$"),
                 yaxis_title=st.session_state.axis_labels_structure.get("y_ess", r"$S_p(r)$"),
-                xaxis_type="log",
-                yaxis_type="log",
                 legend_title="Simulation / Order",
                 height=500,  # Default, will be overridden if custom size is enabled
             )

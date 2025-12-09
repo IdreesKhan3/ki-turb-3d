@@ -482,6 +482,114 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list
         with b2:
             if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
                 st.session_state.plot_styles[selected_plot] = {}
+                
+                # Clear widget state so widgets re-read from defaults on next run
+                widget_keys = [
+                    # Fonts
+                    f"{key_prefix}_font_family",
+                    f"{key_prefix}_font_size",
+                    f"{key_prefix}_title_size",
+                    f"{key_prefix}_legend_size",
+                    f"{key_prefix}_tick_font_size",
+                    f"{key_prefix}_axis_title_size",
+                    # Backgrounds
+                    f"{key_prefix}_plot_bgcolor",
+                    f"{key_prefix}_paper_bgcolor",
+                    # Ticks
+                    f"{key_prefix}_tick_len",
+                    f"{key_prefix}_tick_w",
+                    f"{key_prefix}_ticks_outside",
+                    # Axis scale
+                    f"{key_prefix}_x_axis_type",
+                    f"{key_prefix}_y_axis_type",
+                    # Tick format
+                    f"{key_prefix}_x_tick_format",
+                    f"{key_prefix}_x_tick_decimals",
+                    f"{key_prefix}_y_tick_format",
+                    f"{key_prefix}_y_tick_decimals",
+                    # Axis borders
+                    f"{key_prefix}_show_axis_lines",
+                    f"{key_prefix}_axis_line_width",
+                    f"{key_prefix}_axis_line_color",
+                    f"{key_prefix}_mirror_axes",
+                    # Major grid
+                    f"{key_prefix}_show_grid",
+                    f"{key_prefix}_grid_on_x",
+                    f"{key_prefix}_grid_on_y",
+                    f"{key_prefix}_grid_w",
+                    f"{key_prefix}_grid_dash",
+                    f"{key_prefix}_grid_color",
+                    f"{key_prefix}_grid_opacity",
+                    # Minor grid
+                    f"{key_prefix}_show_minor_grid",
+                    f"{key_prefix}_minor_grid_w",
+                    f"{key_prefix}_minor_grid_dash",
+                    f"{key_prefix}_minor_grid_color",
+                    f"{key_prefix}_minor_grid_opacity",
+                    # Curves
+                    f"{key_prefix}_line_width",
+                    f"{key_prefix}_marker_size",
+                    f"{key_prefix}_std_alpha",
+                    # Colors
+                    f"{key_prefix}_palette",
+                    f"{key_prefix}_pope_color",
+                    f"{key_prefix}_kolmogorov_color",
+                    f"{key_prefix}_highlight_color",
+                    # Theme
+                    f"{key_prefix}_template",
+                    # Axis limits
+                    f"{key_prefix}_enable_x_limits",
+                    f"{key_prefix}_x_min",
+                    f"{key_prefix}_x_max",
+                    f"{key_prefix}_enable_y_limits",
+                    f"{key_prefix}_y_min",
+                    f"{key_prefix}_y_max",
+                    # Figure size
+                    f"{key_prefix}_enable_custom_size",
+                    f"{key_prefix}_figure_width",
+                    f"{key_prefix}_figure_height",
+                    # Margins
+                    f"{key_prefix}_margin_left",
+                    f"{key_prefix}_margin_right",
+                    f"{key_prefix}_margin_top",
+                    f"{key_prefix}_margin_bottom",
+                    # Per-sim global toggle
+                    f"{key_prefix}_enable_per_sim",
+                ]
+                
+                # Custom color inputs
+                for i in range(10):
+                    widget_keys.append(f"{key_prefix}_cust_color_{i}")
+                
+                # Per-simulation style widgets
+                if sim_groups:
+                    for sim_prefix in sim_groups.keys():
+                        for suffix in [
+                            "over_on",
+                            "over_color",
+                            "over_width",
+                            "over_dash",
+                            "over_marker",
+                            "over_msize",
+                        ]:
+                            widget_keys.append(f"{key_prefix}_raw_{suffix}_{sim_prefix}")
+                
+                if norm_groups:
+                    for sim_prefix in norm_groups.keys():
+                        for suffix in [
+                            "over_on",
+                            "over_color",
+                            "over_width",
+                            "over_dash",
+                            "over_marker",
+                            "over_msize",
+                        ]:
+                            widget_keys.append(f"{key_prefix}_norm_{suffix}_{sim_prefix}")
+                
+                for k in widget_keys:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                
                 _save_ui_metadata(data_dir)
                 st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
                 reset_pressed = True

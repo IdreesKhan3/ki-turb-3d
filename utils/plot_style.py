@@ -747,10 +747,29 @@ def apply_plot_style(fig, ps):
     x_axis_type = ps.get("x_axis_type", "linear")
     y_axis_type = ps.get("y_axis_type", "linear")
     
+    # Check if scientific notation will be used (for controlling minor tick labels)
+    x_format_pref = ps.get("x_tick_format", "auto")
+    x_uses_scientific = (x_format_pref == "scientific") or (x_format_pref == "auto" and x_axis_type == "log")
+    y_format_pref = ps.get("y_tick_format", "auto")
+    y_uses_scientific = (y_format_pref == "scientific") or (y_format_pref == "auto" and y_axis_type == "log")
+    
     # For log scales, Plotly automatically shows minor ticks (dense ticks between major ticks)
     # We enable them explicitly to ensure they're visible when needed
     show_minor_ticks_x = x_axis_type == "log"
     show_minor_ticks_y = y_axis_type == "log"
+    
+    # Build minor tick configuration for x-axis
+    x_minor_dict = dict(
+        showgrid=show_minor,
+        gridwidth=ps.get("minor_grid_w", 0.4),
+        griddash=ps.get("minor_grid_dash", "dot"),
+        gridcolor=minor_rgba,
+        ticks=tick_dir if show_minor_ticks_x else "",  # Enable minor ticks for log scales (Plotly handles density automatically)
+        ticklen=ps.get("tick_len", 6) * 0.6,  # Minor ticks are shorter than major ticks
+        tickcolor=tick_color,
+    )
+    # Note: Plotly's minor axis doesn't support showticklabels property
+    # For log scales with scientific notation, Plotly should automatically only show labels on major ticks
     
     # Build axis update dictionaries - conditionally include linecolor
     # Plotly doesn't accept "transparent" as a color, so we only set linecolor when showing lines
@@ -770,19 +789,24 @@ def apply_plot_style(fig, ps):
         showline=show_axis_lines,
         linewidth=axis_line_width if show_axis_lines else 0,
         mirror=mirror_mode,  # "ticks" shows ticks on all sides when True, False shows only bottom/left
-        minor=dict(
-            showgrid=show_minor,
-            gridwidth=ps.get("minor_grid_w", 0.4),
-            griddash=ps.get("minor_grid_dash", "dot"),
-            gridcolor=minor_rgba,
-            ticks=tick_dir if show_minor_ticks_x else "",  # Enable minor ticks for log scales (Plotly handles density automatically)
-            ticklen=ps.get("tick_len", 6) * 0.6,  # Minor ticks are shorter than major ticks
-            tickcolor=tick_color,
-        )
+        minor=x_minor_dict,
     )
     # Only set linecolor when showing axis lines (avoids "transparent" error)
     if show_axis_lines:
         xaxis_update["linecolor"] = axis_line_color
+    
+    # Build minor tick configuration for y-axis
+    y_minor_dict = dict(
+        showgrid=show_minor,
+        gridwidth=ps.get("minor_grid_w", 0.4),
+        griddash=ps.get("minor_grid_dash", "dot"),
+        gridcolor=minor_rgba,
+        ticks=tick_dir if show_minor_ticks_y else "",  # Enable minor ticks for log scales (Plotly handles density automatically)
+        ticklen=ps.get("tick_len", 6) * 0.6,  # Minor ticks are shorter than major ticks
+        tickcolor=tick_color,
+    )
+    # Note: Plotly's minor axis doesn't support showticklabels property
+    # For log scales with scientific notation, Plotly should automatically only show labels on major ticks
     
     yaxis_update = dict(
         type=y_axis_type,  # "linear" or "log" - controls axis scale type
@@ -800,15 +824,7 @@ def apply_plot_style(fig, ps):
         showline=show_axis_lines,
         linewidth=axis_line_width if show_axis_lines else 0,
         mirror=mirror_mode,  # "ticks" shows ticks on all sides when True, False shows only bottom/left
-        minor=dict(
-            showgrid=show_minor,
-            gridwidth=ps.get("minor_grid_w", 0.4),
-            griddash=ps.get("minor_grid_dash", "dot"),
-            gridcolor=minor_rgba,
-            ticks=tick_dir if show_minor_ticks_y else "",  # Enable minor ticks for log scales (Plotly handles density automatically)
-            ticklen=ps.get("tick_len", 6) * 0.6,  # Minor ticks are shorter than major ticks
-            tickcolor=tick_color,
-        )
+        minor=y_minor_dict,
     )
     # Only set linecolor when showing axis lines (avoids "transparent" error)
     if show_axis_lines:
@@ -820,6 +836,8 @@ def apply_plot_style(fig, ps):
     
     # Apply tick format if specified
     x_format_pref = ps.get("x_tick_format", "auto")
+    x_axis_type = ps.get("x_axis_type", "linear")
+    
     if x_format_pref == "integer":
         fig.update_xaxes(tickformat=".0f")
     elif x_format_pref == "float":
@@ -828,13 +846,20 @@ def apply_plot_style(fig, ps):
     elif x_format_pref == "scientific":
         decimals = ps.get("x_tick_decimals", 2)
         fig.update_xaxes(tickformat=f".{decimals}e")
+        # For log scales with scientific notation, ensure only major ticks show labels
+        if x_axis_type == "log":
+            fig.update_xaxes(dtick=1)  # Only show labels at powers of 10 (major ticks)
     elif x_format_pref == "normal":
         decimals = ps.get("x_tick_decimals", 2)
         fig.update_xaxes(tickformat=f".{decimals}f")
     elif x_format_pref == "auto":
-        # For "auto", let Plotly decide but prevent SI unit prefixes
-        # Using ".4g" format without SI prefix support
-        pass  # Let Plotly use default, but we'll handle y-axis specially for log scale
+        # For "auto" on log scale, use scientific notation to avoid SI prefixes (like μ)
+        # For linear scale, let Plotly decide
+        if x_axis_type == "log":
+            # Use scientific notation for log scale to prevent SI prefixes
+            decimals = ps.get("x_tick_decimals", 2)
+            fig.update_xaxes(tickformat=f".{decimals}e", dtick=1)  # Only show labels at powers of 10 (major ticks)
+        # For linear scale with auto, let Plotly use default (no explicit format)
     
     y_format_pref = ps.get("y_tick_format", "auto")
     y_axis_type = ps.get("y_axis_type", "linear")
@@ -847,6 +872,9 @@ def apply_plot_style(fig, ps):
     elif y_format_pref == "scientific":
         decimals = ps.get("y_tick_decimals", 2)
         fig.update_yaxes(tickformat=f".{decimals}e")
+        # For log scales with scientific notation, ensure only major ticks show labels
+        if y_axis_type == "log":
+            fig.update_yaxes(dtick=1)  # Only show labels at powers of 10 (major ticks)
     elif y_format_pref == "normal":
         decimals = ps.get("y_tick_decimals", 2)
         fig.update_yaxes(tickformat=f".{decimals}f")
@@ -856,7 +884,7 @@ def apply_plot_style(fig, ps):
         if y_axis_type == "log":
             # Use scientific notation for log scale to prevent SI prefixes
             decimals = ps.get("y_tick_decimals", 2)
-            fig.update_yaxes(tickformat=f".{decimals}e")
+            fig.update_yaxes(tickformat=f".{decimals}e", dtick=1)  # Only show labels at powers of 10 (major ticks)
         # For linear scale with auto, let Plotly use default (no explicit format)
     
     return fig
