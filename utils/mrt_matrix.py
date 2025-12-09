@@ -10,6 +10,68 @@ import streamlit as st
 import pandas as pd
 
 
+def validate_d3q19_directions(dirx, diry, dirz):
+    """
+    Validate D3Q19 direction vectors.
+    
+    Parameters:
+    -----------
+    dirx, diry, dirz : array-like
+        Lattice direction vectors
+    
+    Returns:
+    --------
+    is_valid : bool
+        True if directions are valid
+    errors : list
+        List of error messages (empty if valid)
+    warnings : list
+        List of warning messages
+    """
+    errors = []
+    warnings = []
+    
+    # Check length
+    if len(dirx) != 19 or len(diry) != 19 or len(dirz) != 19:
+        errors.append(f"Direction vectors must each contain exactly 19 entries. Got lengths: {len(dirx)}, {len(diry)}, {len(dirz)}")
+        return False, errors, warnings
+    
+    # Check for valid D3Q19 format (each direction should be one of: (0,0,0), (±1,0,0), (0,±1,0), (0,0,±1), (±1,±1,0), (±1,0,±1), (0,±1,±1))
+    # Valid speeds: 0, 1, sqrt(2)
+    valid_directions = set()
+    invalid_directions = []
+    duplicate_directions = []
+    
+    for i in range(19):
+        cx, cy, cz = dirx[i], diry[i], dirz[i]
+        speed_sq = cx*cx + cy*cy + cz*cz
+        
+        # Check if speed is valid for D3Q19 (0, 1, or 2)
+        if speed_sq not in [0, 1, 2]:
+            invalid_directions.append(f"α={i+1}: ({cx}, {cy}, {cz}) has invalid speed²={speed_sq:.2f} (must be 0, 1, or 2)")
+        
+        # Check for duplicates
+        direction_tuple = (int(cx), int(cy), int(cz))
+        if direction_tuple in valid_directions:
+            duplicate_directions.append(f"α={i+1}: ({cx}, {cy}, {cz}) is a duplicate")
+        else:
+            valid_directions.add(direction_tuple)
+    
+    if invalid_directions:
+        errors.extend(invalid_directions)
+    
+    if duplicate_directions:
+        warnings.extend(duplicate_directions)
+        warnings.append("Duplicate directions may cause matrix singularity.")
+    
+    # Check if we have exactly 19 unique directions (required for valid basis)
+    if len(valid_directions) < 19:
+        errors.append(f"Found only {len(valid_directions)} unique directions. D3Q19 requires exactly 19 unique directions.")
+    
+    is_valid = len(errors) == 0
+    return is_valid, errors, warnings
+
+
 def compute_mrt_matrix(dirx, diry, dirz):
     """
     Compute MRT transformation matrix M using Krüger-style D3Q19 orthogonalization.
@@ -24,8 +86,10 @@ def compute_mrt_matrix(dirx, diry, dirz):
     --------
     M : ndarray, shape (19, 19)
         Transformation matrix M
-    M_inv : ndarray, shape (19, 19)
-        Inverse transformation matrix M^-1
+    M_inv : ndarray, shape (19, 19) or None
+        Inverse transformation matrix M^-1 (None if singular)
+    identity_error_max : float
+        Maximum absolute error in M * M_inv - I (inf if singular)
     """
     dirx = np.array(dirx, dtype=np.float64)
     diry = np.array(diry, dtype=np.float64)
@@ -59,18 +123,17 @@ def compute_mrt_matrix(dirx, diry, dirz):
         M[18, alpha] = (e_alpha[0]**2 - e_alpha[1]**2) * e_alpha[2]
     
     # Invert matrix
+    identity_error_max = np.inf
     try:
         M_inv = np.linalg.inv(M)
-        # Check inversion quality
+        # Check inversion quality using max error (more meaningful than sum)
         identity_check = np.dot(M, M_inv)
-        diff = np.sum(np.abs(identity_check - np.eye(19)))
-        if diff > 1e-8:
-            st.warning(f"⚠️ Matrix inversion error: {diff:.2e} (should be < 1e-8)")
+        identity_error_max = np.max(np.abs(identity_check - np.eye(19)))
     except np.linalg.LinAlgError:
-        st.error("❌ Matrix is singular and cannot be inverted!")
         M_inv = None
+        identity_error_max = np.inf
     
-    return M, M_inv
+    return M, M_inv, identity_error_max
 
 
 def compute_relaxation_vector(tau=None, nu=None, s_e=1.19, s_eps=1.4, s_q=1.2, s_pi=1.4, s_other=1.98):
@@ -128,6 +191,71 @@ def compute_relaxation_vector(tau=None, nu=None, s_e=1.19, s_eps=1.4, s_q=1.2, s
     return S
 
 
+def parse_directions_input(input_str, default_list):
+    """
+    Safely parse comma/space-separated string to a list of 19 integers.
+    Accepts numbers with or without signs: 0, +1, -5, 1, 8, etc.
+    
+    Parameters:
+    -----------
+    input_str : str
+        Input string with comma or space-separated values
+    default_list : list
+        Default list to return if parsing fails
+    
+    Returns:
+    --------
+    list
+        List of 19 integers
+    """
+    # Split by any whitespace or comma, filter out empty strings
+    # Handle both comma and space separators, and strip whitespace
+    parts = [s.strip() for s in input_str.replace(',', ' ').split() if s.strip()]
+    
+    if len(parts) != 19:
+        st.warning(f"Direction vector must have exactly 19 values. Found {len(parts)}. Using defaults temporarily.")
+        return default_list
+    
+    try:
+        # Parse each part, handling +, -, or no sign
+        # int() already handles +1, -5, 0, 1, etc.
+        result = []
+        for p in parts:
+            # Remove any extra whitespace and parse
+            cleaned = p.strip()
+            # Handle explicit + sign (int() accepts it, but we ensure it's clean)
+            if cleaned.startswith('+'):
+                cleaned = cleaned[1:].strip()
+            result.append(int(cleaned))
+        return result
+    except (ValueError, AttributeError):
+        st.error("All direction vector entries must be integers (e.g., 0, +1, -5, 1, 8).")
+        return default_list
+
+
+def get_column_styles(df, column_colors):
+    """
+    Generate column-specific background colors for a DataFrame.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame to style
+    column_colors : list
+        List of colors (one per column)
+    
+    Returns:
+    --------
+    pd.DataFrame
+        DataFrame with style strings for each cell
+    """
+    styles = {}
+    for i, col in enumerate(df.columns):
+        color = column_colors[i % len(column_colors)]
+        styles[col] = [f'background-color: {color}'] * len(df)
+    return pd.DataFrame(styles, index=df.index)
+
+
 def render_mrt_matrix_generator():
     """
     Render the MRT Matrix Generator tab UI.
@@ -145,40 +273,41 @@ def render_mrt_matrix_generator():
     default_diry = [0, 0, 1, -1, 0, 0, 1, -1, -1, 1, 1, -1, 1, -1, 0, 0, 0, 0, 0]
     default_dirz = [0, 0, 0, 0, 1, -1, 0, 0, 0, 0, 1, -1, -1, 1, 1, -1, -1, 1, 0]
     
-    col1, col2 = st.columns([1, 1])
+    col1, col2 = st.columns([1.5, 0.7])
     
     with col1:
         st.subheader("Lattice Directions")
-        st.caption("Enter D3Q19 velocity directions (19 components each)")
+        st.caption("Enter D3Q19 velocity directions (19 components each, space or comma separated)")
         
         use_defaults = st.checkbox("Use default directions (from OpenACC_parameters.F90)", value=True, key="mrt_use_defaults")
+        
+        # Store defaults as strings for text area
+        default_dir_str_x = " ".join(map(str, default_dirx))
+        default_dir_str_y = " ".join(map(str, default_diry))
+        default_dir_str_z = " ".join(map(str, default_dirz))
         
         if use_defaults:
             dirx = default_dirx
             diry = default_diry
             dirz = default_dirz
             st.info("Using default D3Q19 directions from Fortran parameters module")
+            
+            # Show the defaults in read-only text areas for reference
+            st.text_area("X Directions", value=default_dir_str_x, height=40, disabled=True, key="dirx_default_display")
+            st.text_area("Y Directions", value=default_dir_str_y, height=40, disabled=True, key="diry_default_display")
+            st.text_area("Z Directions", value=default_dir_str_z, height=40, disabled=True, key="dirz_default_display")
         else:
             st.markdown("**X directions:**")
-            dirx = []
-            cols_x = st.columns(19)
-            for i in range(19):
-                with cols_x[i]:
-                    dirx.append(st.number_input(f"", value=default_dirx[i], key=f"dirx_{i}", step=1, format="%d"))
+            dirx_str = st.text_area("", value=default_dir_str_x, key="dirx_input", height=60, help="Enter 19 integers separated by spaces or commas")
+            dirx = parse_directions_input(dirx_str, default_dirx)
             
             st.markdown("**Y directions:**")
-            diry = []
-            cols_y = st.columns(19)
-            for i in range(19):
-                with cols_y[i]:
-                    diry.append(st.number_input(f"", value=default_diry[i], key=f"diry_{i}", step=1, format="%d"))
+            diry_str = st.text_area("", value=default_dir_str_y, key="diry_input", height=60, help="Enter 19 integers separated by spaces or commas")
+            diry = parse_directions_input(diry_str, default_diry)
             
             st.markdown("**Z directions:**")
-            dirz = []
-            cols_z = st.columns(19)
-            for i in range(19):
-                with cols_z[i]:
-                    dirz.append(st.number_input(f"", value=default_dirz[i], key=f"dirz_{i}", step=1, format="%d"))
+            dirz_str = st.text_area("", value=default_dir_str_z, key="dirz_input", height=60, help="Enter 19 integers separated by spaces or commas")
+            dirz = parse_directions_input(dirz_str, default_dirz)
     
     with col2:
         st.subheader("Relaxation Parameters")
@@ -200,8 +329,24 @@ def render_mrt_matrix_generator():
     # Compute matrices
     if st.button("🔧 Generate MRT Matrix", type="primary", use_container_width=True):
         with st.spinner("Computing MRT matrix..."):
-            M, M_inv = compute_mrt_matrix(dirx, diry, dirz)
+            # Validate directions
+            is_valid, errors, warnings = validate_d3q19_directions(dirx, diry, dirz)
+            
+            if not is_valid:
+                for error in errors:
+                    st.error(f"❌ {error}")
+                st.stop()
+            
+            if warnings:
+                for warning in warnings:
+                    st.warning(f"⚠️ {warning}")
+            
+            # Compute matrices
+            M, M_inv, identity_error_max = compute_mrt_matrix(dirx, diry, dirz)
             S = compute_relaxation_vector(tau=tau, nu=nu, s_e=s_e, s_eps=s_eps, s_q=s_q, s_pi=s_pi, s_other=s_other)
+            
+            # Store error for display
+            st.session_state.mrt_identity_error_max = identity_error_max
             
             if M_inv is not None:
                 st.session_state.mrt_M = M
@@ -210,7 +355,17 @@ def render_mrt_matrix_generator():
                 st.session_state.mrt_dirx = dirx
                 st.session_state.mrt_diry = diry
                 st.session_state.mrt_dirz = dirz
-                st.success("✅ MRT matrix generated successfully!")
+                
+                # Improved success message
+                if identity_error_max < 1e-8:
+                    st.success("✅ MRT matrix generated and inverted successfully!")
+                elif identity_error_max < 1e-6:
+                    st.warning(f"⚠️ Matrix inverted but with moderate error ({identity_error_max:.2e})")
+                else:
+                    st.error(f"❌ Matrix inversion error is large ({identity_error_max:.2e}). Matrix may be ill-conditioned.")
+            else:
+                st.error("❌ Matrix is singular and cannot be inverted!")
+                st.error("This usually indicates duplicate or invalid direction vectors. Check your D3Q19 directions.")
     
     # Display results
     if "mrt_M" in st.session_state:
@@ -229,7 +384,11 @@ def render_mrt_matrix_generator():
             "pxy", "pyz", "pxz", "mx", "my", "mz"
         ]
         
-        tab_m, tab_minv, tab_s = st.tabs(["Matrix M", "Matrix M⁻¹", "Relaxation Vector S"])
+        tab_m, tab_minv, tab_s = st.tabs(["Matrix M", "Matrix M⁻¹", "Vector S & Matrix S"])
+        
+        # Define column colors (cycle through 5 light pastel colors for 19 columns)
+        base_colors = ['#E5E7F6', '#F6E5E7', '#E5F6E7', '#F6F6E7', '#E7E5F6']
+        column_colors = [base_colors[i % len(base_colors)] for i in range(19)]
         
         with tab_m:
             st.markdown("**Transformation Matrix M (19×19)**")
@@ -240,8 +399,9 @@ def render_mrt_matrix_generator():
                                index=[f"Row {i+1}: {moment_names[i]}" for i in range(19)],
                                columns=[f"α={i+1}" for i in range(19)])
             
-            # Round for display
-            st.dataframe(df_M.style.format("{:.2f}"), height=600, use_container_width=True)
+            # Apply column coloring and format as integers (no decimals)
+            styled_M = df_M.style.apply(lambda df: get_column_styles(df, column_colors), axis=None).format("{:.0f}")
+            st.dataframe(styled_M, height=600, use_container_width=True)
             
             # Download button
             csv_M = df_M.to_csv()
@@ -260,7 +420,9 @@ def render_mrt_matrix_generator():
                                     index=[f"Row {i+1}: {moment_names[i]}" for i in range(19)],
                                     columns=[f"α={i+1}" for i in range(19)])
             
-            st.dataframe(df_M_inv.style.format("{:.6f}"), height=600, use_container_width=True)
+            # Apply column coloring and format with 6 decimals
+            styled_M_inv = df_M_inv.style.apply(lambda df: get_column_styles(df, column_colors), axis=None).format("{:.6f}")
+            st.dataframe(styled_M_inv, height=600, use_container_width=True)
             
             csv_M_inv = df_M_inv.to_csv()
             st.download_button(
@@ -279,7 +441,14 @@ def render_mrt_matrix_generator():
                 "Relaxation Rate": S
             })
             
-            st.dataframe(df_S, use_container_width=True, hide_index=True)
+            # Apply column coloring for S vector (2 columns)
+            S_column_colors = ['#f0f2f6', base_colors[0]]
+            styled_S = df_S.style.apply(lambda df: get_column_styles(df, S_column_colors), axis=None)
+            
+            # Reduce width of S vector table
+            col_s1, col_s2, col_s3 = st.columns([0.2, 0.6, 0.2])
+            with col_s2:
+                st.dataframe(styled_S, use_container_width=True, hide_index=True)
             
             csv_S = df_S.to_csv(index=False)
             st.download_button(
@@ -288,23 +457,52 @@ def render_mrt_matrix_generator():
                 file_name="MRT_relaxation_vector_S.csv",
                 mime="text/csv"
             )
+            
+            st.markdown("---")
+            st.markdown("**Diagonal Relaxation Matrix Diag(S) (19×19)**")
+            st.caption("Diagonal matrix with relaxation rates on the diagonal: **Diag(S) = diag(S)**")
+            
+            S_diag = np.diag(S)
+            df_S_diag = pd.DataFrame(S_diag,
+                                    index=[f"Row {i+1}: {moment_names[i]}" for i in range(19)],
+                                    columns=[f"α={i+1}" for i in range(19)])
+            
+            # Format: diagonal entries with decimals, off-diagonal (zeros) as integers
+            # Apply column coloring
+            def format_diag_S(val):
+                return f"{val:.3f}" if abs(val) > 1e-10 else "0"
+            
+            styled_df = df_S_diag.style.apply(lambda df: get_column_styles(df, column_colors), axis=None).format(format_diag_S)
+            st.dataframe(styled_df, height=600, use_container_width=True)
+            
+            csv_S_diag = df_S_diag.to_csv()
+            st.download_button(
+                label="📥 Download Diag(S) matrix (CSV)",
+                data=csv_S_diag,
+                file_name="MRT_diagonal_matrix_Diag_S.csv",
+                mime="text/csv"
+            )
         
         # Verification
         st.markdown("---")
         st.subheader("Verification")
         
-        # Check M * M_inv = I
-        identity_check = np.dot(M, M_inv)
-        identity_error = np.max(np.abs(identity_check - np.eye(19)))
+        # Get stored error
+        identity_error_max = st.session_state.get("mrt_identity_error_max", np.inf)
+        
+        # Recompute if not stored (backward compatibility)
+        if identity_error_max == np.inf:
+            identity_check = np.dot(M, M_inv)
+            identity_error_max = np.max(np.abs(identity_check - np.eye(19)))
         
         col_v1, col_v2 = st.columns(2)
         with col_v1:
-            st.metric("Matrix Inversion Error", f"{identity_error:.2e}", 
-                     help="Should be < 1e-8 for good inversion")
+            st.metric("Matrix Inversion Error (max)", f"{identity_error_max:.2e}", 
+                     help="Maximum absolute error in M × M⁻¹ - I. Should be < 1e-8 for good inversion.")
         with col_v2:
-            if identity_error < 1e-8:
+            if identity_error_max < 1e-8:
                 st.success("✅ Matrix inversion is accurate")
-            elif identity_error < 1e-6:
+            elif identity_error_max < 1e-6:
                 st.warning("⚠️ Matrix inversion has moderate error")
             else:
                 st.error("❌ Matrix inversion has large error")
@@ -317,4 +515,9 @@ def render_mrt_matrix_generator():
             "cy": st.session_state.mrt_diry,
             "cz": st.session_state.mrt_dirz
         })
-        st.dataframe(dir_df, use_container_width=True, hide_index=True)
+        # Apply column coloring for directions table (4 columns)
+        dir_column_colors = ['#f0f2f6', base_colors[0], base_colors[1], base_colors[2]]
+        styled_dir_df = dir_df.style.apply(lambda df: get_column_styles(df, dir_column_colors), axis=None)
+        col_dir1, col_dir2, col_dir3 = st.columns([0.2, 0.6, 0.2])
+        with col_dir2:
+            st.dataframe(styled_dir_df, use_container_width=True, hide_index=True)
