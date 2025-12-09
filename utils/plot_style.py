@@ -297,6 +297,9 @@ def apply_axis_limits(layout_kwargs, ps):
     """
     Apply axis limits to layout kwargs if enabled.
     
+    For log scales, Plotly expects range values as base-10 logarithms, not raw values.
+    This function automatically converts raw values to log10 when axis type is "log".
+    
     Args:
         layout_kwargs: Dictionary of layout arguments for update_layout
         ps: Plot style dictionary
@@ -304,10 +307,34 @@ def apply_axis_limits(layout_kwargs, ps):
     Returns:
         Updated layout_kwargs dictionary
     """
+    import numpy as np
+    
     if ps.get("enable_x_limits") and ps.get("x_min") is not None and ps.get("x_max") is not None:
-        layout_kwargs["xaxis_range"] = [ps["x_min"], ps["x_max"]]
+        x_min_raw = float(ps["x_min"])
+        x_max_raw = float(ps["x_max"])
+        x_axis_type = ps.get("x_axis_type", "linear")
+        
+        if x_axis_type == "log" and x_min_raw > 0 and x_max_raw > 0:
+            # Convert raw numeric limits to base-10 log for Plotly's log-range
+            x_range = [np.log10(x_min_raw), np.log10(x_max_raw)]
+        else:
+            x_range = [x_min_raw, x_max_raw]
+        
+        layout_kwargs["xaxis_range"] = x_range
+    
     if ps.get("enable_y_limits") and ps.get("y_min") is not None and ps.get("y_max") is not None:
-        layout_kwargs["yaxis_range"] = [ps["y_min"], ps["y_max"]]
+        y_min_raw = float(ps["y_min"])
+        y_max_raw = float(ps["y_max"])
+        y_axis_type = ps.get("y_axis_type", "linear")
+        
+        if y_axis_type == "log" and y_min_raw > 0 and y_max_raw > 0:
+            # Convert raw numeric limits to base-10 log for Plotly's log-range
+            y_range = [np.log10(y_min_raw), np.log10(y_max_raw)]
+        else:
+            y_range = [y_min_raw, y_max_raw]
+        
+        layout_kwargs["yaxis_range"] = y_range
+    
     return layout_kwargs
 
 
@@ -720,6 +747,11 @@ def apply_plot_style(fig, ps):
     x_axis_type = ps.get("x_axis_type", "linear")
     y_axis_type = ps.get("y_axis_type", "linear")
     
+    # For log scales, Plotly automatically shows minor ticks (dense ticks between major ticks)
+    # We enable them explicitly to ensure they're visible when needed
+    show_minor_ticks_x = x_axis_type == "log"
+    show_minor_ticks_y = y_axis_type == "log"
+    
     # Build axis update dictionaries - conditionally include linecolor
     # Plotly doesn't accept "transparent" as a color, so we only set linecolor when showing lines
     xaxis_update = dict(
@@ -743,6 +775,9 @@ def apply_plot_style(fig, ps):
             gridwidth=ps.get("minor_grid_w", 0.4),
             griddash=ps.get("minor_grid_dash", "dot"),
             gridcolor=minor_rgba,
+            ticks=tick_dir if show_minor_ticks_x else "",  # Enable minor ticks for log scales (Plotly handles density automatically)
+            ticklen=ps.get("tick_len", 6) * 0.6,  # Minor ticks are shorter than major ticks
+            tickcolor=tick_color,
         )
     )
     # Only set linecolor when showing axis lines (avoids "transparent" error)
@@ -770,6 +805,9 @@ def apply_plot_style(fig, ps):
             gridwidth=ps.get("minor_grid_w", 0.4),
             griddash=ps.get("minor_grid_dash", "dot"),
             gridcolor=minor_rgba,
+            ticks=tick_dir if show_minor_ticks_y else "",  # Enable minor ticks for log scales (Plotly handles density automatically)
+            ticklen=ps.get("tick_len", 6) * 0.6,  # Minor ticks are shorter than major ticks
+            tickcolor=tick_color,
         )
     )
     # Only set linecolor when showing axis lines (avoids "transparent" error)

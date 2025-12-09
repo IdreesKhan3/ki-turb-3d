@@ -34,7 +34,13 @@ from data_readers.norm_spectrum_reader import read_norm_spectrum_file
 from utils.file_detector import natural_sort_key, group_files_by_simulation
 from utils.theme_config import inject_theme_css
 from utils.report_builder import capture_button
-from utils.plot_style import resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size
+from utils.plot_style import (
+    default_plot_style, apply_plot_style as apply_plot_style_base,
+    render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
+    render_axis_scale_ui, render_tick_format_ui, render_axis_borders_ui,
+    _get_palette, _normalize_plot_name,
+    resolve_line_style, render_per_sim_style_ui
+)
 from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
 
@@ -185,6 +191,7 @@ def _compute_time_avg_norm(files: tuple):
 
 
 def _add_kolmogorov_line(fig, k_vals, E_avg, kmin, kmax, ps,
+                         kolm_scale_factor=1.0,
                          label="Kolmogorov k<sup>-5/3</sup>"):
     """Add scaled -5/3 reference line on [kmin,kmax]."""
     mask = (k_vals >= kmin) & (k_vals <= kmax)
@@ -196,6 +203,7 @@ def _add_kolmogorov_line(fig, k_vals, E_avg, kmin, kmax, ps,
     mid_idx = np.argmin(np.abs(k_fit - np.median(k_fit)))
     scale = E_avg[mask][mid_idx] / ref[mid_idx]
     ref *= scale
+    ref *= kolm_scale_factor  # Apply the manual scale factor
 
     fig.add_trace(go.Scatter(
         x=k_fit, y=ref,
@@ -210,180 +218,42 @@ def _add_kolmogorov_line(fig, k_vals, E_avg, kmin, kmax, ps,
 
 
 # ==========================================================
-# Plot styling system
+# Plot styling system (using centralized module)
 # ==========================================================
-def _default_plot_style():
-    return {
-        # Fonts
-        "font_family": "Arial",
-        "font_size": 14,
-        "title_size": 16,
-        "legend_size": 12,
-        "tick_font_size": 12,
-        "axis_title_size": 14,
-
-        # Ticks
-        "tick_len": 6,
-        "tick_w": 1.2,
-        "ticks_outside": True,
-
-        # Backgrounds
-        "plot_bgcolor": "#FFFFFF",
-        "paper_bgcolor": "#FFFFFF",
-
-        # Grid (MAJOR)
-        "show_grid": True,
-        "grid_on_x": True,
-        "grid_on_y": True,
-        "grid_w": 0.6,
-        "grid_dash": "dot",
-        "grid_color": "#B0B0B0",
-        "grid_opacity": 0.6,
-
-        # Grid (MINOR)
-        "show_minor_grid": False,
-        "minor_grid_w": 0.4,
-        "minor_grid_dash": "dot",
-        "minor_grid_color": "#D0D0D0",
-        "minor_grid_opacity": 0.45,
-
-        # Curves
-        "line_width": 2.4,
-        "marker_size": 6,
-        "std_alpha": 0.18,
-
-        # Colors & theme
-        "palette": "Plotly",
-        "custom_colors": ["#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e",
-                          "#8c564b", "#e377c2", "#7f7f7f"],
-        "pope_color": "#000000",
-        "kolmogorov_color": "#666666",
-        "template": "plotly_white",
-
-        # Highlight curve
-        "highlight_color": "#E41A1C",
-
-        # Per-simulation overrides
-        "enable_per_sim_style": False,
-        "per_sim_style_raw": {},  # {sim: {enabled,color,width,dash,marker,msize}}
-        "per_sim_style_norm": {},  # {sim: {enabled,color,width,dash,marker,msize}}
-        
-        # Axis limits
-        "enable_x_limits": False,
-        "x_min": None,
-        "x_max": None,
-        "enable_y_limits": False,
-        "y_min": None,
-        "y_max": None,
-        
-        # Figure size
-        "enable_custom_size": False,
-        "figure_width": 800,
-        "figure_height": 500,
-        
-        # Frame/Margin size
-        "margin_left": 40,
-        "margin_right": 20,
-        "margin_top": 30,
-        "margin_bottom": 40,
-    }
-
-def _get_palette(ps):
-    if ps["palette"] == "Custom":
-        cols = ps.get("custom_colors", [])
-        return cols if cols else pc.qualitative.Plotly
-
-    mapping = {
-        "Plotly": pc.qualitative.Plotly,
-        "D3": pc.qualitative.D3,
-        "G10": pc.qualitative.G10,
-        "T10": pc.qualitative.T10,
-        "Dark2": pc.qualitative.Dark2,
-        "Set1": pc.qualitative.Set1,
-        "Set2": pc.qualitative.Set2,
-        "Pastel1": pc.qualitative.Pastel1,
-        "Bold": pc.qualitative.Bold,
-        "Prism": pc.qualitative.Prism,
-    }
-    return mapping.get(ps["palette"], pc.qualitative.Plotly)
-
-def _axis_title_font(ps):
-    return dict(family=ps["font_family"], size=ps["axis_title_size"])
-
-def _tick_font(ps):
-    return dict(family=ps["font_family"], size=ps["tick_font_size"])
-
 def apply_plot_style(fig, ps):
-    fig.update_layout(
-        template=ps["template"],
-        font=dict(family=ps["font_family"], size=ps["font_size"]),
-        legend=dict(font=dict(size=ps["legend_size"])),
-        hovermode="x unified",
-        plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
-        paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
-        margin=dict(
+    fig = apply_plot_style_base(fig, ps)
+    
+    if any(k in ps for k in ["margin_left", "margin_right", "margin_top", "margin_bottom"]):
+        fig.update_layout(margin=dict(
             l=ps.get("margin_left", 40),
             r=ps.get("margin_right", 20),
             t=ps.get("margin_top", 30),
             b=ps.get("margin_bottom", 40)
-        ),
-    )
-
-    tick_dir = "outside" if ps["ticks_outside"] else "inside"
-
-    show_x_grid = ps["show_grid"] and ps.get("grid_on_x", True)
-    show_y_grid = ps["show_grid"] and ps.get("grid_on_y", True)
-    grid_rgba = f"rgba{hex_to_rgb(ps['grid_color']) + (ps['grid_opacity'],)}"
-
-    show_minor = ps.get("show_minor_grid", False)
-    minor_rgba = f"rgba{hex_to_rgb(ps['minor_grid_color']) + (ps['minor_grid_opacity'],)}"
-
-    fig.update_xaxes(
-        ticks=tick_dir,
-        ticklen=ps["tick_len"],
-        tickwidth=ps["tick_w"],
-        tickfont=_tick_font(ps),
-        title_font=_axis_title_font(ps),
-        showgrid=show_x_grid,
-        gridwidth=ps["grid_w"],
-        griddash=ps["grid_dash"],
-        gridcolor=grid_rgba,
-        minor=dict(
-            showgrid=show_minor,
-            gridwidth=ps["minor_grid_w"],
-            griddash=ps["minor_grid_dash"],
-            gridcolor=minor_rgba,
-        )
-    )
-    fig.update_yaxes(
-        ticks=tick_dir,
-        ticklen=ps["tick_len"],
-        tickwidth=ps["tick_w"],
-        tickfont=_tick_font(ps),
-        title_font=_axis_title_font(ps),
-        showgrid=show_y_grid,
-        gridwidth=ps["grid_w"],
-        griddash=ps["grid_dash"],
-        gridcolor=grid_rgba,
-        minor=dict(
-            showgrid=show_minor,
-            gridwidth=ps["minor_grid_w"],
-            griddash=ps["minor_grid_dash"],
-            gridcolor=minor_rgba,
-        )
-    )
+        ))
+    
     return fig
-
-def _normalize_plot_name(plot_name: str) -> str:
-    """Normalize plot name to a valid key format."""
-    return plot_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
 
 def get_plot_style(plot_name: str):
     """Get plot-specific style, merging defaults with plot-specific overrides."""
-    default = _default_plot_style()
+    default = default_plot_style()
+    default.update({
+        "line_width": 2.4,
+        "margin_left": 40,
+        "margin_right": 20,
+        "margin_top": 30,
+        "margin_bottom": 40,
+        "std_alpha": 0.18,
+        "pope_color": "#000000",
+        "kolmogorov_color": "#666666",
+        "highlight_color": "#E41A1C",
+        "per_sim_style_raw": {},
+        "per_sim_style_norm": {},
+        "x_axis_type": "log",
+        "y_axis_type": "log",
+    })
+    
     plot_styles = st.session_state.get("plot_styles", {})
     plot_style = plot_styles.get(plot_name, {})
-    # Deep merge: start with defaults, then update with plot-specific overrides
     merged = default.copy()
     for key, value in plot_style.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
@@ -453,6 +323,15 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list
                                   key=f"{key_prefix}_tick_w")
         ps["ticks_outside"] = st.checkbox("Ticks outside", bool(ps.get("ticks_outside", True)),
                                            key=f"{key_prefix}_ticks_outside")
+
+        st.markdown("---")
+        render_axis_scale_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
+        render_tick_format_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
+        render_axis_borders_ui(ps, key_prefix=key_prefix)
 
         st.markdown("---")
         st.markdown("**Grid (Major)**")
@@ -934,6 +813,31 @@ def main():
             st.warning("No spectrum*.dat groups found.")
             return
 
+        # Get user-facing names and their corresponding prefixes for Kolmogorov scaling selection
+        sim_options = sorted(sim_groups.keys())
+        legend_names = st.session_state.spectrum_legend_names
+        
+        # Create a mapping for display (Name: Prefix)
+        display_to_prefix = {
+            legend_names.get(prefix, _default_labelify(prefix)): prefix
+            for prefix in sim_options
+        }
+        
+        display_names = list(display_to_prefix.keys())
+        
+        # Use a selectbox to choose which simulation to use for the scaling
+        kolm_scaling_name = st.sidebar.selectbox(
+            "Scale Kolmogorov Line to Spectra:",
+            ["None"] + display_names,
+            index=1 if display_names else 0,
+            help="Select the simulation curve to scale the k^(-5/3) line against."
+        )
+        
+        if kolm_scaling_name != "None":
+            kolm_scaling_prefix = display_to_prefix[kolm_scaling_name]
+        else:
+            kolm_scaling_prefix = None
+
         total_files = min(len(g) for g in sim_groups.values())
         start_idx = st.sidebar.slider("Start file index", 1, total_files, min(20, total_files))
         end_idx = st.sidebar.slider("End file index", start_idx, total_files, total_files)
@@ -949,8 +853,52 @@ def main():
         show_error_bars = error_display in ["Error bars", "Both"]
         show_normalized = st.sidebar.checkbox("Show normalized (collapsed) panel with Pope", value=True)
 
+        # Pope model selection for normalized spectrum (related to normalized panel)
+        if show_normalized and norm_groups:
+            # Get user-facing names and their corresponding prefixes (using normalized spectrum groups)
+            norm_options = sorted(norm_groups.keys())
+            norm_legend_names = st.session_state.norm_legend_names
+            
+            # Create a mapping for display (Name: Prefix)
+            norm_display_to_prefix = {
+                norm_legend_names.get(prefix, _default_labelify(prefix)): prefix
+                for prefix in norm_options
+            }
+            
+            norm_display_names = list(norm_display_to_prefix.keys())
+            
+            # Use a selectbox to choose which simulation's Pope model to display
+            pope_scaling_name = st.sidebar.selectbox(
+                "Plot Pope Model from Spectra:",
+                ["None (Default: Use all plotted simulations)"] + norm_display_names,
+                index=0,
+                help="If set, only the Pope model corresponding to this selected simulation will be plotted. Otherwise, every plotted simulation's Pope model will be shown."
+            )
+            
+            if pope_scaling_name != "None (Default: Use all plotted simulations)":
+                pope_scaling_prefix = norm_display_to_prefix[pope_scaling_name]
+            else:
+                pope_scaling_prefix = None
+        else:
+            pope_scaling_prefix = None
+
         kmin = st.sidebar.number_input("Inertial range k_min", min_value=1.0, value=3.0)
         kmax = st.sidebar.number_input("Inertial range k_max", min_value=kmin + 1e-6, value=20.0)
+        
+        kolm_scale_factor = st.sidebar.slider(
+            "Kolmogorov Line Scale Factor",
+            0.1, 5.0,
+            1.0,
+            step=0.05,
+            help="Manually scale the k^(-5/3) line up (> 1.0) or down (< 1.0) for better visual fit."
+        )
+
+        # Compute average data for the selected scaling simulation (for Kolmogorov line)
+        k_scale, E_avg_scale = None, None
+        if kolm_scaling_prefix and show_kolm:
+            selected_files_scale = tuple(sim_groups[kolm_scaling_prefix][start_idx-1:end_idx])
+            if selected_files_scale:
+                k_scale, E_avg_scale, _ = _compute_time_avg(selected_files_scale)
 
         # Get plot-specific style
         plot_name_raw = "Raw Energy Spectrum"
@@ -1010,8 +958,10 @@ def main():
                     hoverinfo="skip"
                 ))
 
-            if show_kolm and idx == 0:
-                fig_raw = _add_kolmogorov_line(fig_raw, k_vals, E_avg, kmin, kmax, ps_raw)
+        # Add Kolmogorov line using the selected scaling data (after all traces are added)
+        if show_kolm and k_scale is not None and E_avg_scale is not None:
+            fig_raw = _add_kolmogorov_line(fig_raw, k_scale, E_avg_scale, kmin, kmax, ps_raw,
+                                           kolm_scale_factor=kolm_scale_factor)
 
         if not plotted_any:
             st.info("No valid spectra could be plotted from selected range.")
@@ -1023,7 +973,7 @@ def main():
             xaxis_type="log",
             yaxis_type="log",
             legend_title="Simulation",
-            height=500,  # Default, will be overridden if custom size is enabled
+            height=400,  # Default, will be overridden if custom size is enabled
         )
         layout_kwargs_raw = apply_axis_limits(layout_kwargs_raw, ps_raw)
         layout_kwargs_raw = apply_figure_size(layout_kwargs_raw, ps_raw)
@@ -1088,12 +1038,22 @@ def main():
                         hoverinfo="skip"
                     ))
 
-                fig_norm.add_trace(go.Scatter(
-                    x=keta, y=Ep_avg,
-                    mode="lines",
-                    name=f"{legend_name} Pope",
-                    line=dict(color=ps_norm["pope_color"], width=ps_norm["line_width"], dash="dash"),
-                ))
+                # Plot the Pope model trace only if:
+                # 1. No specific prefix was selected (pope_scaling_prefix is None) OR
+                # 2. The current norm_prefix matches the selected scaling prefix
+                if pope_scaling_prefix is None or norm_prefix == pope_scaling_prefix:
+                    # If we only plot a single selected Pope model, improve its legend name
+                    if pope_scaling_prefix is not None:
+                        pope_legend_name = f"{legend_name} Pope Model"
+                    else:
+                        pope_legend_name = f"{legend_name} Pope"
+                    
+                    fig_norm.add_trace(go.Scatter(
+                        x=keta, y=Ep_avg,
+                        mode="lines",
+                        name=pope_legend_name,
+                        line=dict(color=ps_norm["pope_color"], width=ps_norm["line_width"], dash="dash"),
+                    ))
 
             layout_kwargs = dict(
                 xaxis_title=st.session_state.axis_labels_norm["x"],
@@ -1101,7 +1061,8 @@ def main():
                 xaxis_type="log",
                 yaxis_type="log",
                 legend_title="Simulation",
-                height=500,  # Default, will be overridden if custom size is enabled
+                width=550,  # Narrower than raw spectrum
+                height=600,  # Taller than raw spectrum
             )
             layout_kwargs = apply_axis_limits(layout_kwargs, ps_norm)
             layout_kwargs = apply_figure_size(layout_kwargs, ps_norm)
@@ -1109,15 +1070,12 @@ def main():
             fig_norm = apply_plot_style(fig_norm, ps_norm)
 
         if fig_norm is not None:
-            colL, colR = st.columns(2)
-            with colL:
-                st.markdown("### Raw Energy Spectrum")
-                st.plotly_chart(fig_raw, width='stretch')
-                capture_button(fig_raw, title="Energy Spectra (Raw)", source_page="Energy Spectra")
-            with colR:
-                st.markdown("### Normalized (Collapsed) Spectrum")
-                st.plotly_chart(fig_norm, width='stretch')
-                capture_button(fig_norm, title="Energy Spectra (Normalized)", source_page="Energy Spectra")
+            st.markdown("### Raw Energy Spectrum")
+            st.plotly_chart(fig_raw, width='stretch')
+            capture_button(fig_raw, title="Energy Spectra (Raw)", source_page="Energy Spectra")
+            st.markdown("### Normalized (Collapsed) Spectrum")
+            st.plotly_chart(fig_norm, width='stretch')
+            capture_button(fig_norm, title="Energy Spectra (Normalized)", source_page="Energy Spectra")
         else:
             st.plotly_chart(fig_raw, width='stretch')
             capture_button(fig_raw, title="Energy Spectra", source_page="Energy Spectra")
@@ -1207,8 +1165,8 @@ def main():
             yaxis_title=st.session_state.axis_labels_raw["y"],
             xaxis_type="log",
             yaxis_type="log",
-            width=700,  # Width less than height
-            height=600,  # Reduced for time evolution figure
+            width=850,  # Width less than height
+            height=550,  # Reduced for time evolution figure
         )
         layout_kwargs_evol = apply_axis_limits(layout_kwargs_evol, ps_evol)
         # Don't apply figure size override for time evolution to keep fixed width

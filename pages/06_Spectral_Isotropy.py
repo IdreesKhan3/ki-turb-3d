@@ -159,10 +159,13 @@ def get_plot_style(plot_name: str):
         "line_width": 2.2,
     })
     
-    # Set default axis scale types based on plot name
+    # Set default axis scale types and limits based on plot name
     if plot_name == "IC(k) Time-Avg":
         default["x_axis_type"] = "log"
         default["y_axis_type"] = "linear"
+        default["enable_y_limits"] = True
+        default["y_min"] = 0.8
+        default["y_max"] = 1.3
     elif plot_name == "Component Spectra":
         default["x_axis_type"] = "log"
         default["y_axis_type"] = "log"
