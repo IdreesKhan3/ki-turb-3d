@@ -37,13 +37,13 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from utils.file_detector import detect_simulation_files
-from utils.theme_config import inject_theme_css
+from utils.theme_config import inject_theme_css, apply_theme_to_plot_style
 from utils.report_builder import capture_button
 from utils.plot_style import (
     default_plot_style, apply_plot_style as apply_plot_style_base,
     render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
     render_axis_scale_ui, render_tick_format_ui, render_axis_borders_ui,
-    _get_palette
+    render_plot_title_ui, _get_palette
 )
 from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
@@ -134,11 +134,40 @@ def _normalize_plot_name(plot_name: str) -> str:
     normalized = plot_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
     return normalized.replace("/", "_")
 
+def _get_title_dict(ps, title_text):
+    """Get title dict with font color for dark theme compatibility."""
+    if not title_text:
+        return None
+    
+    # Get font color from plot style (defaults based on template)
+    font_color = ps.get("font_color")
+    if font_color is None:
+        # Auto-detect from template if font_color not set
+        template = ps.get("template", "plotly_white")
+        if "dark" in template.lower():
+            font_color = "#d4d4d4"
+        else:
+            font_color = "#000000"
+    
+    return dict(
+        text=title_text,
+        font=dict(
+            family=ps.get("font_family", "Arial"),
+            size=ps.get("title_size", 16),
+            color=font_color
+        )
+    )
+
 def apply_plot_style(fig, ps):
+    # Temporarily clear plot_title if show_plot_title is False to prevent centralized function from setting it
+    original_plot_title = ps.get("plot_title", "")
     if not ps.get("show_plot_title", False):
         ps["plot_title"] = ""
     
     fig = apply_plot_style_base(fig, ps)
+    
+    # Restore original plot_title for later use
+    ps["plot_title"] = original_plot_title
     
     if not ps.get("show_plot_title", False):
         fig.update_layout(title=None)
@@ -150,6 +179,10 @@ def apply_plot_style(fig, ps):
             t=ps.get("margin_top", 40),
             b=ps.get("margin_bottom", 50)
         ))
+    
+    # Always set title with correct font color if show_plot_title is True
+    if ps.get("show_plot_title", False) and ps.get("plot_title"):
+        fig.update_layout(title=_get_title_dict(ps, ps["plot_title"]))
     
     return fig
 
@@ -181,6 +214,9 @@ def get_plot_style(plot_name: str):
         "margin_top": 40,
         "margin_bottom": 50,
         "line_width": 1.6,  # Reduced from 2.2 for better visibility
+        "isotropic_1_3_color": "#ff0000",  # Red for light theme
+        "isotropic_0_color": "#000000",  # Black for light theme
+        "stationary_line_color": "#800080",  # Purple for light theme
     })
     
     # Set default y-axis type to log for plots that use log scale in original script
@@ -203,6 +239,20 @@ def get_plot_style(plot_name: str):
             merged[key].update(value)
         else:
             merged[key] = value
+    
+    # Apply theme to ensure font_color is set correctly
+    current_theme = st.session_state.get("theme", "Light Scientific")
+    merged = apply_theme_to_plot_style(merged, current_theme)
+    
+    # Update reference line colors for dark theme if they're still at light theme defaults
+    if "Dark" in current_theme:
+        if merged.get("isotropic_1_3_color") == "#ff0000":
+            merged["isotropic_1_3_color"] = "#f48771"  # Light red/coral - visible on dark background
+        if merged.get("isotropic_0_color") == "#000000":
+            merged["isotropic_0_color"] = "#d4d4d4"  # Light gray - visible on dark background
+        if merged.get("stationary_line_color") == "#800080":
+            merged["stationary_line_color"] = "#c586c0"  # Light purple - visible on dark background
+    
     return merged
 
 def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
@@ -350,19 +400,31 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                 ps["paper_bgcolor"] = "#FFFFFF"
 
         st.markdown("---")
-        st.markdown("**Plot Title**")
-        ps["show_plot_title"] = st.checkbox(
-            "Show plot title",
-            bool(ps.get("show_plot_title", False)),
-            help="Enable to add a title above the plot",
-            key=f"{key_prefix}_show_plot_title"
-        )
-        if ps["show_plot_title"]:
-            ps["plot_title"] = st.text_input(
-                "Title text",
-                value=ps.get("plot_title", ""),
-                help="Enter the title text for this plot",
-                key=f"{key_prefix}_plot_title"
+        render_plot_title_ui(ps, key_prefix=key_prefix)
+
+        # Reference line colors (shown based on selected plot)
+        if selected_plot == "Energy Fractions (A)":
+            ps["isotropic_1_3_color"] = st.color_picker(
+                "Isotropic (1/3) line color",
+                ps.get("isotropic_1_3_color", "#ff0000"),
+                key=f"{key_prefix}_isotropic_1_3_color"
+            )
+            ps["stationary_line_color"] = st.color_picker(
+                "Statistical stationarity line color",
+                ps.get("stationary_line_color", "#800080"),
+                key=f"{key_prefix}_stationary_line_color"
+            )
+        elif selected_plot == "Diagonal b_ii (C)":
+            ps["isotropic_0_color"] = st.color_picker(
+                "Isotropic (0) line color",
+                ps.get("isotropic_0_color", "#000000"),
+                key=f"{key_prefix}_isotropic_0_color"
+            )
+        elif selected_plot == "Deviations (E)":
+            ps["stationary_line_color"] = st.color_picker(
+                "Statistical stationarity line color",
+                ps.get("stationary_line_color", "#800080"),
+                key=f"{key_prefix}_stationary_line_color"
             )
 
         st.markdown("---")
@@ -494,6 +556,10 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                     # Plot title
                     f"{key_prefix}_show_plot_title",
                     f"{key_prefix}_plot_title",
+                    # Reference line colors
+                    f"{key_prefix}_isotropic_1_3_color",
+                    f"{key_prefix}_isotropic_0_color",
+                    f"{key_prefix}_stationary_line_color",
                     # Margins
                     f"{key_prefix}_margin_left",
                     f"{key_prefix}_margin_right",
@@ -961,13 +1027,14 @@ def main():
                 ))
 
         # Isotropic reference line (no annotation - label in legend only)
-        fig_a.add_hline(y=1/3, line_dash="dash", line_color="red", line_width=1.5, 
+        iso_color = ps_a.get("isotropic_1_3_color", "#ff0000")
+        fig_a.add_hline(y=1/3, line_dash="dash", line_color=iso_color, line_width=1.5, 
                        opacity=0.8, annotation_text="", showlegend=False)
         # Add as trace for legend
         fig_a.add_trace(go.Scatter(
             x=[None], y=[None],
             mode="lines",
-            line=dict(color="red", width=1.5, dash="dash"),
+            line=dict(color=iso_color, width=1.5, dash="dash"),
             name="Isotropic (1/3)",
             showlegend=True,
         ))
@@ -991,13 +1058,14 @@ def main():
                 ))
 
         # Statistical stationarity line (no annotation - label in legend only)
-        fig_a.add_vline(x=stationary_t, line_dash="dash", line_color="purple", line_width=1.5, 
+        stat_color = ps_a.get("stationary_line_color", "#800080")
+        fig_a.add_vline(x=stationary_t, line_dash="dash", line_color=stat_color, line_width=1.5, 
                        opacity=0.8, annotation_text="", showlegend=False)
         # Add as trace for legend
         fig_a.add_trace(go.Scatter(
             x=[None], y=[None],
             mode="lines",
-            line=dict(color="purple", width=1.5, dash="dash"),
+            line=dict(color=stat_color, width=1.5, dash="dash"),
             name="Statistical stationarity",
             showlegend=True,
         ))
@@ -1007,8 +1075,6 @@ def main():
             yaxis_title=st.session_state.axis_labels_real_iso["energy_frac"],
             height=420,
         )
-        if ps_a.get("show_plot_title") and ps_a.get("plot_title"):
-            layout_kwargs_a["title"] = ps_a["plot_title"]
         layout_kwargs_a = apply_axis_limits(layout_kwargs_a, ps_a)
         layout_kwargs_a = apply_figure_size(layout_kwargs_a, ps_a)
         fig_a.update_layout(**layout_kwargs_a)
@@ -1186,8 +1252,6 @@ def main():
             height=420,
             showlegend=True,  # Show all 9 legends (matching original)
         )
-        if ps_b.get("show_plot_title") and ps_b.get("plot_title"):
-            layout_kwargs_b["title"] = ps_b["plot_title"]
         layout_kwargs_b = apply_axis_limits(layout_kwargs_b, ps_b)
         layout_kwargs_b = apply_figure_size(layout_kwargs_b, ps_b)
         fig_b.update_layout(**layout_kwargs_b)
@@ -1214,13 +1278,14 @@ def main():
                 line=dict(color=c, width=lw, dash=dash),
             ))
         # Isotropic reference line (no annotation - label in legend only)
-        fig_c.add_hline(y=0, line_dash="dash", line_color="black", line_width=1.5,
+        iso_0_color = ps_c.get("isotropic_0_color", "#000000")
+        fig_c.add_hline(y=0, line_dash="dash", line_color=iso_0_color, line_width=1.5,
                        annotation_text="", showlegend=False)
         # Add as trace for legend
         fig_c.add_trace(go.Scatter(
             x=[None], y=[None],
             mode="lines",
-            line=dict(color="black", width=1.5, dash="dash"),
+            line=dict(color=iso_0_color, width=1.5, dash="dash"),
             name="Isotropic value (0)",
             showlegend=True,
         ))
@@ -1246,8 +1311,6 @@ def main():
             yaxis_title=st.session_state.axis_labels_real_iso["bij"],
             height=360,
         )
-        if ps_c.get("show_plot_title") and ps_c.get("plot_title"):
-            layout_kwargs_c["title"] = ps_c["plot_title"]
         layout_kwargs_c = apply_axis_limits(layout_kwargs_c, ps_c)
         layout_kwargs_c = apply_figure_size(layout_kwargs_c, ps_c)
         fig_c.update_layout(**layout_kwargs_c)
@@ -1295,8 +1358,6 @@ def main():
             yaxis_title=st.session_state.axis_labels_real_iso["cross"],
             height=360,
         )
-        if ps_d.get("show_plot_title") and ps_d.get("plot_title"):
-            layout_kwargs_d["title"] = ps_d["plot_title"]
         layout_kwargs_d = apply_axis_limits(layout_kwargs_d, ps_d)
         layout_kwargs_d = apply_figure_size(layout_kwargs_d, ps_d)
         fig_d.update_layout(**layout_kwargs_d)
@@ -1352,13 +1413,14 @@ def main():
                 ))
         
         # Statistical stationarity line (no annotation - label in legend only)
-        fig_e.add_vline(x=stationary_t, line_dash="dash", line_color="purple", line_width=1.5,
+        stat_color_e = ps_e.get("stationary_line_color", "#800080")
+        fig_e.add_vline(x=stationary_t, line_dash="dash", line_color=stat_color_e, line_width=1.5,
                        annotation_text="", showlegend=False)
         # Add as trace for legend
         fig_e.add_trace(go.Scatter(
             x=[None], y=[None],
             mode="lines",
-            line=dict(color="purple", width=1.5, dash="dash"),
+            line=dict(color=stat_color_e, width=1.5, dash="dash"),
             name="Statistical stationarity",
             showlegend=True,
         ))
@@ -1368,8 +1430,6 @@ def main():
             yaxis_title=st.session_state.axis_labels_real_iso["dev"],
             height=360,
         )
-        if ps_e.get("show_plot_title") and ps_e.get("plot_title"):
-            layout_kwargs_e["title"] = ps_e["plot_title"]
         layout_kwargs_e = apply_axis_limits(layout_kwargs_e, ps_e)
         layout_kwargs_e = apply_figure_size(layout_kwargs_e, ps_e)
         fig_e.update_layout(**layout_kwargs_e)
@@ -1414,8 +1474,6 @@ def main():
             yaxis_title=st.session_state.axis_labels_real_iso.get("convergence", "Running standard deviation"),
             height=360,
         )
-        if ps_f.get("show_plot_title") and ps_f.get("plot_title"):
-            layout_kwargs_f["title"] = ps_f["plot_title"]
         layout_kwargs_f = apply_axis_limits(layout_kwargs_f, ps_f)
         layout_kwargs_f = apply_figure_size(layout_kwargs_f, ps_f)
         fig_f.update_layout(**layout_kwargs_f)

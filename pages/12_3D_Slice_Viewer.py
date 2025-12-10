@@ -26,15 +26,17 @@ import sys
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from utils.theme_config import inject_theme_css
+from utils.theme_config import inject_theme_css, apply_theme_to_plot_style
 import plotly.graph_objects as go
 import plotly.colors as pc
+from plotly.colors import hex_to_rgb
 
 from data_readers.vti_reader import read_vti_file, compute_velocity_magnitude, compute_vorticity
 from data_readers.hdf5_reader import read_hdf5_file
 from utils.file_detector import natural_sort_key
 from utils.iso_surfaces import compute_qs_s, compute_q_invariant, compute_r_invariant
 from utils.export_figs import export_panel
+from utils.plot_style import default_plot_style, render_figure_size_ui, apply_figure_size, render_plot_title_ui
 st.set_page_config(page_icon="⚫")
 
 
@@ -533,6 +535,56 @@ def main():
 
         field_clip = _apply_clip(field_ds, cxmin, cxmax, cymin, cymax, czmin, czmax) if use_clip else field_ds
 
+        # Plot Style (simplified for 3D)
+        st.sidebar.markdown("---")
+        with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
+            # Initialize plot style
+            if "plot_style_3d" not in st.session_state:
+                st.session_state.plot_style_3d = default_plot_style()
+            
+            ps = dict(st.session_state.plot_style_3d)
+            
+            # Apply theme
+            current_theme = st.session_state.get("theme", "Light Scientific")
+            ps = apply_theme_to_plot_style(ps, current_theme)
+            
+            # Theme selector
+            st.markdown("**Theme**")
+            themes = ["Light Scientific", "Dark Scientific"]
+            theme_idx = themes.index(current_theme) if current_theme in themes else 0
+            selected_theme = st.selectbox("Theme", themes, index=theme_idx, key="3d_theme_selector")
+            if selected_theme != current_theme:
+                st.session_state.theme = selected_theme
+                ps = apply_theme_to_plot_style(ps, selected_theme)
+            
+            # Background colors
+            st.markdown("---")
+            st.markdown("**Backgrounds**")
+            ps["plot_bgcolor"] = st.color_picker("Scene background", ps.get("plot_bgcolor", "#FFFFFF"), key="3d_plot_bgcolor")
+            ps["paper_bgcolor"] = st.color_picker("Paper background", ps.get("paper_bgcolor", "#FFFFFF"), key="3d_paper_bgcolor")
+            
+            # Grid color
+            st.markdown("---")
+            st.markdown("**Grid**")
+            ps["grid_color"] = st.color_picker("Grid color", ps.get("grid_color", "#B0B0B0"), key="3d_grid_color")
+            
+            # Font sizes
+            st.markdown("---")
+            st.markdown("**Fonts**")
+            ps["title_size"] = st.slider("Plot title size", 10, 32, int(ps.get("title_size", 16)), key="3d_title_size")
+            ps["axis_title_size"] = st.slider("Axis title size", 8, 28, int(ps.get("axis_title_size", 14)), key="3d_axis_title_size")
+            
+            # Figure size
+            st.markdown("---")
+            render_figure_size_ui(ps, key_prefix="3d")
+            
+            # Plot title
+            st.markdown("---")
+            render_plot_title_ui(ps, key_prefix="3d")
+            
+            # Save to session state
+            st.session_state.plot_style_3d = ps
+        
         # Camera controls
         st.sidebar.markdown("---")
         st.sidebar.subheader("📷 Camera")
@@ -684,30 +736,87 @@ def main():
             "Custom": dict(eye=dict(x=1.4, y=1.4, z=1.2))
         }
 
+        # Get plot style
+        ps = st.session_state.get("plot_style_3d", default_plot_style())
+        current_theme = st.session_state.get("theme", "Light Scientific")
+        ps = apply_theme_to_plot_style(ps, current_theme)
+        
+        # Apply figure size
+        layout_kwargs = {}
+        layout_kwargs = apply_figure_size(layout_kwargs, ps)
+        default_height = layout_kwargs.get("height", 600)
+        
+        # Get colors from plot style
+        scene_bgcolor = ps.get("plot_bgcolor", "#FFFFFF")
+        paper_bgcolor = ps.get("paper_bgcolor", "#FFFFFF")
+        grid_color = ps.get("grid_color", "#B0B0B0")
+        axis_title_size = ps.get("axis_title_size", 14)
+        font_color = ps.get("font_color", "#000000")
+        title_size = ps.get("title_size", 16)
+        
+        # Build layout kwargs
+        layout_kwargs_title = {}
+        
+        # Add title if enabled
+        if ps.get("show_plot_title", False) and ps.get("plot_title"):
+            layout_kwargs_title["title"] = dict(
+                text=ps.get("plot_title"),
+                font=dict(
+                    family=ps.get("font_family", "Arial"),
+                    size=title_size,
+                    color=font_color
+                )
+            )
+        
         # Layout
         fig.update_layout(
-            height=600,
+            height=default_height,
+            **layout_kwargs_title,
             scene=dict(
                 xaxis_title="X",
                 yaxis_title="Y",
                 zaxis_title="Z",
                 aspectmode="data",
                 camera=camera_dicts.get(camera_preset, camera_dicts["Isometric"]),
-                bgcolor="white",
-                xaxis=dict(backgroundcolor="white", gridcolor="lightgray", showbackground=True),
-                yaxis=dict(backgroundcolor="white", gridcolor="lightgray", showbackground=True),
-                zaxis=dict(backgroundcolor="white", gridcolor="lightgray", showbackground=True)
+                bgcolor=scene_bgcolor,
+                xaxis=dict(
+                    backgroundcolor=scene_bgcolor,
+                    gridcolor=grid_color,
+                    showbackground=True,
+                    title_font=dict(size=axis_title_size, color=font_color),
+                    tickfont=dict(color=font_color)
+                ),
+                yaxis=dict(
+                    backgroundcolor=scene_bgcolor,
+                    gridcolor=grid_color,
+                    showbackground=True,
+                    title_font=dict(size=axis_title_size, color=font_color),
+                    tickfont=dict(color=font_color)
+                ),
+                zaxis=dict(
+                    backgroundcolor=scene_bgcolor,
+                    gridcolor=grid_color,
+                    showbackground=True,
+                    title_font=dict(size=axis_title_size, color=font_color),
+                    tickfont=dict(color=font_color)
+                )
             ),
             legend=dict(
                 itemsizing="constant",
                 x=1.02,
                 y=1,
-                bgcolor="rgba(255,255,255,0.8)",
-                bordercolor="gray",
-                borderwidth=1
+                bgcolor=f"rgba{tuple(list(hex_to_rgb(paper_bgcolor)) + [0.8])}",
+                bordercolor=grid_color,
+                borderwidth=1,
+                font=dict(color=font_color)
             ),
-            margin=dict(l=0, r=0, t=0, b=0),
-            paper_bgcolor="white"
+            margin=dict(
+                l=0, 
+                r=0, 
+                t=50 if (ps.get("show_plot_title", False) and ps.get("plot_title")) else 0, 
+                b=0
+            ),
+            paper_bgcolor=paper_bgcolor
         )
 
         # Display plot

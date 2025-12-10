@@ -475,6 +475,7 @@ def default_plot_style():
         "legend_size": 12,
         "tick_font_size": 12,
         "axis_title_size": 14,
+        "font_color": "#000000",  # Default black for light theme
 
         "tick_len": 6,
         "tick_w": 1.2,
@@ -518,6 +519,8 @@ def default_plot_style():
         "marker_size": 6,
 
         "show_legend": True,  # Show legend by default
+        "show_plot_title": False,  # Don't show title by default
+        "plot_title": "",  # Empty title by default
 
         "palette": "Plotly",
         "custom_colors": ["#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e",
@@ -672,6 +675,34 @@ def render_axis_borders_ui(ps, key_prefix=""):
     return ps
 
 
+def render_plot_title_ui(ps, key_prefix=""):
+    """
+    Render UI controls for plot title.
+    
+    Args:
+        ps: Plot style dictionary (modified in place)
+        key_prefix: Prefix for Streamlit keys (to avoid conflicts)
+    
+    Returns:
+        Updated ps dictionary (also modifies in place)
+    """
+    st.markdown("**Plot Title**")
+    ps["show_plot_title"] = st.checkbox(
+        "Show plot title",
+        bool(ps.get("show_plot_title", False)),
+        help="Enable to add a title above the plot",
+        key=f"{key_prefix}_show_plot_title"
+    )
+    if ps["show_plot_title"]:
+        ps["plot_title"] = st.text_input(
+            "Title text",
+            value=ps.get("plot_title", ""),
+            help="Enter the title text for this plot",
+            key=f"{key_prefix}_plot_title"
+        )
+    return ps
+
+
 # ==========================================================
 # Plot style application
 # ==========================================================
@@ -694,16 +725,26 @@ def apply_plot_style(fig, ps):
     Returns:
         Updated figure object
     """
+    # Get font color from plot style (defaults based on template)
+    font_color = ps.get("font_color")
+    if font_color is None:
+        # Auto-detect from template if font_color not set
+        template = ps.get("template", "plotly_white")
+        if "dark" in template.lower():
+            font_color = "#d4d4d4"
+        else:
+            font_color = "#000000"
+    
     # Build legend configuration
     # Note: 'showlegend' is a top-level layout property, not in legend dict
     # The legend dict uses 'visible' property instead
     legend_config = dict(
-        font=dict(size=ps.get("legend_size", 12)),
+        font=dict(size=ps.get("legend_size", 12), color=font_color),
     )
     
     layout_update = dict(
         template=ps.get("template", "plotly_white"),
-        font=dict(family=ps.get("font_family", "Arial"), size=ps.get("font_size", 14)),
+        font=dict(family=ps.get("font_family", "Arial"), size=ps.get("font_size", 14), color=font_color),
         legend=legend_config,
         showlegend=ps.get("show_legend", True),  # Top-level showlegend property (not in legend dict)
         hovermode="x unified",
@@ -715,7 +756,8 @@ def apply_plot_style(fig, ps):
         layout_update["title"] = dict(
             font=dict(
                 family=ps.get("font_family", "Arial"),
-                size=ps.get("title_size", 16)
+                size=ps.get("title_size", 16),
+                color=font_color
             ),
             text=ps.get("plot_title")
         )
@@ -1326,6 +1368,9 @@ def plot_style_sidebar(data_dir=None, sim_groups=None, style_key="per_sim_style"
             theme_selector(ps)
 
         st.markdown("---")
+        render_plot_title_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
         render_axis_limits_ui(ps, key_prefix=key_prefix)
         st.markdown("---")
         render_figure_size_ui(ps, key_prefix=key_prefix)
@@ -1381,6 +1426,9 @@ def plot_style_sidebar(data_dir=None, sim_groups=None, style_key="per_sim_style"
                         f"{key_prefix}_show_legend",
                         f"{key_prefix}_tick_font_size",
                         f"{key_prefix}_axis_title_size",
+                        # Plot Title
+                        f"{key_prefix}_show_plot_title",
+                        f"{key_prefix}_plot_title",
                         # Backgrounds
                         f"{key_prefix}_plot_bgcolor",
                         f"{key_prefix}_paper_bgcolor",

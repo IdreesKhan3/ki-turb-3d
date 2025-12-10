@@ -40,13 +40,13 @@ sys.path.insert(0, str(project_root))
 
 from data_readers.text_reader import read_flatness_file
 from utils.file_detector import detect_simulation_files, group_files_by_simulation, natural_sort_key
-from utils.theme_config import inject_theme_css
+from utils.theme_config import inject_theme_css, apply_theme_to_plot_style
 from utils.report_builder import capture_button
 from utils.plot_style import (
     default_plot_style, apply_plot_style as apply_plot_style_base,
     render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
     render_axis_scale_ui, render_tick_format_ui, render_axis_borders_ui,
-    _get_palette, _normalize_plot_name,
+    render_plot_title_ui, _get_palette, _normalize_plot_name,
     resolve_line_style, render_per_sim_style_ui, ensure_per_sim_defaults
 )
 from utils.export_figs import export_panel
@@ -171,8 +171,43 @@ def _format_legend_name(prefix: str) -> str:
 # ==========================================================
 # Plot styling system (using centralized module)
 # ==========================================================
+def _get_title_dict(ps, title_text):
+    """Get title dict with font color for dark theme compatibility."""
+    if not title_text:
+        return None
+    
+    # Get font color from plot style (defaults based on template)
+    font_color = ps.get("font_color")
+    if font_color is None:
+        # Auto-detect from template if font_color not set
+        template = ps.get("template", "plotly_white")
+        if "dark" in template.lower():
+            font_color = "#d4d4d4"
+        else:
+            font_color = "#000000"
+    
+    return dict(
+        text=title_text,
+        font=dict(
+            family=ps.get("font_family", "Arial"),
+            size=ps.get("title_size", 16),
+            color=font_color
+        )
+    )
+
 def apply_plot_style(fig, ps):
+    # Temporarily clear plot_title if show_plot_title is False to prevent centralized function from setting it
+    original_plot_title = ps.get("plot_title", "")
+    if not ps.get("show_plot_title", False):
+        ps["plot_title"] = ""
+    
     fig = apply_plot_style_base(fig, ps)
+    
+    # Restore original plot_title for later use
+    ps["plot_title"] = original_plot_title
+    
+    if not ps.get("show_plot_title", False):
+        fig.update_layout(title=None)
     
     if any(k in ps for k in ["margin_left", "margin_right", "margin_top", "margin_bottom"]):
         fig.update_layout(margin=dict(
@@ -181,6 +216,10 @@ def apply_plot_style(fig, ps):
             t=ps.get("margin_top", 30),
             b=ps.get("margin_bottom", 50)
         ))
+    
+    # Always set title with correct font color if show_plot_title is True
+    if ps.get("show_plot_title", False) and ps.get("plot_title"):
+        fig.update_layout(title=_get_title_dict(ps, ps["plot_title"]))
     
     return fig
 
@@ -212,6 +251,16 @@ def get_plot_style(plot_name: str):
             merged[key].update(value)
         else:
             merged[key] = value
+    
+    # Apply theme to ensure font_color is set correctly
+    current_theme = st.session_state.get("theme", "Light Scientific")
+    merged = apply_theme_to_plot_style(merged, current_theme)
+    
+    # Update reference line color for dark theme if it's still at light theme default
+    if "Dark" in current_theme:
+        if merged.get("reference_color") == "#000000":
+            merged["reference_color"] = "#dcdcaa"  # Light yellow - visible on dark background
+    
     return merged
 
 
@@ -384,6 +433,9 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                 ps["paper_bgcolor"] = "#FFFFFF"
 
         st.markdown("---")
+        render_plot_title_ui(ps, key_prefix=key_prefix)
+
+        st.markdown("---")
         render_axis_limits_ui(ps, key_prefix=key_prefix)
         st.markdown("---")
         render_figure_size_ui(ps, key_prefix=key_prefix)
@@ -475,6 +527,9 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                     f"{key_prefix}_reference_dash",
                     # Theme
                     f"{key_prefix}_template",
+                    # Plot Title
+                    f"{key_prefix}_show_plot_title",
+                    f"{key_prefix}_plot_title",
                     # Axis limits
                     f"{key_prefix}_enable_x_limits",
                     f"{key_prefix}_x_min",

@@ -17,6 +17,7 @@ THEMES = {
         "grid_opacity": 0.6,
         "minor_grid_color": "#D0D0D0",
         "minor_grid_opacity": 0.45,
+        "axis_line_color": "#000000",  # Black borders for light theme
         "palette": "Plotly",
         "custom_colors": ["#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e",
                           "#8c564b", "#e377c2", "#7f7f7f"],
@@ -39,6 +40,7 @@ THEMES = {
         "grid_opacity": 0.6,
         "minor_grid_color": "#2d2d30",
         "minor_grid_opacity": 0.4,
+        "axis_line_color": "#d4d4d4",  # Light gray borders for dark theme (visible on dark background)
         "palette": "Custom",
         "custom_colors": ["#4ec9b0", "#569cd6", "#dcdcaa", "#ce9178",
                           "#c586c0", "#d7ba7d", "#9cdcfe"],
@@ -92,6 +94,9 @@ def apply_theme_to_plot_style(plot_style: dict, theme_name: str) -> dict:
     updated_style["minor_grid_color"] = theme["minor_grid_color"]
     updated_style["minor_grid_opacity"] = theme["minor_grid_opacity"]
     
+    # Axis borders (spines)
+    updated_style["axis_line_color"] = theme["axis_line_color"]
+    
     # Colors
     updated_style["palette"] = theme["palette"]
     updated_style["custom_colors"] = theme["custom_colors"].copy()
@@ -106,6 +111,9 @@ def apply_theme_to_plot_style(plot_style: dict, theme_name: str) -> dict:
     updated_style["legend_size"] = theme["legend_size"]
     updated_style["tick_font_size"] = theme["tick_font_size"]
     updated_style["axis_title_size"] = theme["axis_title_size"]
+    
+    # Font color
+    updated_style["font_color"] = theme["font_color"]
     
     return updated_style
 

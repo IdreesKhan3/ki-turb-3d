@@ -36,7 +36,7 @@ from utils.theme_config import apply_theme_to_plot_style, inject_theme_css, temp
 from utils.report_builder import capture_button
 from utils.plot_style import (
     resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, 
-    render_figure_size_ui, apply_figure_size, default_plot_style, apply_plot_style,
+    render_figure_size_ui, apply_figure_size, default_plot_style, apply_plot_style as apply_plot_style_base,
     plot_style_sidebar as shared_plot_style_sidebar, _get_palette, _axis_title_font, _tick_font,
     get_tick_format, ensure_per_sim_defaults, render_legend_axis_labels_ui
 )
@@ -102,6 +102,54 @@ def _save_ui_metadata(data_dir: Path):
 
 # Alias for backward compatibility
 _default_plot_style = default_plot_style
+
+def _get_title_dict(ps, title_text):
+    """Get title dict with font color for dark theme compatibility."""
+    if not title_text:
+        return None
+    
+    # Get font color from plot style (defaults based on template)
+    font_color = ps.get("font_color")
+    if font_color is None:
+        # Auto-detect from template if font_color not set
+        template = ps.get("template", "plotly_white")
+        if "dark" in template.lower():
+            font_color = "#d4d4d4"
+        else:
+            font_color = "#000000"
+    
+    return dict(
+        text=title_text,
+        font=dict(
+            family=ps.get("font_family", "Arial"),
+            size=ps.get("title_size", 16),
+            color=font_color
+        )
+    )
+
+def apply_plot_style(fig, ps):
+    # Set default plot_title if not set and show_plot_title is True
+    if ps.get("show_plot_title", False) and (not ps.get("plot_title") or ps.get("plot_title") == ""):
+        ps["plot_title"] = "Custom Multi-Trace Plot"
+    
+    # Temporarily clear plot_title if show_plot_title is False to prevent centralized function from setting it
+    original_plot_title = ps.get("plot_title", "")
+    if not ps.get("show_plot_title", False):
+        ps["plot_title"] = ""
+    
+    fig = apply_plot_style_base(fig, ps)
+    
+    # Restore original plot_title for later use
+    ps["plot_title"] = original_plot_title
+    
+    if not ps.get("show_plot_title", False):
+        fig.update_layout(title=None)
+    
+    # Always set title with correct font color if show_plot_title is True and plot_title exists
+    if ps.get("show_plot_title", False) and ps.get("plot_title"):
+        fig.update_layout(title=_get_title_dict(ps, ps["plot_title"]))
+    
+    return fig
 
 def plot_style_sidebar(data_dir: Path, sim_groups):
     """Plot style sidebar using shared utilities."""
@@ -598,11 +646,11 @@ def main():
                         y_label = f"{y_label} / max({y_label})"
             
             # Apply full plot style first (fonts, ticks, grids, backgrounds, etc.)
+            # This will also set the title via the local apply_plot_style function
             fig = apply_plot_style(fig, ps)
             
-            # Then apply layout-specific settings (title, axis labels, size, limits)
+            # Then apply layout-specific settings (axis labels, size, limits)
             layout_kwargs = dict(
-                title="Custom Multi-Trace Plot",
                 xaxis_title=x_label,
                 yaxis_title=y_label,
                 height=400,  # Default, will be overridden if custom size is enabled

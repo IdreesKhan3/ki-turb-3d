@@ -84,6 +84,9 @@ def compute_rq_joint_pdf(velocity, r_bins=100, q_bins=100, r_range=None, q_range
     """
     Compute Joint PDF of Q and R invariants
     
+    Q and R are normalized by <S_ij S_ij> (mean strain rate squared) to match literature conventions.
+    This normalization brings Q values to typical ranges of -30 to 30 as seen in turbulence literature.
+    
     Args:
         velocity: (nx, ny, nz, 3) array of velocity components
         r_bins: Number of bins for R axis
@@ -98,9 +101,29 @@ def compute_rq_joint_pdf(velocity, r_bins=100, q_bins=100, r_range=None, q_range
     Q = compute_q_invariant(velocity)
     R = compute_r_invariant(velocity)
     
+    # Compute normalization factor: <S_ij S_ij> (mean strain rate squared)
+    from utils.iso_surfaces import compute_rotation_deformation_tensors
+    _, S = compute_rotation_deformation_tensors(velocity)
+    S_squared_sum = np.einsum('ijklm,ijklm->ijk', S, S)
+    # Use all finite values for mean (S_ij S_ij is always non-negative)
+    valid_S = S_squared_sum[np.isfinite(S_squared_sum)]
+    mean_S_squared = np.mean(valid_S) if len(valid_S) > 0 else 1.0
+    
+    # Normalize Q and R by <S_ij S_ij>
+    # Q* = Q / <S_ij S_ij>
+    # R* = R / <S_ij S_ij>^(3/2)
+    # This normalization brings values to typical literature ranges (-30 to 30 for Q)
+    if mean_S_squared > 0:
+        Q_normalized = Q / mean_S_squared
+        R_normalized = R / (mean_S_squared ** 1.5)
+    else:
+        # Fallback: use raw values if normalization fails
+        Q_normalized = Q
+        R_normalized = R
+    
     # Flatten
-    Q_flat = Q.flatten()
-    R_flat = R.flatten()
+    Q_flat = Q_normalized.flatten()
+    R_flat = R_normalized.flatten()
     
     # Remove NaN/Inf
     valid_mask = np.isfinite(Q_flat) & np.isfinite(R_flat)

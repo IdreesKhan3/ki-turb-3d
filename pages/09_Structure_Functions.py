@@ -41,7 +41,7 @@ import glob
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from utils.theme_config import inject_theme_css
+from utils.theme_config import inject_theme_css, apply_theme_to_plot_style
 from utils.file_detector import (
     detect_simulation_files,
     group_files_by_simulation,
@@ -53,7 +53,7 @@ from utils.plot_style import (
     default_plot_style, apply_plot_style as apply_plot_style_base,
     render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
     render_axis_scale_ui, render_tick_format_ui, render_axis_borders_ui,
-    _get_palette, _normalize_plot_name,
+    render_plot_title_ui, _get_palette, _normalize_plot_name,
     resolve_line_style, render_per_sim_style_ui, ensure_per_sim_defaults
 )
 
@@ -230,8 +230,43 @@ def _compute_time_avg_structure(files: tuple, kind: str):
 # ==========================================================
 # Plot styling system (using centralized module)
 # ==========================================================
+def _get_title_dict(ps, title_text):
+    """Get title dict with font color for dark theme compatibility."""
+    if not title_text:
+        return None
+    
+    # Get font color from plot style (defaults based on template)
+    font_color = ps.get("font_color")
+    if font_color is None:
+        # Auto-detect from template if font_color not set
+        template = ps.get("template", "plotly_white")
+        if "dark" in template.lower():
+            font_color = "#d4d4d4"
+        else:
+            font_color = "#000000"
+    
+    return dict(
+        text=title_text,
+        font=dict(
+            family=ps.get("font_family", "Arial"),
+            size=ps.get("title_size", 16),
+            color=font_color
+        )
+    )
+
 def apply_plot_style(fig, ps):
+    # Temporarily clear plot_title if show_plot_title is False to prevent centralized function from setting it
+    original_plot_title = ps.get("plot_title", "")
+    if not ps.get("show_plot_title", False):
+        ps["plot_title"] = ""
+    
     fig = apply_plot_style_base(fig, ps)
+    
+    # Restore original plot_title for later use
+    ps["plot_title"] = original_plot_title
+    
+    if not ps.get("show_plot_title", False):
+        fig.update_layout(title=None)
     
     if any(k in ps for k in ["margin_left", "margin_right", "margin_top", "margin_bottom"]):
         fig.update_layout(margin=dict(
@@ -240,6 +275,10 @@ def apply_plot_style(fig, ps):
             t=ps.get("margin_top", 30),
             b=ps.get("margin_bottom", 50)
         ))
+    
+    # Always set title with correct font color if show_plot_title is True
+    if ps.get("show_plot_title", False) and ps.get("plot_title"):
+        fig.update_layout(title=_get_title_dict(ps, ps["plot_title"]))
     
     return fig
 
@@ -261,6 +300,8 @@ def get_plot_style(plot_name: str):
         "margin_bottom": 50,
         "std_alpha": 0.18,
         "per_sim_style_structure": {},
+        "she_leveque_color": "#000000",  # Default black for light theme
+        "experimental_b93_color": "#00BFC4",  # Default cyan for light theme
     })
     
     # Set default axis types based on plot
@@ -285,6 +326,18 @@ def get_plot_style(plot_name: str):
             merged[key].update(value)
         else:
             merged[key] = value
+    
+    # Apply theme to ensure font_color is set correctly
+    current_theme = st.session_state.get("theme", "Light Scientific")
+    merged = apply_theme_to_plot_style(merged, current_theme)
+    
+    # Update She-Leveque and Experimental B93 curve colors for dark theme if they're still at light theme defaults
+    if "Dark" in current_theme and plot_name == "Anomalies (ξₚ − p/3)":
+        if merged.get("she_leveque_color") == "#000000":
+            merged["she_leveque_color"] = "#569cd6"  # Blue - visible on dark background
+        if merged.get("experimental_b93_color") == "#00BFC4":
+            merged["experimental_b93_color"] = "#4ec9b0"  # Cyan/turquoise - visible on dark background
+    
     return merged
 
 def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
@@ -408,6 +461,19 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
         ps["std_alpha"] = st.slider("Std band opacity", 0.05, 0.6, float(ps.get("std_alpha", 0.18)),
                                     key=f"{key_prefix}_std_alpha")
 
+        # Reference line colors for Anomalies plot
+        if selected_plot == "Anomalies (ξₚ − p/3)":
+            ps["she_leveque_color"] = st.color_picker(
+                "She–Leveque curve color",
+                ps.get("she_leveque_color", "#000000"),
+                key=f"{key_prefix}_she_leveque_color"
+            )
+            ps["experimental_b93_color"] = st.color_picker(
+                "Experimental B93 color",
+                ps.get("experimental_b93_color", "#00BFC4"),
+                key=f"{key_prefix}_experimental_b93_color"
+            )
+
         st.markdown("---")
         st.markdown("**Colors**")
         palettes = ["Plotly", "D3", "G10", "T10", "Dark2", "Set1", "Set2",
@@ -440,6 +506,9 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
             else:
                 ps["plot_bgcolor"] = "#FFFFFF"
                 ps["paper_bgcolor"] = "#FFFFFF"
+
+        st.markdown("---")
+        render_plot_title_ui(ps, key_prefix=key_prefix)
 
         st.markdown("---")
         render_axis_limits_ui(ps, key_prefix=key_prefix)
@@ -526,10 +595,16 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                     f"{key_prefix}_line_width",
                     f"{key_prefix}_marker_size",
                     f"{key_prefix}_std_alpha",
+                    # Reference line colors (for Anomalies plot)
+                    f"{key_prefix}_she_leveque_color",
+                    f"{key_prefix}_experimental_b93_color",
                     # Colors
                     f"{key_prefix}_palette",
                     # Theme
                     f"{key_prefix}_template",
+                    # Plot Title
+                    f"{key_prefix}_show_plot_title",
+                    f"{key_prefix}_plot_title",
                     # Axis limits
                     f"{key_prefix}_enable_x_limits",
                     f"{key_prefix}_x_min",
@@ -1151,21 +1226,25 @@ def main():
             if show_sl_theory:
                 ps_theory = list(range(1, max(selected_ps)+1))
                 theory_anom = [zeta_p_she_leveque(p) - p/3 for p in ps_theory]
+                # Use color from plot style (automatically adjusted for dark theme)
+                sl_color = ps_anom.get("she_leveque_color", "#000000")
                 fig_anom.add_trace(go.Scatter(
                     x=ps_theory, y=theory_anom,
                     mode="lines+markers",
                     name="She–Leveque 1994",
-                    line=dict(color="black", dash="dash", width=1.5),
+                    line=dict(color=sl_color, dash="dash", width=1.5),
                     marker=dict(symbol="diamond", size=5),
                 ))
 
             if show_exp_anom:
                 exp_anom = [EXP_ZETA[i] - TABLE_P[i]/3 for i in range(len(TABLE_P))]
+                # Use color from plot style (automatically adjusted for dark theme)
+                exp_color = ps_anom.get("experimental_b93_color", "#00BFC4")
                 fig_anom.add_trace(go.Scatter(
                     x=TABLE_P, y=exp_anom,
                     mode="lines+markers",
                     name="Experiment (B93)",
-                    line=dict(color="#00BFC4", width=1.5),
+                    line=dict(color=exp_color, width=1.5),
                     marker=dict(symbol="x", size=6),
                 ))
 
