@@ -17,6 +17,7 @@ sys.path.insert(0, str(project_root))
 
 from utils.theme_config import inject_theme_css
 from utils.export_figs import export_panel
+from utils.report_builder import capture_button
 from utils.mrt_matrix import render_mrt_matrix_generator
 from visualizations.d3q19_lattice import plot_d3q19_lattice, DEFAULT_LATTICE_COLORS
 st.set_page_config(page_icon="⚫")
@@ -607,6 +608,9 @@ def main():
                 }
             }
         )
+        
+        # Capture to report
+        capture_button(fig, title="D3Q19 Lattice Stencil Visualization", source_page="Theory & Equations")
         
         # Export options - using comprehensive export panel like other pages
         export_panel(fig, project_root, "d3q19_lattice")

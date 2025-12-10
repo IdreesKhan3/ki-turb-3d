@@ -411,6 +411,13 @@ def render_mrt_matrix_generator():
                 file_name="MRT_matrix_M.csv",
                 mime="text/csv"
             )
+            
+            # Capture to report
+            try:
+                from utils.report_builder import capture_button
+                capture_button(df=df_M, title="MRT Transformation Matrix M (19×19)", source_page="Theory & Equations")
+            except ImportError:
+                pass
         
         with tab_minv:
             st.markdown("**Inverse Transformation Matrix M⁻¹ (19x19)**")
@@ -431,6 +438,13 @@ def render_mrt_matrix_generator():
                 file_name="MRT_matrix_M_inv.csv",
                 mime="text/csv"
             )
+            
+            # Capture to report
+            try:
+                from utils.report_builder import capture_button
+                capture_button(df=df_M_inv, title="MRT Inverse Matrix M⁻¹ (19×19)", source_page="Theory & Equations")
+            except ImportError:
+                pass
         
         with tab_s:
             st.markdown("**Relaxation Rate Vector S (19×1)**")
@@ -458,6 +472,13 @@ def render_mrt_matrix_generator():
                 mime="text/csv"
             )
             
+            # Capture to report
+            try:
+                from utils.report_builder import capture_button
+                capture_button(df=df_S, title="MRT Relaxation Rate Vector S", source_page="Theory & Equations")
+            except ImportError:
+                pass
+            
             st.markdown("---")
             st.markdown("**Diagonal Relaxation Matrix Diag(S) (19x19)**")
             st.caption("Diagonal matrix with relaxation rates on the diagonal: **Diag(S) = diag(S)**")
@@ -482,6 +503,13 @@ def render_mrt_matrix_generator():
                 file_name="MRT_diagonal_matrix_Diag_S.csv",
                 mime="text/csv"
             )
+            
+            # Capture to report
+            try:
+                from utils.report_builder import capture_button
+                capture_button(df=df_S_diag, title="MRT Diagonal Relaxation Matrix Diag(S) (19×19)", source_page="Theory & Equations")
+            except ImportError:
+                pass
         
         # Verification
         st.markdown("---")
