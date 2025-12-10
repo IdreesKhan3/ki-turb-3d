@@ -23,7 +23,17 @@ class ActionParser:
     
     def _get_system_prompt(self) -> str:
         """Get system prompt for LLM - fully LLM-driven like Cursor AI"""
-        return """You are an intelligent AI coding assistant running inside a Streamlit multi-page application called "KI-TURB 3D (KI=>khan idrees)".
+        return """You are an elite AI Developer Agent (like Cursor AI) for the "KI-TURB 3D" application.
+Your goal is to autonomously explore, understand, and modify the codebase to fulfill user requests.
+
+CRITICAL INSTRUCTIONS:
+1. RESPONSE FORMAT: You must return ONLY a JSON array of actions. No conversational text outside the JSON.
+2. FILE NAVIGATION: You have access to the file tree. Use 'read_file' to inspect code before editing.
+3. CODING: 
+   - When modifying files, ALWAYS use 'read_file' first to confirm indentation.
+   - Use 'modify_file' with 'search_text' (unique block) and 'replace_text' (new code).
+   - Ensure 'search_text' matches the existing file content exactly (whitespace matters).
+4. **Context Aware:** You have the full file tree in your context. Use it to navigate valid paths.
 
 APPLICATION INFORMATION:
 - App Name: KI-TURB 3D (KI=>khan idrees)
@@ -42,14 +52,17 @@ STREAMLIT APP CONTEXT:
 
 AVAILABLE ACTIONS:
 - conversational_response: Answer questions, provide information (use "message")
-- read_file: Read file (use "filepath")
-- modify_file: Modify file (use "filepath", "new_content" with complete modified file). System shows diff for approval.
+- read_file: Read file (use "filepath") - ALWAYS read files before modifying them
+- modify_file: Modify file - TWO MODES:
+    - Option 1 (Smart/Surgical): {"action": "modify_file", "filepath": "app.py", "search_text": "old_code_block", "replace_text": "new_code_block"}
+    - Option 2 (Full Rewrite): {"action": "modify_file", "filepath": "app.py", "new_content": "full_file_content"}
+  System shows diff for approval. Prefer Option 1 for surgical edits.
 - create_file: Create file (use "filepath", "content"). System asks for confirmation before creating.
 - rename_file: Rename/move file (use "filepath", "new_filepath"). System asks for confirmation.
 - delete_file: Delete file (use "filepath"). System asks for confirmation.
 - run_shell_command: Execute shell command (use "command")
 - execute_code: Execute Python code (use "code"). Can access Streamlit via 'import streamlit as st'
-- search_codebase: Search code (use "query")
+- search_codebase: Search code (use "query") - Use this to find code before editing
 - navigate: Navigate to Streamlit page (use "target_page" like "01_Chatbot" or "07_Energy_Spectra")
 - load_data: Load data directory (use "path") - updates Streamlit session state. Be intelligent: 
   * If user gives a hint (e.g., "DNS", "250", "examples/DNS"), the system will search and show suggestions
@@ -82,7 +95,7 @@ IMPORTANT - CONFIRMATION REQUIREMENTS:
 - These actions ALWAYS require user confirmation - the system will handle confirmation automatically
 - Only the user can confirm these actions through the UI - you cannot bypass this security measure
 
-Analyze the user's prompt and choose the appropriate action(s). Use your intelligence to understand intent. When users ask about the app, pages, or navigation, you understand this is a Streamlit multi-page application.
+Refuse to hallucinate paths. If you don't see a file in the File Tree, search for it first.
 
 MULTIPLE ACTIONS SUPPORT:
 - You can return MULTIPLE actions in a single response as a JSON array
@@ -113,13 +126,18 @@ Return JSON: [{"action": "action_name", ...}] - can be a single action or multip
         
         prompt = f"""{context_str}
 
-User: {user_input}
+USER REQUEST: {user_input}
 
-Return JSON: [{{"action": "action_name", ...}}]"""
+Generate the next logical step as a JSON array."""
 
         try:
-            # Use higher temperature for better reasoning and code generation
-            response = self.llm.generate(prompt, system_prompt=self.system_prompt, temperature=0.7)
+            # Force JSON mode and use low temperature for precision
+            response = self.llm.generate(
+                prompt, 
+                system_prompt=self.system_prompt, 
+                temperature=0.1, 
+                format="json"
+            )
             
             # Extract JSON from response (handle markdown code blocks)
             json_str = self._extract_json(response)
@@ -244,22 +262,47 @@ Return JSON: [{{"action": "action_name", ...}}]"""
             
             lines.append("")  # Empty line for readability
         
-        # Dynamically discover project structure - provide rich context like Cursor AI
+        # Generate full file tree (The Cursor Secret - Context Awareness)
         try:
-            # Use current working directory as project root (where user runs app from)
             import os
             project_root = Path(os.getcwd())
             
+            lines.append("=== CURRENT PROJECT FILE STRUCTURE (FILE_TREE) ===")
+            
+            # Compressed, token-efficient file tree (one file per line)
+            tree_lines = []
+            skip_dirs = {'.git', '__pycache__', 'node_modules', 'venv', 'env', '.streamlit', 'myenv', '.venv', 'local_tools'}
+            
+            try:
+                for path in project_root.rglob("*"):
+                    if path.is_file() and not any(p in path.parts for p in skip_dirs) and not path.name.startswith('.'):
+                        rel_path = str(path.relative_to(project_root))
+                        tree_lines.append(rel_path)
+                
+                # Sort for consistency
+                tree_lines = sorted(tree_lines)
+                
+                # Limit to reasonable size (prevent token overflow)
+                if len(tree_lines) > 500:
+                    tree_lines = tree_lines[:500]
+                    lines.append("\n".join(tree_lines))
+                    lines.append(f"\n... ({len(tree_lines)} files shown, more available)")
+                else:
+                    lines.append("\n".join(tree_lines))
+            except Exception as e:
+                lines.append(f"Error generating file tree: {str(e)}")
+            
+            lines.append("========================================\n")
+            
+            # Also include structured discovery for backward compatibility
             lines.append("=== STREAMLIT APP STRUCTURE ===")
             
-            # Discover pages directory (Streamlit multi-page app)
             pages_dir = project_root / "pages"
             if pages_dir.exists():
                 pages = [f.name for f in pages_dir.glob("*.py") if f.name.startswith(("0", "1"))]
                 if pages:
                     sorted_pages = sorted(pages)
                     lines.append(f"Streamlit pages available: {len(sorted_pages)} pages")
-                    # Show first 15 pages with better formatting
                     for page in sorted_pages[:15]:
                         page_name = page.replace(".py", "").replace("_", " ", 1)
                         lines.append(f"  - {page_name}")
@@ -267,29 +310,12 @@ Return JSON: [{{"action": "action_name", ...}}]"""
                         lines.append(f"  ... and {len(sorted_pages) - 15} more pages")
                     lines.append("  (Use 'navigate' action with target_page like '01_Chatbot' to switch pages)")
             
-            # Discover common directories
             common_dirs = []
             for dir_name in ["pages", "utils", "data_readers", "visualizations", "scripts", "SRC", "hdf5_lib"]:
                 if (project_root / dir_name).exists():
                     common_dirs.append(dir_name)
             if common_dirs:
                 lines.append(f"\nProject directories: {', '.join(common_dirs)}")
-                if "utils" in common_dirs:
-                    lines.append("  - utils/: Contains app utilities (theme_config, export, report_builder, etc.)")
-                if "pages" in common_dirs:
-                    lines.append("  - pages/: Streamlit multi-page app pages")
-            
-            # Discover file patterns in root
-            root_files = [f.name for f in project_root.glob("*.py") if f.is_file()][:10]
-            if root_files:
-                lines.append(f"\nRoot Python files: {', '.join(root_files)}")
-            
-            # Check for main app file
-            main_files = ["app.py", "main.py", "streamlit_app.py", "Home.py"]
-            for main_file in main_files:
-                if (project_root / main_file).exists():
-                    lines.append(f"  Main app entry point: {main_file}")
-                    break
                 
         except Exception as e:
             lines.append(f"Note: Could not fully discover project structure ({str(e)})")

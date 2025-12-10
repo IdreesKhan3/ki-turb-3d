@@ -25,12 +25,17 @@ class LLMProvider(ABC):
 
 
 class OllamaLLM(LLMProvider):
-    """Ollama local LLM provider (free, unlimited)"""
+    """Ollama local LLM provider (Optimized for Qwen/Coder models)"""
     
     def __init__(self, model: str = "mistral:7b", base_url: str = "http://localhost:11434"):
         self.model = model
         self.base_url = base_url
-        self.api_url = f"{base_url}/api/generate"
+        # Qwen models need /api/chat, others can use /api/generate
+        self.is_qwen = "qwen" in model.lower()
+        if self.is_qwen:
+            self.api_url = f"{base_url}/api/chat"
+        else:
+            self.api_url = f"{base_url}/api/generate"
     
     def is_available(self) -> bool:
         """Check if Ollama is running"""
@@ -41,27 +46,75 @@ class OllamaLLM(LLMProvider):
             return False
     
     def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
-        """Generate response using Ollama"""
-        full_prompt = prompt
-        if system_prompt:
-            full_prompt = f"{system_prompt}\n\n{prompt}"
+        """Generate response using Ollama with High Context & JSON Mode"""
+        request_timeout = kwargs.get("timeout", 300)
+        
+        # Increased Context Window to 32k for Qwen (allows reading entire file trees)
+        # Lower temperature for precise coding (0.1 for Qwen, 0.7 for others)
+        if self.is_qwen:
+            options = {
+                "temperature": kwargs.get("temperature", 0.1),
+                "num_ctx": 32768,
+                "num_predict": 4096,
+                "top_p": 0.9,
+            }
+        else:
+            options = {
+                "temperature": kwargs.get("temperature", 0.7),
+                "num_ctx": 4096,
+            }
+        
+        # Prepare payload with optional JSON enforcement
+        payload = {
+            "model": self.model,
+            "stream": False,
+            "options": options
+        }
+        
+        # Force JSON mode if requested (Crucial for Qwen reliability)
+        if kwargs.get("format") == "json":
+            payload["format"] = "json"
         
         try:
-            response = requests.post(
-                self.api_url,
-                json={
-                    "model": self.model,
-                    "prompt": full_prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": kwargs.get("temperature", 0.7),
-                    }
-                },
-                timeout=30
-            )
-            response.raise_for_status()
-            return response.json().get("response", "")
+            if self.is_qwen:
+                # Qwen models work best with chat interface
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
+                
+                payload["messages"] = messages
+                
+                response = requests.post(
+                    self.api_url,
+                    json=payload,
+                    timeout=request_timeout
+                )
+                response.raise_for_status()
+                result = response.json()
+                
+                if "message" in result and isinstance(result["message"], dict):
+                    return result["message"].get("content", "")
+                return str(result)
+            else:
+                # Other models using generate endpoint
+                full_prompt = prompt
+                if system_prompt:
+                    full_prompt = f"{system_prompt}\n\n{prompt}"
+                
+                payload["prompt"] = full_prompt
+                
+                response = requests.post(
+                    self.api_url,
+                    json=payload,
+                    timeout=request_timeout
+                )
+                response.raise_for_status()
+                return response.json().get("response", "")
+                
         except requests.exceptions.RequestException as e:
+            if "Read timed out" in str(e):
+                raise Exception(f"Ollama timed out ({request_timeout}s). Try reducing file size or using Gemini.")
             raise Exception(f"Ollama error: {e}")
 
 
@@ -171,12 +224,18 @@ class GeminiLLM(LLMProvider):
         if system_prompt:
             full_prompt = f"{system_prompt}\n\n{prompt}"
         
+        # Configure JSON mode for Gemini if requested
+        generation_config = {
+            "temperature": kwargs.get("temperature", 0.7),
+        }
+        
+        if kwargs.get("format") == "json":
+            generation_config["response_mime_type"] = "application/json"
+        
         try:
             response = self.client.generate_content(
                 full_prompt,
-                generation_config={
-                    "temperature": kwargs.get("temperature", 0.7),
-                }
+                generation_config=generation_config
             )
             # Handle Gemini API response - check for text attribute
             if hasattr(response, 'text') and response.text:
@@ -212,7 +271,7 @@ def get_llm_provider(provider_name: Optional[str] = None) -> LLMProvider:
     provider_name = provider_name or os.getenv("LLM_PROVIDER", "ollama").lower()
     
     if provider_name == "ollama":
-        model = os.getenv("OLLAMA_MODEL", "mistral:7b")
+        model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:32b")
         base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         return OllamaLLM(model=model, base_url=base_url)
     
