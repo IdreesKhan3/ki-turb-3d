@@ -12,7 +12,10 @@ sys.path.insert(0, str(project_root))
 from utils.theme_config import inject_theme_css
 from data_readers.vti_reader import read_vti_file
 from data_readers.hdf5_reader import read_hdf5_file
-from utils.topology_stats import render_topology_stats_tab
+from utils.vorticity_stats import render_vorticity_stats_tab
+from utils.velocity_magnitude_stats import render_velocity_magnitude_tab
+from utils.dissipation_stats import render_dissipation_tab
+from utils.joint_pdf_stats import render_joint_pdf_tab
 from utils.plot_style import resolve_line_style, apply_axis_limits, apply_figure_size
 from utils.comparison_plot_style import (
     _load_ui_metadata, _save_ui_metadata, get_plot_style, apply_plot_style,
@@ -99,18 +102,68 @@ def main():
     all_files = [Path(f).name for f in vti_files + hdf5_files]
     
     # Plot style sidebar
-    plot_names = ["Velocity PDF", "R-Q Topological Space"]
+    plot_names = ["Velocity PDF", "R-Q Topological Space", "Vorticity PDF", "Enstrophy PDF", "Velocity Magnitude PDF", "Dissipation PDF", "Velocity-Dissipation Joint PDF", "Velocity-Enstrophy Joint PDF", "Dissipation-Enstrophy Joint PDF"]
     if all_files:
         plot_style_sidebar(data_dir, all_files, plot_names)
     
     # Create tabs
-    tabs = st.tabs(["Topological & Statistical Distribution"])
+    tabs = st.tabs([
+        "Vorticity & Enstrophy PDFs",
+        "Velocity Magnitude PDF",
+        "Dissipation Rate PDF",
+        "Joint PDFs"
+    ])
     
     # ============================================
-    # Tab: Topological & Statistical Distribution
+    # Tab: Vorticity & Enstrophy PDFs
     # ============================================
     with tabs[0]:
-        render_topology_stats_tab(
+        render_vorticity_stats_tab(
+            data_dir, 
+            _load_velocity_file,
+            get_plot_style_func=get_plot_style,
+            apply_plot_style_func=apply_plot_style,
+            get_palette_func=_get_palette,
+            resolve_line_style_func=resolve_line_style,
+            export_panel_func=export_panel,
+            capture_button_func=capture_button
+        )
+    
+    # ============================================
+    # Tab: Velocity Magnitude PDF
+    # ============================================
+    with tabs[1]:
+        render_velocity_magnitude_tab(
+            data_dir, 
+            _load_velocity_file,
+            get_plot_style_func=get_plot_style,
+            apply_plot_style_func=apply_plot_style,
+            get_palette_func=_get_palette,
+            resolve_line_style_func=resolve_line_style,
+            export_panel_func=export_panel,
+            capture_button_func=capture_button
+        )
+    
+    # ============================================
+    # Tab: Dissipation Rate PDF
+    # ============================================
+    with tabs[2]:
+        render_dissipation_tab(
+            data_dir, 
+            _load_velocity_file,
+            get_plot_style_func=get_plot_style,
+            apply_plot_style_func=apply_plot_style,
+            get_palette_func=_get_palette,
+            resolve_line_style_func=resolve_line_style,
+            export_panel_func=export_panel,
+            capture_button_func=capture_button
+        )
+    
+    # ============================================
+    # Tab: Joint PDFs
+    # ============================================
+    with tabs[3]:
+        render_joint_pdf_tab(
             data_dir, 
             _load_velocity_file,
             get_plot_style_func=get_plot_style,

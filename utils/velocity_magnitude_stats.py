@@ -1,6 +1,6 @@
 """
-Topological & Statistical Distribution Analysis
-Module for computing and visualizing velocity PDFs and R-Q topological space
+Velocity Magnitude Statistical Analysis
+Module for computing and visualizing velocity magnitude PDFs
 """
 
 import streamlit as st
@@ -9,10 +9,72 @@ from pathlib import Path
 import plotly.graph_objects as go
 from scipy.stats import gaussian_kde
 
-from utils.iso_surfaces import compute_q_invariant, compute_r_invariant
+
+def compute_velocity_magnitude_pdf(velocity, bins=100, normalize=False):
+    """
+    Compute smooth Probability Density Function for velocity magnitude |u|
+    Uses Kernel Density Estimation (KDE) to produce smooth curves
+    
+    Args:
+        velocity: (nx, ny, nz, 3) array of velocity components
+        bins: Number of evaluation points for smooth curve
+        normalize: If True, normalize by RMS (|u|/σ_|u|)
+        
+    Returns:
+        u_mag_grid, pdf_u_mag (arrays) - smooth PDF curve
+    """
+    # Compute velocity magnitude: |u| = √(ux² + uy² + uz²)
+    u_mag = np.sqrt(
+        velocity[:, :, :, 0]**2 + 
+        velocity[:, :, :, 1]**2 + 
+        velocity[:, :, :, 2]**2
+    )
+    
+    # Flatten and remove NaN/Inf
+    u_mag_flat = u_mag.flatten()
+    u_mag_flat = u_mag_flat[np.isfinite(u_mag_flat)]
+    
+    if len(u_mag_flat) == 0:
+        return np.array([]), np.array([])
+    
+    # Normalize by RMS if requested (standard for velocity: |u|/σ_|u|)
+    normalization_factor = 1.0
+    if normalize:
+        rms_u = np.sqrt(np.mean(u_mag_flat**2))
+        if rms_u > 0:
+            u_mag_flat = u_mag_flat / rms_u
+            normalization_factor = rms_u
+    
+    # Determine range
+    u_mag_min = u_mag_flat.min()
+    u_mag_max = u_mag_flat.max()
+    
+    # Add padding for smooth evaluation at edges
+    u_mag_range = u_mag_max - u_mag_min
+    u_mag_min -= 0.1 * u_mag_range
+    u_mag_max += 0.1 * u_mag_range
+    
+    # Create fine grid for smooth curve evaluation
+    u_mag_grid = np.linspace(u_mag_min, u_mag_max, bins)
+    
+    # Compute KDE for smooth PDF curve
+    try:
+        kde = gaussian_kde(u_mag_flat)
+        pdf_u_mag = kde(u_mag_grid)
+    except:
+        # Fallback to histogram if KDE fails
+        counts, edges = np.histogram(u_mag_flat, bins=bins, range=(u_mag_min, u_mag_max), density=True)
+        pdf_u_mag = counts
+        u_mag_grid = (edges[:-1] + edges[1:]) / 2
+    
+    # Normalize Y-axis: multiply by normalization_factor to preserve area = 1
+    if normalize and normalization_factor > 0:
+        pdf_u_mag = pdf_u_mag * normalization_factor
+    
+    return u_mag_grid, pdf_u_mag
 
 
-def compute_velocity_pdf(velocity, bins=100):
+def compute_velocity_pdf(velocity, bins=100, normalize=False):
     """
     Compute smooth Probability Density Function for each velocity component (u, v, w)
     Uses Kernel Density Estimation (KDE) to produce smooth curves like reference figures
@@ -20,6 +82,7 @@ def compute_velocity_pdf(velocity, bins=100):
     Args:
         velocity: (nx, ny, nz, 3) array of velocity components
         bins: Number of evaluation points for smooth curve
+        normalize: If True, normalize by RMS (u/σ_u)
         
     Returns:
         u_grid, pdf_u, pdf_v, pdf_w (all arrays) - smooth PDF curves
@@ -36,6 +99,18 @@ def compute_velocity_pdf(velocity, bins=100):
     
     if len(ux) == 0 or len(uy) == 0 or len(uz) == 0:
         return np.array([]), np.array([]), np.array([]), np.array([])
+    
+    # Normalize by RMS if requested (standard for velocity: u/σ_u)
+    normalization_factor = 1.0
+    if normalize:
+        # Use combined RMS across all components
+        all_u = np.concatenate([ux, uy, uz])
+        rms_u = np.sqrt(np.mean(all_u**2))
+        if rms_u > 0:
+            ux = ux / rms_u
+            uy = uy / rms_u
+            uz = uz / rms_u
+            normalization_factor = rms_u
     
     # Find common range across all components for consistent comparison
     u_min = min(ux.min(), uy.min(), uz.min())
@@ -77,115 +152,21 @@ def compute_velocity_pdf(velocity, bins=100):
         if len(u_grid) != len(pdf_w):
             u_grid = (edges[:-1] + edges[1:]) / 2
     
+    # Normalize Y-axis: multiply by normalization_factor to preserve area = 1
+    if normalize and normalization_factor > 0:
+        pdf_u = pdf_u * normalization_factor
+        pdf_v = pdf_v * normalization_factor
+        pdf_w = pdf_w * normalization_factor
+    
     return u_grid, pdf_u, pdf_v, pdf_w
 
 
-def compute_rq_joint_pdf(velocity, r_bins=100, q_bins=100, r_range=None, q_range=None):
+def render_velocity_magnitude_tab(data_dir, load_velocity_file_func,
+                                   get_plot_style_func=None, apply_plot_style_func=None,
+                                   get_palette_func=None, resolve_line_style_func=None,
+                                   export_panel_func=None, capture_button_func=None):
     """
-    Compute Joint PDF of Q and R invariants
-    
-    Q and R are normalized by <S_ij S_ij> (mean strain rate squared) to match literature conventions.
-    This normalization brings Q values to typical ranges of -30 to 30 as seen in turbulence literature.
-    
-    Args:
-        velocity: (nx, ny, nz, 3) array of velocity components
-        r_bins: Number of bins for R axis
-        q_bins: Number of bins for Q axis
-        r_range: (r_min, r_max) for R axis, or None for auto
-        q_range: (q_min, q_max) for Q axis, or None for auto
-        
-    Returns:
-        R_centers, Q_centers, joint_pdf (2D array)
-    """
-    # Compute Q and R invariants
-    Q = compute_q_invariant(velocity)
-    R = compute_r_invariant(velocity)
-    
-    # Compute normalization factor: <S_ij S_ij> (mean strain rate squared)
-    from utils.iso_surfaces import compute_rotation_deformation_tensors
-    _, S = compute_rotation_deformation_tensors(velocity)
-    S_squared_sum = np.einsum('ijklm,ijklm->ijk', S, S)
-    # Use all finite values for mean (S_ij S_ij is always non-negative)
-    valid_S = S_squared_sum[np.isfinite(S_squared_sum)]
-    mean_S_squared = np.mean(valid_S) if len(valid_S) > 0 else 1.0
-    
-    # Normalize Q and R by <S_ij S_ij>
-    # Q* = Q / <S_ij S_ij>
-    # R* = R / <S_ij S_ij>^(3/2)
-    # This normalization brings values to typical literature ranges (-30 to 30 for Q)
-    if mean_S_squared > 0:
-        Q_normalized = Q / mean_S_squared
-        R_normalized = R / (mean_S_squared ** 1.5)
-    else:
-        # Fallback: use raw values if normalization fails
-        Q_normalized = Q
-        R_normalized = R
-    
-    # Flatten
-    Q_flat = Q_normalized.flatten()
-    R_flat = R_normalized.flatten()
-    
-    # Remove NaN/Inf
-    valid_mask = np.isfinite(Q_flat) & np.isfinite(R_flat)
-    Q_flat = Q_flat[valid_mask]
-    R_flat = R_flat[valid_mask]
-    
-    if len(Q_flat) == 0:
-        return np.array([]), np.array([]), np.array([])
-    
-    # Determine ranges
-    if r_range is None:
-        r_range = (R_flat.min(), R_flat.max())
-    if q_range is None:
-        q_range = (Q_flat.min(), Q_flat.max())
-    
-    # Compute 2D histogram
-    joint_hist, r_edges, q_edges = np.histogram2d(
-        R_flat, Q_flat,
-        bins=[r_bins, q_bins],
-        range=[r_range, q_range],
-        density=False
-    )
-    
-    # Normalize to joint PDF
-    bin_area = (r_edges[1] - r_edges[0]) * (q_edges[1] - q_edges[0])
-    joint_pdf = joint_hist / (len(R_flat) * bin_area)
-    
-    # Bin centers
-    R_centers = (r_edges[:-1] + r_edges[1:]) / 2
-    Q_centers = (q_edges[:-1] + q_edges[1:]) / 2
-    
-    return R_centers, Q_centers, joint_pdf.T  # Transpose for correct orientation
-
-
-def compute_discriminant_line(r_values):
-    """
-    Compute Q values for the zero-discriminant line D = (Q/3)^3 + (R/2)^2 = 0
-    
-    The discriminant D = 0 separates regions with real eigenvalues (inside V) 
-    from complex eigenvalues (outside V). Solving for Q:
-    (Q/3)^3 = -(R/2)^2
-    Q = -3 * (R^2/4)^(1/3)
-    
-    Q is always negative on this boundary, regardless of R's sign.
-    This gives a V-shape (cusp) with vertex at (0,0) extending downward.
-    
-    Args:
-        r_values: Array of R values
-        
-    Returns:
-        Q values for the discriminant line (always negative, forming V-shape)
-    """
-    q_values = -3 * np.power(np.abs(r_values) / 2.0, 2.0/3.0)
-    return q_values
-
-
-def render_topology_stats_tab(data_dir, load_velocity_file_func,
-                               get_plot_style_func=None, apply_plot_style_func=None,
-                               get_palette_func=None, resolve_line_style_func=None,
-                               export_panel_func=None, capture_button_func=None):
-    """
-    Render the Topological & Statistical Distribution tab content
+    Render the Velocity Magnitude PDF tab content
     
     Args:
         data_dir: Path to data directory
@@ -200,8 +181,8 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func,
     import glob
     from utils.file_detector import natural_sort_key
     
-    st.header("Topological & Statistical Distribution")
-    st.markdown("Compare velocity PDFs and R-Q topological space across different simulations/methods.")
+    st.header("Velocity Magnitude PDF")
+    st.markdown("Compare velocity component PDFs and velocity magnitude PDFs across different simulations/methods.")
     
     # Find velocity files
     vti_files = sorted(
@@ -227,39 +208,46 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func,
     st.sidebar.header("📁 File Selection")
     st.sidebar.caption(f"Found {len(all_files)} velocity files")
     
-    # Separate file selection for each plot
     selected_files_pdf = st.sidebar.multiselect(
         "Velocity PDF files:",
         options=[Path(f).name for f in all_files],
         default=[Path(f).name for f in all_files[:min(2, len(all_files))]],
-        help="Select files for Velocity PDF plot (left)"
+        help="Select files for Velocity PDF plot (left)",
+        key="velocity_pdf_file_select"
     )
     
-    selected_files_rq = st.sidebar.multiselect(
-        "R-Q Topological Space files:",
+    selected_files_mag = st.sidebar.multiselect(
+        "Velocity Magnitude PDF files:",
         options=[Path(f).name for f in all_files],
-        default=[Path(f).name for f in all_files[:min(3, len(all_files))]],
-        help="Select files for R-Q plot (right)"
+        default=[Path(f).name for f in all_files[:min(2, len(all_files))]],
+        help="Select files for Velocity Magnitude PDF plot (right)",
+        key="velocity_mag_file_select"
     )
     
-    if not selected_files_pdf and not selected_files_rq:
+    if not selected_files_pdf and not selected_files_mag:
         st.warning("Please select at least one file for either plot.")
         return
     
-    
     # Plot parameters
     st.sidebar.header("📊 Plot Parameters")
-    pdf_bins = st.sidebar.slider("Velocity PDF bins", 50, 500, 100, 10)
-    rq_bins = st.sidebar.slider("R-Q space bins", 50, 200, 100, 10)
-    use_log_scale = st.sidebar.checkbox(
-        "Log scale (R-Q PDF)",
-        value=True,
-        help="Use logarithmic scale to visualize the tear-drop shape (Vieillefosse tail)"
+    pdf_bins = st.sidebar.slider("Velocity PDF bins", 50, 500, 100, 10, key="velocity_pdf_bins")
+    mag_bins = st.sidebar.slider("Velocity Magnitude PDF bins", 50, 500, 100, 10, key="velocity_mag_pdf_bins")
+    normalize_pdf = st.sidebar.checkbox(
+        "Normalize Velocity PDF (u/σ_u)",
+        value=False,
+        help="Normalize velocity components by RMS for comparison with literature",
+        key="velocity_pdf_normalize"
+    )
+    normalize_mag = st.sidebar.checkbox(
+        "Normalize by RMS (|u|/σ_|u|)",
+        value=False,
+        help="Normalize velocity magnitude by RMS for comparison with literature",
+        key="velocity_mag_normalize"
     )
     
     # Load and compute data independently for each plot
     pdf_data = {}
-    rq_data = {}
+    mag_data = {}
     
     # Load data for Velocity PDF plot
     if selected_files_pdf:
@@ -275,19 +263,19 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func,
                         continue
                     
                     # Compute PDF for each component
-                    u_bins, pdf_u, pdf_v, pdf_w = compute_velocity_pdf(velocity, bins=pdf_bins)
+                    u_bins, pdf_u, pdf_v, pdf_w = compute_velocity_pdf(velocity, bins=pdf_bins, normalize=normalize_pdf)
                     pdf_data[filename] = (u_bins, pdf_u, pdf_v, pdf_w)
                     
             except Exception as e:
                 st.error(f"Error loading {filename} for PDF: {e}")
                 continue
     
-    # Load data for R-Q plot
-    if selected_files_rq:
-        for filename in selected_files_rq:
+    # Load data for Velocity Magnitude PDF plot
+    if selected_files_mag:
+        for filename in selected_files_mag:
             filepath = data_dir / filename
             try:
-                with st.spinner(f"Loading {filename} for R-Q..."):
+                with st.spinner(f"Loading {filename} for Magnitude PDF..."):
                     vti_data = load_velocity_file_func(str(filepath))
                     velocity = vti_data['velocity']
                     
@@ -295,15 +283,15 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func,
                         st.warning(f"⚠️ {filename}: Invalid velocity shape")
                         continue
                     
-                    # Compute R-Q joint PDF
-                    R_centers, Q_centers, joint_pdf = compute_rq_joint_pdf(velocity, r_bins=rq_bins, q_bins=rq_bins)
-                    rq_data[filename] = (R_centers, Q_centers, joint_pdf)
+                    # Compute PDF
+                    u_mag_grid, pdf_u_mag = compute_velocity_magnitude_pdf(velocity, bins=mag_bins, normalize=normalize_mag)
+                    mag_data[filename] = (u_mag_grid, pdf_u_mag)
                     
             except Exception as e:
-                st.error(f"Error loading {filename} for R-Q: {e}")
+                st.error(f"Error loading {filename} for Magnitude PDF: {e}")
                 continue
     
-    if not pdf_data and not rq_data:
+    if not pdf_data and not mag_data:
         st.error("No valid velocity data loaded.")
         return
     
@@ -396,9 +384,11 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func,
                     hovertemplate=f"w = %{{x:.4f}}<br>PDF = %{{y:.4e}}<extra>{label_base} - w</extra>"
                 ))
             
+            x_label_vel = "u / σ<sub>u</sub>" if normalize_pdf else "u"
+            y_label_vel = "σ<sub>u</sub> P(u / σ<sub>u</sub>)" if normalize_pdf else "P(u)"
             layout_kwargs = dict(
-                xaxis_title="Velocity",
-                yaxis_title="PDF",
+                xaxis_title=x_label_vel,
+                yaxis_title=y_label_vel,
                 height=ps_pdf.get("figure_height", 500) if ps_pdf else 500,
                 hovermode='x unified',
                 legend=dict(x=1.02, y=1)
@@ -438,101 +428,70 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func,
                 export_panel_func(fig_pdf, data_dir, "velocity_pdf")
     
     # ============================================
-    # Right: R-Q Topological Space
+    # Right: Velocity Magnitude PDF
     # ============================================
     with col2:
-        st.subheader("R-Q Topological Space")
+        st.subheader("Velocity Magnitude PDF")
         
-        if not rq_data:
-            st.info("Select files in the sidebar to plot R-Q Topological Space")
+        if not mag_data:
+            st.info("Select files in the sidebar to plot Velocity Magnitude PDF")
         else:
-            # Determine common range for comparison
-            all_R = []
-            all_Q = []
-            for R_centers, Q_centers, _ in rq_data.values():
-                if len(R_centers) > 0 and len(Q_centers) > 0:
-                    all_R.extend([R_centers.min(), R_centers.max()])
-                    all_Q.extend([Q_centers.min(), Q_centers.max()])
+            plot_name_mag = "Velocity Magnitude PDF"
+            ps_mag = get_plot_style_func(plot_name_mag) if get_plot_style_func else {}
+            colors_mag = get_palette_func(ps_mag) if get_palette_func else ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+            line_width = ps_mag.get("line_width", 2.4) if ps_mag else 2.0
             
-            if all_R and all_Q:
-                r_range = (min(all_R), max(all_R))
-                q_range = (min(all_Q), max(all_Q))
-            else:
-                r_range = None
-                q_range = None
+            fig_mag = go.Figure()
             
-            # Create subplot for multiple datasets
-            fig_rq = go.Figure()
-            
-            # Plot each dataset
-            for idx, (filename, (R_centers, Q_centers, joint_pdf)) in enumerate(rq_data.items()):
-                if len(R_centers) == 0 or len(Q_centers) == 0 or joint_pdf.size == 0:
+            for idx, (filename, (u_mag_grid, pdf_u_mag)) in enumerate(mag_data.items()):
+                if len(u_mag_grid) == 0:
                     continue
                 
-                label = Path(filename).stem
+                label_base = Path(filename).stem
                 
-                # Apply log scaling if requested (essential for seeing tear-drop shape)
-                if use_log_scale:
-                    safe_pdf = joint_pdf.copy()
-                    safe_pdf[safe_pdf <= 0] = np.nan
-                    plot_data = np.log10(safe_pdf)
-                    z_label = "log₁₀(PDF)"
-                    colorscale = 'Jet'
+                if resolve_line_style_func:
+                    color, lw, dash = resolve_line_style_func(
+                        filename, idx, colors_mag, ps_mag,
+                        style_key="per_sim_style_comparison",
+                        include_marker=False,
+                        default_marker="circle"
+                    )
                 else:
-                    plot_data = joint_pdf
-                    z_label = "PDF"
-                    colorscale = 'Viridis'
+                    color = colors_mag[idx % len(colors_mag)]
+                    lw = line_width
+                    dash = "solid"
                 
-                # Create contour plot
-                fig_rq.add_trace(go.Contour(
-                    x=R_centers,
-                    y=Q_centers,
-                    z=plot_data,
-                    name=label,
-                    colorscale=colorscale,
-                    showscale=(idx == 0),
-                    colorbar=dict(title=z_label) if idx == 0 else None,
-                    hovertemplate=f"R = %{{x:.4f}}<br>Q = %{{y:.4f}}<br>{z_label} = %{{z:.2f}}<extra>{label}</extra>"
-                ))
-            
-            # Add discriminant line (V-shaped black line)
-            if r_range:
-                # Use more points for smooth V-shape
-                r_line = np.linspace(r_range[0], r_range[1], 1000)
-                q_line = compute_discriminant_line(r_line)
-                fig_rq.add_trace(go.Scatter(
-                    x=r_line,
-                    y=q_line,
+                fig_mag.add_trace(go.Scatter(
+                    x=u_mag_grid,
+                    y=pdf_u_mag,
                     mode='lines',
-                    name='D = 0',
-                    line=dict(color='black', width=2),
-                    showlegend=False,
-                    hovertemplate="R = %{x:.4f}<br>Q = %{y:.4f}<extra>Discriminant</extra>"
+                    name=label_base,
+                    line=dict(color=color, width=lw, dash=dash),
+                    hovertemplate=f"|u| = %{{x:.4f}}<br>PDF = %{{y:.4e}}<extra>{label_base}</extra>"
                 ))
             
-            plot_name_rq = "R-Q Topological Space"
-            ps_rq = get_plot_style_func(plot_name_rq) if get_plot_style_func else {}
-            
-            layout_kwargs_rq = dict(
-                xaxis_title="R",
-                yaxis_title="Q",
-                height=ps_rq.get("figure_height", 500) if ps_rq else 500,
-                hovermode='closest',
+            x_label = "|u| / σ<sub>|u|</sub>" if normalize_mag else "|u|"
+            y_label = "σ<sub>|u|</sub> P(|u| / σ<sub>|u|</sub>)" if normalize_mag else "P(|u|)"
+            layout_kwargs = dict(
+                xaxis_title=x_label,
+                yaxis_title=y_label,
+                height=ps_mag.get("figure_height", 500) if ps_mag else 500,
+                hovermode='x unified',
                 legend=dict(x=1.02, y=1)
             )
             
-            if ps_rq:
+            if ps_mag:
                 from utils.plot_style import apply_axis_limits, apply_figure_size
-                layout_kwargs_rq = apply_axis_limits(layout_kwargs_rq, ps_rq)
-                layout_kwargs_rq = apply_figure_size(layout_kwargs_rq, ps_rq)
+                layout_kwargs = apply_axis_limits(layout_kwargs, ps_mag)
+                layout_kwargs = apply_figure_size(layout_kwargs, ps_mag)
             
-            fig_rq.update_layout(**layout_kwargs_rq)
+            fig_mag.update_layout(**layout_kwargs)
             
-            if apply_plot_style_func and ps_rq:
-                fig_rq = apply_plot_style_func(fig_rq, ps_rq)
+            if apply_plot_style_func and ps_mag:
+                fig_mag = apply_plot_style_func(fig_mag, ps_mag)
             
             st.plotly_chart(
-                fig_rq, 
+                fig_mag, 
                 width='stretch',
                 config={
                     "modeBarButtonsToAdd": ["zoom2d", "pan2d", "select2d", "lasso2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d"],
@@ -540,7 +499,7 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func,
                     "displaylogo": False,
                     "toImageButtonOptions": {
                         "format": "png",
-                        "filename": "rq_topological_space",
+                        "filename": "velocity_magnitude_pdf",
                         "height": None,
                         "width": None,
                         "scale": 2
@@ -549,10 +508,10 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func,
             )
             
             if capture_button_func:
-                capture_button_func(fig_rq, title="R-Q Topological Space", source_page="Comparison")
+                capture_button_func(fig_mag, title="Velocity Magnitude PDF", source_page="Comparison")
             
             if export_panel_func:
-                export_panel_func(fig_rq, data_dir, "rq_topological_space")
+                export_panel_func(fig_mag, data_dir, "velocity_magnitude_pdf")
     
     # Theory & Equations
     with st.expander("📚 Theory & Equations", expanded=False):
@@ -562,15 +521,11 @@ def render_topology_stats_tab(data_dir, load_velocity_file_func,
         st.markdown("where $N$ is the total number of grid points and $\\Delta u$ is the bin width.")
         st.markdown("The semi-logarithmic scale reveals the tails of the distribution, showing rare high-velocity events.")
         
-        st.markdown("### R-Q Topological Space")
-        st.markdown("**Joint PDF of velocity gradient tensor invariants:**")
-        st.markdown("**Second Invariant Q:**")
-        st.latex(r"Q = \frac{1}{4}(\omega_i\omega_i - 2S_{ij}S_{ij})")
-        st.markdown("**Third Invariant R:**")
-        st.latex(r"R = -\frac{1}{3}\left(S_{ij}S_{jk}S_{ki} + \frac{3}{4}\omega_i\omega_j S_{ij}\right)")
-        st.markdown("**Zero Discriminant Line:**")
-        st.latex(r"D = \left(\frac{Q}{3}\right)^3 + \left(\frac{R}{2}\right)^2 = 0")
-        st.latex(r"Q = -3\left(\frac{R}{2}\right)^{2/3}")
-        st.markdown("This line separates regions with real eigenvalues (above) from complex eigenvalues (below) of the velocity gradient tensor.")
-        st.markdown("**Visualization:** The logarithmic scale is essential to visualize the **Vieillefosse tail** (tear-drop shape) in the bottom-right quadrant ($R>0, Q<0$), where probability densities are orders of magnitude lower than the core region.")
+        st.markdown("### Velocity Magnitude PDF")
+        st.markdown("**Probability Density Function of velocity magnitude:**")
+        st.latex(r"P(|\mathbf{u}|) = \frac{1}{N \Delta |\mathbf{u}|} \sum_{i=1}^{N} \delta(|\mathbf{u}| - |\mathbf{u}_i|)")
+        st.markdown("where $|\\mathbf{u}| = \\sqrt{u_x^2 + u_y^2 + u_z^2}$ is the velocity magnitude,")
+        st.markdown("and $N$ is the total number of grid points.")
+        st.markdown("The velocity magnitude PDF provides information about the overall speed distribution")
+        st.markdown("in the flow, complementing the component-wise velocity PDFs.")
 
