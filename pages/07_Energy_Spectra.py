@@ -711,12 +711,17 @@ def main():
         norm_files = []
         
         for data_dir_path in data_dirs:
-            data_dir = Path(data_dir_path)
-            if data_dir.exists():
-                dir_spectrum = sorted(glob.glob(str(data_dir / "spectrum*.dat")), key=natural_sort_key)
-                dir_norm = sorted(glob.glob(str(data_dir / "norm*.dat")), key=natural_sort_key)
-                spectrum_files.extend(dir_spectrum)
-                norm_files.extend(dir_norm)
+            # Resolve path to ensure it works regardless of how it was stored
+            try:
+                data_dir = Path(data_dir_path).resolve()
+                if data_dir.exists() and data_dir.is_dir():
+                    # Process each directory independently - find files that exist in THIS directory
+                    dir_spectrum = sorted(glob.glob(str(data_dir / "spectrum*.dat")), key=natural_sort_key)
+                    dir_norm = sorted(glob.glob(str(data_dir / "norm*.dat")), key=natural_sort_key)
+                    spectrum_files.extend(dir_spectrum)
+                    norm_files.extend(dir_norm)
+            except Exception:
+                continue  # Skip invalid directories
 
         if not spectrum_files and not norm_files:
             st.error("No spectrum*.dat or norm*.dat files found in the selected directories.")

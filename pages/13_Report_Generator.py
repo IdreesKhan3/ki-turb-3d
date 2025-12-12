@@ -292,7 +292,9 @@ def main():
                         'header_level': s.get('header_level', 'Normal')
                     })
                 elif s['type'] == 'table':
-                    df = s.get('dataframe') or s.get('content')
+                    df = s.get('dataframe')
+                    if df is None:
+                        df = s.get('content')
                     if df is not None:
                         final_sections.append({
                             'title': s['title'],

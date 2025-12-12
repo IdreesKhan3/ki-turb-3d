@@ -1,5 +1,5 @@
 """
-Plot style system for Comparison page
+Plot style system for PDFs page
 Helper module for plot styling and persistence
 """
 
@@ -117,7 +117,7 @@ def get_plot_style(plot_name: str):
     return merged
 
 def plot_style_sidebar(data_dir: Path, file_list, plot_names: list):
-    """Plot style configuration sidebar for Comparison page using shared module components."""
+    """Plot style configuration sidebar for PDFs page using shared module components."""
     selected_plot = st.sidebar.selectbox(
         "Select plot to configure",
         plot_names,

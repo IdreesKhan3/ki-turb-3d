@@ -87,7 +87,35 @@ def compute_dissipation_pdf(velocity, nu=1.0, bins=100, dx=1.0, dy=1.0, dz=1.0, 
     return eps_grid, pdf_eps
 
 
-def render_dissipation_tab(data_dir, load_velocity_file_func,
+def compute_dissipation_statistics(velocity, nu=1.0, dx=1.0, dy=1.0, dz=1.0):
+    """
+    Compute statistical moments (mean, RMS, skewness, kurtosis) for dissipation rate.
+    
+    Returns:
+        mean, rms, skewness, kurtosis (floats)
+    """
+    from utils.iso_surfaces import compute_rotation_deformation_tensors
+    from utils.velocity_magnitude_stats import compute_skewness_kurtosis
+    
+    # Compute strain rate tensor S_ij
+    _, S = compute_rotation_deformation_tensors(velocity, dx, dy, dz)
+    
+    # Compute dissipation: ε = 2ν S_ij S_ij
+    S_squared_sum = np.einsum('ijklm,ijklm->ijk', S, S)
+    dissipation = 2.0 * nu * S_squared_sum
+    
+    # Flatten and remove NaN/Inf and negative values
+    eps_flat = dissipation.flatten()
+    eps_flat = eps_flat[np.isfinite(eps_flat)]
+    eps_flat = eps_flat[eps_flat >= 0]
+    
+    # Compute statistics
+    mean, rms, skewness, kurtosis = compute_skewness_kurtosis(eps_flat)
+    
+    return mean, rms, skewness, kurtosis
+
+
+def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
                             get_plot_style_func=None, apply_plot_style_func=None,
                             get_palette_func=None, resolve_line_style_func=None,
                             export_panel_func=None, capture_button_func=None):
@@ -95,7 +123,7 @@ def render_dissipation_tab(data_dir, load_velocity_file_func,
     Render the Dissipation Rate PDF tab content
     
     Args:
-        data_dir: Path to data directory
+        data_dir_or_dirs: Path to data directory (Path) or list of directories (list of Path/str)
         load_velocity_file_func: Function to load velocity files (takes filepath)
         get_plot_style_func: Optional function to get plot style (plot_name) -> style_dict
         apply_plot_style_func: Optional function to apply plot style (fig, style_dict) -> fig
@@ -105,26 +133,42 @@ def render_dissipation_tab(data_dir, load_velocity_file_func,
         capture_button_func: Optional function to add capture button (fig, title, source_page)
     """
     import glob
+    from pathlib import Path
     from utils.file_detector import natural_sort_key
     
     st.header("Dissipation Rate PDF")
     st.markdown("Compare dissipation rate PDFs across different simulations/methods.")
     
-    # Find velocity files
-    vti_files = sorted(
-        glob.glob(str(data_dir / "*.vti")) + 
-        glob.glob(str(data_dir / "*.VTI")),
-        key=natural_sort_key
-    )
-    hdf5_files = sorted(
-        glob.glob(str(data_dir / "*.h5")) + 
-        glob.glob(str(data_dir / "*.H5")) +
-        glob.glob(str(data_dir / "*.hdf5")) + 
-        glob.glob(str(data_dir / "*.HDF5")),
-        key=natural_sort_key
-    )
+    # Handle both single directory and multiple directories
+    if isinstance(data_dir_or_dirs, (list, tuple)):
+        data_dirs = [Path(d).resolve() for d in data_dir_or_dirs]
+        data_dir = data_dirs[0]  # Use first for metadata
+    else:
+        data_dirs = [Path(data_dir_or_dirs).resolve()]
+        data_dir = data_dirs[0]
     
-    all_files = vti_files + hdf5_files
+    # Find velocity files from ALL directories independently
+    all_vti_files = []
+    all_hdf5_files = []
+    
+    for dir_path in data_dirs:
+        if dir_path.exists() and dir_path.is_dir():
+            dir_vti = sorted(
+                glob.glob(str(dir_path / "*.vti")) + 
+                glob.glob(str(dir_path / "*.VTI")),
+                key=natural_sort_key
+            )
+            dir_hdf5 = sorted(
+                glob.glob(str(dir_path / "*.h5")) + 
+                glob.glob(str(dir_path / "*.H5")) +
+                glob.glob(str(dir_path / "*.hdf5")) + 
+                glob.glob(str(dir_path / "*.HDF5")),
+                key=natural_sort_key
+            )
+            all_vti_files.extend(dir_vti)
+            all_hdf5_files.extend(dir_hdf5)
+    
+    all_files = all_vti_files + all_hdf5_files
     
     # Physical parameters (show first, always visible)
     st.sidebar.header("⚙️ Physical Parameters")
@@ -170,6 +214,9 @@ def render_dissipation_tab(data_dir, load_velocity_file_func,
         st.error("No velocity files found. Expected: `*.vti`, `*.h5`, or `*.hdf5`")
         return
     
+    # Create mapping from filename to full path (handle files from different directories)
+    filename_to_path = {Path(f).name: f for f in all_files}
+    
     # File selection
     st.sidebar.header("📁 File Selection")
     st.sidebar.caption(f"Found {len(all_files)} velocity files")
@@ -200,7 +247,11 @@ def render_dissipation_tab(data_dir, load_velocity_file_func,
     pdf_data = {}
     
     for filename in selected_files:
-        filepath = data_dir / filename
+        # Use full path from mapping (handles files from different directories)
+        filepath = filename_to_path.get(filename)
+        if not filepath:
+            st.warning(f"File not found: {filename}")
+            continue
         try:
             with st.spinner(f"Loading {filename}..."):
                 vti_data = load_velocity_file_func(str(filepath))
@@ -243,6 +294,33 @@ def render_dissipation_tab(data_dir, load_velocity_file_func,
     if not pdf_data:
         st.error("No valid velocity data loaded.")
         return
+    
+    # ============================================
+    # Statistics Section
+    # ============================================
+    with st.expander("📈 Statistical Moments (Skewness & Kurtosis)", expanded=False):
+        from utils.velocity_magnitude_stats import display_statistics_table
+        
+        # Compute statistics from first available file
+        stats_dict = {}
+        if selected_files:
+            first_file = selected_files[0]
+            filepath = data_dir / first_file
+            try:
+                vti_data = load_velocity_file_func(str(filepath))
+                velocity = vti_data['velocity']
+                if velocity is not None and len(velocity.shape) == 4:
+                    mean, rms, skew, kurt = compute_dissipation_statistics(velocity, nu=nu, dx=1.0, dy=1.0, dz=1.0)
+                    stats_dict['dissipation'] = (mean, rms, skew, kurt)
+            except:
+                pass
+        
+        if stats_dict:
+            display_statistics_table(stats_dict, title="Dissipation Rate Statistics")
+        else:
+            st.info("Statistics will be computed when files are loaded.")
+    
+    st.markdown("---")
     
     # Create plot
     st.subheader("Dissipation Rate PDF")
@@ -319,7 +397,7 @@ def render_dissipation_tab(data_dir, load_velocity_file_func,
     )
     
     if capture_button_func:
-        capture_button_func(fig, title="Dissipation Rate PDF", source_page="Comparison")
+        capture_button_func(fig, title="Dissipation Rate PDF", source_page="PDFs")
     
     if export_panel_func:
         export_panel_func(fig, data_dir, "dissipation_pdf")

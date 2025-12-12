@@ -10,6 +10,57 @@ import plotly.graph_objects as go
 from scipy.stats import gaussian_kde
 
 
+# ==========================================================
+# Higher-order moments: Skewness and Kurtosis
+# ==========================================================
+def compute_skewness_kurtosis(data):
+    """
+    Compute skewness and kurtosis for a data array.
+    
+    Skewness: S = ⟨u'³⟩/⟨u'²⟩^(3/2)
+    Kurtosis: K = ⟨u'⁴⟩/⟨u'²⟩²
+    
+    Args:
+        data: 1D array of values (already flattened and cleaned)
+        
+    Returns:
+        mean, rms, skewness, kurtosis (floats)
+    """
+    # Remove NaN/Inf
+    data_clean = data[np.isfinite(data)]
+    
+    if len(data_clean) == 0:
+        return 0.0, 0.0, 0.0, 0.0
+    
+    # Compute mean
+    mean = np.mean(data_clean)
+    
+    # Compute fluctuating component: u' = u - ⟨u⟩
+    u_prime = data_clean - mean
+    
+    # Compute moments
+    u2_mean = np.mean(u_prime**2)  # ⟨u'²⟩
+    u3_mean = np.mean(u_prime**3)  # ⟨u'³⟩
+    u4_mean = np.mean(u_prime**4)  # ⟨u'⁴⟩
+    
+    # Compute RMS
+    rms = np.sqrt(u2_mean) if u2_mean > 0 else 0.0
+    
+    # Compute Skewness: S = ⟨u'³⟩/⟨u'²⟩^(3/2)
+    if u2_mean > 0:
+        skewness = u3_mean / (u2_mean**(3/2))
+    else:
+        skewness = 0.0
+    
+    # Compute Kurtosis: K = ⟨u'⁴⟩/⟨u'²⟩²
+    if u2_mean > 0:
+        kurtosis = u4_mean / (u2_mean**2)
+    else:
+        kurtosis = 0.0
+    
+    return mean, rms, skewness, kurtosis
+
+
 def compute_velocity_magnitude_pdf(velocity, bins=100, normalize=False):
     """
     Compute smooth Probability Density Function for velocity magnitude |u|
@@ -72,6 +123,29 @@ def compute_velocity_magnitude_pdf(velocity, bins=100, normalize=False):
         pdf_u_mag = pdf_u_mag * normalization_factor
     
     return u_mag_grid, pdf_u_mag
+
+
+def compute_velocity_magnitude_statistics(velocity):
+    """
+    Compute statistical moments (mean, RMS, skewness, kurtosis) for velocity magnitude.
+    
+    Returns:
+        mean, rms, skewness, kurtosis (floats)
+    """
+    # Compute velocity magnitude: |u| = √(ux² + uy² + uz²)
+    u_mag = np.sqrt(
+        velocity[:, :, :, 0]**2 + 
+        velocity[:, :, :, 1]**2 + 
+        velocity[:, :, :, 2]**2
+    )
+    
+    # Flatten
+    u_mag_flat = u_mag.flatten()
+    
+    # Compute statistics
+    mean, rms, skewness, kurtosis = compute_skewness_kurtosis(u_mag_flat)
+    
+    return mean, rms, skewness, kurtosis
 
 
 def compute_velocity_pdf(velocity, bins=100, normalize=False):
@@ -161,7 +235,62 @@ def compute_velocity_pdf(velocity, bins=100, normalize=False):
     return u_grid, pdf_u, pdf_v, pdf_w
 
 
-def render_velocity_magnitude_tab(data_dir, load_velocity_file_func,
+def compute_velocity_component_statistics(velocity):
+    """
+    Compute statistical moments (mean, RMS, skewness, kurtosis) for each velocity component (u, v, w).
+    
+    Returns:
+        Dictionary with keys 'u', 'v', 'w', each containing (mean, rms, skewness, kurtosis)
+    """
+    # Extract each component
+    ux = velocity[:, :, :, 0].flatten()
+    uy = velocity[:, :, :, 1].flatten()
+    uz = velocity[:, :, :, 2].flatten()
+    
+    # Compute statistics for each component
+    stats_u = compute_skewness_kurtosis(ux)
+    stats_v = compute_skewness_kurtosis(uy)
+    stats_w = compute_skewness_kurtosis(uz)
+    
+    return {
+        'u': stats_u,
+        'v': stats_v,
+        'w': stats_w
+    }
+
+
+def display_statistics_table(statistics_dict, title="Statistical Moments"):
+    """
+    Display statistics in a formatted table.
+    
+    Args:
+        statistics_dict: Dictionary with keys as variable names and values as (mean, rms, skewness, kurtosis) tuples
+        title: Title for the statistics section
+    """
+    st.markdown(f"### {title}")
+    st.markdown("**Higher-order moments:**")
+    st.markdown("- **Skewness**: $S = \\langle u'^3 \\rangle / \\langle u'^2 \\rangle^{3/2}$ (asymmetry)")
+    st.markdown("- **Kurtosis**: $K = \\langle u'^4 \\rangle / \\langle u'^2 \\rangle^2$ (tail heaviness)")
+    st.markdown("")
+    
+    # Create table data
+    table_data = []
+    for var_name, (mean, rms, skewness, kurtosis) in statistics_dict.items():
+        table_data.append({
+            "Variable": var_name.upper(),
+            "Mean": f"{mean:.6e}",
+            "RMS": f"{rms:.6e}",
+            "Skewness": f"{skewness:.4f}",
+            "Kurtosis": f"{kurtosis:.4f}"
+        })
+    
+    if table_data:
+        import pandas as pd
+        df = pd.DataFrame(table_data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,
                                    get_plot_style_func=None, apply_plot_style_func=None,
                                    get_palette_func=None, resolve_line_style_func=None,
                                    export_panel_func=None, capture_button_func=None):
@@ -169,7 +298,7 @@ def render_velocity_magnitude_tab(data_dir, load_velocity_file_func,
     Render the Velocity Magnitude PDF tab content
     
     Args:
-        data_dir: Path to data directory
+        data_dir_or_dirs: Path to data directory (Path) or list of directories (list of Path/str)
         load_velocity_file_func: Function to load velocity files (takes filepath)
         get_plot_style_func: Optional function to get plot style (plot_name) -> style_dict
         apply_plot_style_func: Optional function to apply plot style (fig, style_dict) -> fig
@@ -179,30 +308,49 @@ def render_velocity_magnitude_tab(data_dir, load_velocity_file_func,
         capture_button_func: Optional function to add capture button (fig, title, source_page)
     """
     import glob
+    from pathlib import Path
     from utils.file_detector import natural_sort_key
     
     st.header("Velocity Magnitude PDF")
     st.markdown("Compare velocity component PDFs and velocity magnitude PDFs across different simulations/methods.")
     
-    # Find velocity files
-    vti_files = sorted(
-        glob.glob(str(data_dir / "*.vti")) + 
-        glob.glob(str(data_dir / "*.VTI")),
-        key=natural_sort_key
-    )
-    hdf5_files = sorted(
-        glob.glob(str(data_dir / "*.h5")) + 
-        glob.glob(str(data_dir / "*.H5")) +
-        glob.glob(str(data_dir / "*.hdf5")) + 
-        glob.glob(str(data_dir / "*.HDF5")),
-        key=natural_sort_key
-    )
+    # Handle both single directory and multiple directories
+    if isinstance(data_dir_or_dirs, (list, tuple)):
+        data_dirs = [Path(d).resolve() for d in data_dir_or_dirs]
+        data_dir = data_dirs[0]  # Use first for metadata
+    else:
+        data_dirs = [Path(data_dir_or_dirs).resolve()]
+        data_dir = data_dirs[0]
     
-    all_files = vti_files + hdf5_files
+    # Find velocity files from ALL directories independently
+    all_vti_files = []
+    all_hdf5_files = []
+    
+    for dir_path in data_dirs:
+        if dir_path.exists() and dir_path.is_dir():
+            dir_vti = sorted(
+                glob.glob(str(dir_path / "*.vti")) + 
+                glob.glob(str(dir_path / "*.VTI")),
+                key=natural_sort_key
+            )
+            dir_hdf5 = sorted(
+                glob.glob(str(dir_path / "*.h5")) + 
+                glob.glob(str(dir_path / "*.H5")) +
+                glob.glob(str(dir_path / "*.hdf5")) + 
+                glob.glob(str(dir_path / "*.HDF5")),
+                key=natural_sort_key
+            )
+            all_vti_files.extend(dir_vti)
+            all_hdf5_files.extend(dir_hdf5)
+    
+    all_files = all_vti_files + all_hdf5_files
     
     if not all_files:
         st.error("No velocity files found. Expected: `*.vti`, `*.h5`, or `*.hdf5`")
         return
+    
+    # Create mapping from filename to full path (handle files from different directories)
+    filename_to_path = {Path(f).name: f for f in all_files}
     
     # File selection - independent for each plot
     st.sidebar.header("📁 File Selection")
@@ -252,7 +400,11 @@ def render_velocity_magnitude_tab(data_dir, load_velocity_file_func,
     # Load data for Velocity PDF plot
     if selected_files_pdf:
         for filename in selected_files_pdf:
-            filepath = data_dir / filename
+            # Use full path from mapping (handles files from different directories)
+            filepath = filename_to_path.get(filename)
+            if not filepath:
+                st.warning(f"File not found: {filename}")
+                continue
             try:
                 with st.spinner(f"Loading {filename} for PDF..."):
                     vti_data = load_velocity_file_func(str(filepath))
@@ -273,7 +425,11 @@ def render_velocity_magnitude_tab(data_dir, load_velocity_file_func,
     # Load data for Velocity Magnitude PDF plot
     if selected_files_mag:
         for filename in selected_files_mag:
-            filepath = data_dir / filename
+            # Use full path from mapping (handles files from different directories)
+            filepath = filename_to_path.get(filename)
+            if not filepath:
+                st.warning(f"File not found: {filename}")
+                continue
             try:
                 with st.spinner(f"Loading {filename} for Magnitude PDF..."):
                     vti_data = load_velocity_file_func(str(filepath))
@@ -294,6 +450,39 @@ def render_velocity_magnitude_tab(data_dir, load_velocity_file_func,
     if not pdf_data and not mag_data:
         st.error("No valid velocity data loaded.")
         return
+    
+    # ============================================
+    # Statistics Section
+    # ============================================
+    with st.expander("📈 Statistical Moments (Skewness & Kurtosis)", expanded=False):
+        # Compute statistics from first available file
+        stats_dict = {}
+        if selected_files_pdf or selected_files_mag:
+            first_file = (selected_files_pdf + selected_files_mag)[0] if (selected_files_pdf or selected_files_mag) else None
+            if first_file:
+                filepath = data_dir / first_file
+                try:
+                    vti_data = load_velocity_file_func(str(filepath))
+                    velocity = vti_data['velocity']
+                    if velocity is not None and len(velocity.shape) == 4:
+                        # Velocity components statistics
+                        comp_stats = compute_velocity_component_statistics(velocity)
+                        stats_dict['u'] = comp_stats['u']
+                        stats_dict['v'] = comp_stats['v']
+                        stats_dict['w'] = comp_stats['w']
+                        
+                        # Velocity magnitude statistics
+                        mean, rms, skew, kurt = compute_velocity_magnitude_statistics(velocity)
+                        stats_dict['|u|'] = (mean, rms, skew, kurt)
+                except:
+                    pass
+        
+        if stats_dict:
+            display_statistics_table(stats_dict, title="Velocity Statistics")
+        else:
+            st.info("Statistics will be computed when files are loaded.")
+    
+    st.markdown("---")
     
     # Create side-by-side plots
     col1, col2 = st.columns(2)
@@ -422,8 +611,8 @@ def render_velocity_magnitude_tab(data_dir, load_velocity_file_func,
             )
             
             if capture_button_func:
-                capture_button_func(fig_pdf, title="Velocity PDF", source_page="Comparison")
-            
+                capture_button_func(fig_pdf, title="Velocity PDF", source_page="PDFs")
+    
             if export_panel_func:
                 export_panel_func(fig_pdf, data_dir, "velocity_pdf")
     
@@ -440,9 +629,9 @@ def render_velocity_magnitude_tab(data_dir, load_velocity_file_func,
             ps_mag = get_plot_style_func(plot_name_mag) if get_plot_style_func else {}
             colors_mag = get_palette_func(ps_mag) if get_palette_func else ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
             line_width = ps_mag.get("line_width", 2.4) if ps_mag else 2.0
-            
+    
             fig_mag = go.Figure()
-            
+    
             for idx, (filename, (u_mag_grid, pdf_u_mag)) in enumerate(mag_data.items()):
                 if len(u_mag_grid) == 0:
                     continue
@@ -508,7 +697,7 @@ def render_velocity_magnitude_tab(data_dir, load_velocity_file_func,
             )
             
             if capture_button_func:
-                capture_button_func(fig_mag, title="Velocity Magnitude PDF", source_page="Comparison")
+                capture_button_func(fig_mag, title="Velocity Magnitude PDF", source_page="PDFs")
             
             if export_panel_func:
                 export_panel_func(fig_mag, data_dir, "velocity_magnitude_pdf")

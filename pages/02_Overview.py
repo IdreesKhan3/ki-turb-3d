@@ -56,10 +56,19 @@ def main():
     all_simulations_data = []
     
     for data_dir_path in data_dirs:
-        data_dir = Path(data_dir_path)
+        # Resolve path to ensure it works regardless of how it was stored
+        try:
+            data_dir = Path(data_dir_path).resolve()
+            if not data_dir.exists() or not data_dir.is_dir():
+                st.warning(f"Directory not found or invalid: {data_dir_path}")
+                continue
+        except Exception as e:
+            st.warning(f"Error processing directory {data_dir_path}: {str(e)}")
+            continue
+        
         dir_name = data_dir.name if len(data_dirs) > 1 else "Simulation"
     
-        # Detect available files
+        # Detect available files - each directory is processed independently
         files = detect_simulation_files(str(data_dir))
     
         # Collect data for this simulation
@@ -264,30 +273,30 @@ def main():
             compressibility = sim['compressibility']
             
             col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if mach_number is not None:
-                # Mach number traffic light logic
-                if mach_number > 0.1:
-                    status_color = "🔴"
-                    status_text = "**Invalid:** Ma > 0.1"
-                    status_msg = "Compressibility effects are significant. LBM weakly compressible approximation may be invalid."
-                elif mach_number > 0.05:
-                    status_color = "🟡"
-                    status_text = "**Warning:** 0.05 < Ma < 0.1"
-                    status_msg = "Approaching compressibility limit. Monitor for compressibility artifacts."
-                else:
-                    status_color = "🟢"
-                    status_text = "**Valid:** Ma < 0.1"
-                    status_msg = "Incompressible flow regime. Navier-Stokes approximation is valid."
-                
-                st.metric(
-                    "Mach Number", 
-                    f"{mach_number:.4f}",
-                    delta=None
-                )
-                st.markdown(f"{status_color} {status_text}")
-                st.caption(status_msg)
+            
+            with col1:
+                if mach_number is not None:
+                    # Mach number traffic light logic
+                    if mach_number > 0.1:
+                        status_color = "🔴"
+                        status_text = "**Invalid:** Ma > 0.1"
+                        status_msg = "Compressibility effects are significant. LBM weakly compressible approximation may be invalid."
+                    elif mach_number > 0.05:
+                        status_color = "🟡"
+                        status_text = "**Warning:** 0.05 < Ma < 0.1"
+                        status_msg = "Approaching compressibility limit. Monitor for compressibility artifacts."
+                    else:
+                        status_color = "🟢"
+                        status_text = "**Valid:** Ma < 0.1"
+                        status_msg = "Incompressible flow regime. Navier-Stokes approximation is valid."
+                    
+                    st.metric(
+                        "Mach Number", 
+                        f"{mach_number:.4f}",
+                        delta=None
+                    )
+                    st.markdown(f"{status_color} {status_text}")
+                    st.caption(status_msg)
             
             with col2:
                 if knudsen_number is not None:

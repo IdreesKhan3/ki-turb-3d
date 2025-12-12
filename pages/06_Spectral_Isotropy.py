@@ -661,11 +661,18 @@ def main():
     inject_theme_css()
     st.title("📈 Isotropy Validation — Spectral")
 
-    data_dir = st.session_state.get("data_directory", None)
-    if not data_dir:
+    # Get data directories from session state (support multiple directories)
+    data_dirs = st.session_state.get("data_directories", [])
+    if not data_dirs and st.session_state.get("data_directory"):
+        # Fallback to single directory for backward compatibility
+        data_dirs = [st.session_state.data_directory]
+    
+    if not data_dirs:
         st.warning("Please select a data directory from the Overview page.")
         return
-    data_dir = Path(data_dir)
+    
+    # Use first directory for metadata storage
+    data_dir = Path(data_dirs[0]).resolve()
 
     # Default values (using Unicode/HTML instead of LaTeX for Streamlit compatibility)
     default_legends = {
@@ -714,15 +721,28 @@ def main():
             st.session_state.plot_styles = {}
         st.session_state["_last_speciso_dir"] = str(data_dir)
 
-    # Find isotropy files
-    files = detect_simulation_files(str(data_dir))
-    ic_files = files.get("isotropy_coeff", [])
-    if not ic_files:
-        ic_files = glob.glob(str(data_dir / "isotropy_coeff_*.dat"))
-    ic_files = sorted(ic_files, key=natural_sort_key)
+    # Find isotropy files from ALL directories independently
+    all_ic_files = []
+    for data_dir_path in data_dirs:
+        # Resolve path to ensure it works regardless of how it was stored
+        try:
+            dir_path = Path(data_dir_path).resolve()
+            if dir_path.exists() and dir_path.is_dir():
+                # Process each directory independently
+                files = detect_simulation_files(str(dir_path))
+                # file_detector uses "isotropy" key for isotropy_coeff_*.dat files
+                dir_ic_files = files.get("isotropy", [])
+                if not dir_ic_files:
+                    # Fallback to direct glob search
+                    dir_ic_files = glob.glob(str(dir_path / "isotropy_coeff_*.dat"))
+                all_ic_files.extend([str(f) for f in dir_ic_files])
+        except Exception:
+            continue  # Skip invalid directories
+    
+    ic_files = sorted(all_ic_files, key=natural_sort_key)
 
     if not ic_files:
-        st.info("No isotropy_coeff_*.dat files found.")
+        st.info("No isotropy_coeff_*.dat files found in any of the selected directories.")
         return
 
     # Sidebar legends + axis labels persistence

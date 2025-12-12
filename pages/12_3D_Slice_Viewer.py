@@ -157,33 +157,51 @@ def main():
         st.warning("Please select a data directory from the main page.")
         return
     
-    data_dir = Path(data_dirs[0])
+    # Process ALL directories independently - collect files from all
+    all_vti_files = []
+    all_hdf5_files = []
     
-    # Find all available file types (case-insensitive)
-    vti_files = sorted(
-        glob.glob(str(data_dir / "*.vti")) + 
-        glob.glob(str(data_dir / "*.VTI")),
-        key=natural_sort_key
-    )
-    hdf5_files = sorted(
-        glob.glob(str(data_dir / "*.h5")) + 
-        glob.glob(str(data_dir / "*.H5")) +
-        glob.glob(str(data_dir / "*.hdf5")) + 
-        glob.glob(str(data_dir / "*.HDF5")),
-        key=natural_sort_key
-    )
+    for data_dir_path in data_dirs:
+        # Resolve path to ensure it works regardless of how it was stored
+        try:
+            data_dir = Path(data_dir_path).resolve()
+            if data_dir.exists() and data_dir.is_dir():
+                # Collect files from THIS directory independently
+                dir_vti = sorted(
+                    glob.glob(str(data_dir / "*.vti")) + 
+                    glob.glob(str(data_dir / "*.VTI")),
+                    key=natural_sort_key
+                )
+                dir_hdf5 = sorted(
+                    glob.glob(str(data_dir / "*.h5")) + 
+                    glob.glob(str(data_dir / "*.H5")) +
+                    glob.glob(str(data_dir / "*.hdf5")) + 
+                    glob.glob(str(data_dir / "*.HDF5")),
+                    key=natural_sort_key
+                )
+                all_vti_files.extend(dir_vti)
+                all_hdf5_files.extend(dir_hdf5)
+        except Exception:
+            continue  # Skip invalid directories
+    
+    # Use first directory for metadata storage
+    data_dir = Path(data_dirs[0]).resolve()
     
     # File type selector (like ParaView, VisIt, etc.)
     st.sidebar.header("📁 File Selection")
     
-    # Determine available file types
-    has_vti = len(vti_files) > 0
-    has_hdf5 = len(hdf5_files) > 0
+    # Determine available file types from ALL directories
+    has_vti = len(all_vti_files) > 0
+    has_hdf5 = len(all_hdf5_files) > 0
     
     if not has_vti and not has_hdf5:
-        st.error("No 3D velocity files found in the selected directory.")
+        st.error("No 3D velocity files found in any of the selected directories.")
         st.info("Expected files: `*.vti`, `*.h5`, or `*.hdf5` (e.g., `velocity_50000.vti` or `velocity_50000.h5`)")
         return
+    
+    # Use combined file lists
+    vti_files = all_vti_files
+    hdf5_files = all_hdf5_files
     
     # File type selector
     file_type_options = []

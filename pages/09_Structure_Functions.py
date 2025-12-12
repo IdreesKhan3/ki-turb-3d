@@ -721,13 +721,18 @@ def main():
     all_txt_files = []
     
     for data_dir_path in data_dirs:
-        data_dir_obj = Path(data_dir_path)
-        if data_dir_obj.exists():
-            files_dict = detect_simulation_files(str(data_dir_obj))
-            dir_bin = files_dict.get("structure_functions_bin", [])
-            dir_txt = files_dict.get("structure_functions_txt", [])
-            all_bin_files.extend([str(f) for f in dir_bin])
-            all_txt_files.extend([str(f) for f in dir_txt])
+        # Resolve path to ensure it works regardless of how it was stored
+        try:
+            data_dir_obj = Path(data_dir_path).resolve()
+            if data_dir_obj.exists() and data_dir_obj.is_dir():
+                # Process each directory independently
+                files_dict = detect_simulation_files(str(data_dir_obj))
+                dir_bin = files_dict.get("structure_functions_bin", [])
+                dir_txt = files_dict.get("structure_functions_txt", [])
+                all_bin_files.extend([str(f) for f in dir_bin])
+                all_txt_files.extend([str(f) for f in dir_txt])
+        except Exception:
+            continue  # Skip invalid directories
     
     if not all_bin_files and not all_txt_files:
         st.info("No structure function files found. Expected `structure_funcs*_t*.bin` or `structure_functions*_t*.txt`.")
@@ -874,7 +879,7 @@ def main():
     )
     show_std_band = error_display in ["Shaded band", "Both"]
     show_error_bars = error_display in ["Error bars", "Both"]
-    show_sl_theory = st.sidebar.checkbox("Show She–Leveque anomalies", value=True)
+    show_sl_theory = st.sidebar.checkbox("Show She-Leveque anomalies", value=True)
     show_exp_anom = st.sidebar.checkbox("Show experimental anomalies (B93)", value=True)
 
     st.sidebar.subheader("Fit range for ESS exponents")

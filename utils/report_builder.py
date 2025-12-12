@@ -16,6 +16,14 @@ import re
 import html
 
 try:
+    import matplotlib
+    matplotlib.use('Agg')  # Non-interactive backend
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
+
+try:
     import markdown
     HAS_MARKDOWN = True
 except ImportError:
@@ -92,6 +100,163 @@ def _convert_plotly_to_image_base64(fig: go.Figure) -> str:
                     pass
             # Last resort: return empty string
             return ""
+
+
+def _render_latex_to_image(latex_str: str, fontsize: int = 18, is_display: bool = False) -> str:
+    """
+    Renders LaTeX to a base64 PNG.
+    - Generates larger, bolder images.
+    - Removes strict height caps on display math.
+    - Slightly increases inline math size for readability.
+    
+    Args:
+        latex_str: LaTeX string (with or without $ delimiters)
+        fontsize: Font size for rendering (18+ ensures glyph strokes aren't too thin)
+        is_display: Whether this is a display equation (centered, larger) or inline
+        
+    Returns:
+        HTML img tag with base64-encoded image, or original string on error
+    """
+    if not HAS_MATPLOTLIB:
+        return latex_str
+    
+    try:
+        # Clean and prepare LaTeX string
+        clean_latex = latex_str.strip()
+        
+        # Remove $ delimiters if present (we'll add them back for matplotlib)
+        if clean_latex.startswith('$') and clean_latex.endswith('$'):
+            clean_latex = clean_latex[1:-1].strip()
+        elif clean_latex.startswith('$$') and clean_latex.endswith('$$'):
+            clean_latex = clean_latex[2:-2].strip()
+            is_display = True
+        
+        # Handle aligned environments - matplotlib can't render these directly
+        # Convert to simpler format or split into multiple equations
+        if '\\begin{aligned}' in clean_latex or '\\begin{align}' in clean_latex:
+            # Extract content between begin/end
+            match = re.search(r'\\begin\{aligned\}(.*?)\\end\{aligned\}', clean_latex, re.DOTALL)
+            if not match:
+                match = re.search(r'\\begin\{align\}(.*?)\\end\{align\}', clean_latex, re.DOTALL)
+            if match:
+                # Split by \\ and render each line separately
+                lines = [line.strip() for line in match.group(1).split('\\\\') if line.strip()]
+                rendered_lines = []
+                for line in lines:
+                    # Remove alignment markers like &=
+                    line_clean = re.sub(r'&+\s*=', '=', line)
+                    line_clean = re.sub(r'&+', '', line_clean)
+                    if line_clean:
+                        rendered_lines.append(_render_latex_to_image(line_clean, fontsize, is_display))
+                # Return as block of images
+                return '<div style="text-align: center; margin: 10px 0;">' + '<br/>'.join(rendered_lines) + '</div>'
+        
+        # Configure matplotlib for LaTeX rendering
+        plt.rcParams['text.usetex'] = False  # Use matplotlib's built-in math renderer
+        plt.rcParams['mathtext.fontset'] = 'cm'  # Computer Modern font
+        
+        # Create a tiny figure (we'll crop to tight bounding box)
+        fig = plt.figure(figsize=(0.1, 0.1))
+        fig.patch.set_facecolor('white')
+        fig.patch.set_alpha(0.0)  # Transparent background
+        
+        # Add math delimiters if missing
+        if not clean_latex.startswith('$'):
+            clean_latex = f"${clean_latex}$"
+        
+        # Render text
+        # We use a larger fontsize (18+) to ensure the glyph strokes aren't too thin
+        text = fig.text(0, 0, clean_latex, fontsize=fontsize)
+        
+        # Draw to get bounding box
+        fig.canvas.draw()
+        
+        # Calculate tight bounding box
+        bbox = text.get_window_extent()
+        extent = bbox.transformed(fig.dpi_scale_trans.inverted())
+        
+        # Save to buffer
+        buf = io.BytesIO()
+        # pad_inches=0 is CRITICAL to ensure the image is 100% math, no whitespace
+        fig.savefig(buf, format='png', dpi=200, 
+                    bbox_inches=extent, 
+                    pad_inches=0.0,
+                    facecolor='white',
+                    edgecolor='none',
+                    transparent=True)
+        plt.close(fig)
+        
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        
+        # === CSS SIZING LOGIC (UPDATED) ===
+        if is_display:
+            # Display math:
+            # Larger than inline (2.2em) for better readability
+            style = (
+                "display: block; "
+                "margin: 12px auto; "
+                "max-width: 90%; "
+                "height: auto; "
+                "max-height: 2.2em; "
+                "width: auto; "
+            )
+            # Wrap in div for alignment
+            return f'<div style="text-align: center;"><img src="data:image/png;base64,{img_base64}" style="{style}" /></div>'
+        else:
+            # Inline math:
+            # 1. Height 1.45em (bigger than text to fit subscripts)
+            # 2. Vertical align drops it slightly so it centers with lowercase letters
+            style = (
+                "height: 1.45em; "
+                "width: auto; "
+                "vertical-align: -0.35em; "
+                "display: inline-block; "
+                "margin: 0 2px;"
+            )
+            return f'<img src="data:image/png;base64,{img_base64}" style="{style}" />'
+        
+    except Exception as e:
+        # Fallback to raw text on error
+        plt.close('all')
+        return latex_str
+
+
+def _process_text_for_pdf(text: str) -> str:
+    """
+    Finds LaTeX patterns and replaces them with rendered images.
+    Distinguishes between Display ($$) and Inline ($) math.
+    
+    Args:
+        text: Text content that may contain LaTeX equations
+        
+    Returns:
+        Text with LaTeX replaced by image tags
+    """
+    if not text or not HAS_MATPLOTLIB:
+        return text
+    
+    # 1. Replace Display Math: $$ ... $$ 
+    # Passed is_display=True
+    # Use larger fontsize (18+) for better stroke thickness
+    def replace_display(match):
+        return _render_latex_to_image(match.group(1), fontsize=18, is_display=True)
+        
+    text = re.sub(r'\$\$([^\$]+)\$\$', replace_display, text, flags=re.DOTALL)
+    
+    # 2. Replace LaTeX brackets \[ ... \] (Also Display)
+    text = re.sub(r'\\\[(.*?)\\\]', replace_display, text, flags=re.DOTALL)
+
+    # 3. Replace Inline Math: $ ... $
+    # Passed is_display=False
+    # Use larger fontsize (18) for better stroke thickness, CSS will scale it down
+    def replace_inline(match):
+        return _render_latex_to_image(match.group(1), fontsize=18, is_display=False)
+
+    # Negative lookbehind/lookahead ensures we don't capture $$ as two single $
+    text = re.sub(r'(?<!\$)\$([^\$]+)\$(?!\$)', replace_inline, text)
+    
+    return text
 
 
 def generate_html_report(
@@ -249,14 +414,22 @@ def generate_html_report(
                     html_parts.append(f'<div class="caption">Table {i}. {caption}</div>')
         
         elif section_type == "text":
+            # Process content
+            processed_content = content if content else ""
+            
+            # If generating PDF, pre-render LaTeX to images
+            # This must happen BEFORE markdown conversion
+            if for_pdf:
+                processed_content = _process_text_for_pdf(processed_content)
+            
             # Text content (supports markdown and LaTeX)
             if HAS_MARKDOWN:
                 # Convert markdown to HTML
                 md = markdown.Markdown(extensions=['extra', 'codehilite'])
-                html_content = md.convert(content)
+                html_content = md.convert(processed_content)
             else:
                 # Basic markdown-like conversion
-                html_content = _simple_markdown_to_html(content)
+                html_content = _simple_markdown_to_html(processed_content)
             html_parts.append(f'<div class="text-content">{html_content}</div>')
         
         elif section_type == "image" and isinstance(content, (str, Path)):

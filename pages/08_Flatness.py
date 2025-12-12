@@ -641,11 +641,16 @@ def main():
     # Detect flatness files from all directories
     all_flatness_files = []
     for data_dir_path in data_dirs:
-        data_dir_obj = Path(data_dir_path)
-        if data_dir_obj.exists():
-            files_dict = detect_simulation_files(str(data_dir_obj))
-            dir_flatness = files_dict.get("flatness", [])
-            all_flatness_files.extend(dir_flatness)
+        # Resolve path to ensure it works regardless of how it was stored
+        try:
+            data_dir_obj = Path(data_dir_path).resolve()
+            if data_dir_obj.exists() and data_dir_obj.is_dir():
+                # Process each directory independently
+                files_dict = detect_simulation_files(str(data_dir_obj))
+                dir_flatness = files_dict.get("flatness", [])
+                all_flatness_files.extend(dir_flatness)
+        except Exception:
+            continue  # Skip invalid directories
     
     if not all_flatness_files:
         st.info("No flatness files found. Expected format: `flatness_data*_*.txt`")

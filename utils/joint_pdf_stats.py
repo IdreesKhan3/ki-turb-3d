@@ -346,7 +346,7 @@ def compute_discriminant_line(r_values):
     return q_values
 
 
-def render_joint_pdf_tab(data_dir, load_velocity_file_func,
+def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                           get_plot_style_func=None, apply_plot_style_func=None,
                           get_palette_func=None, resolve_line_style_func=None,
                           export_panel_func=None, capture_button_func=None):
@@ -354,7 +354,7 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
     Render the Joint PDFs tab content
     
     Args:
-        data_dir: Path to data directory
+        data_dir_or_dirs: Path to data directory (Path) or list of directories (list of Path/str)
         load_velocity_file_func: Function to load velocity files (takes filepath)
         get_plot_style_func: Optional function to get plot style (plot_name) -> style_dict
         apply_plot_style_func: Optional function to apply plot style (fig, style_dict) -> fig
@@ -364,26 +364,42 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
         capture_button_func: Optional function to add capture button (fig, title, source_page)
     """
     import glob
+    from pathlib import Path
     from utils.file_detector import natural_sort_key
     
     st.header("Joint Probability Density Functions")
     st.markdown("Compare joint PDFs of turbulence quantities across different simulations/methods.")
     
-    # Find velocity files
-    vti_files = sorted(
-        glob.glob(str(data_dir / "*.vti")) + 
-        glob.glob(str(data_dir / "*.VTI")),
-        key=natural_sort_key
-    )
-    hdf5_files = sorted(
-        glob.glob(str(data_dir / "*.h5")) + 
-        glob.glob(str(data_dir / "*.H5")) +
-        glob.glob(str(data_dir / "*.hdf5")) + 
-        glob.glob(str(data_dir / "*.HDF5")),
-        key=natural_sort_key
-    )
+    # Handle both single directory and multiple directories
+    if isinstance(data_dir_or_dirs, (list, tuple)):
+        data_dirs = [Path(d).resolve() for d in data_dir_or_dirs]
+        data_dir = data_dirs[0]  # Use first for metadata
+    else:
+        data_dirs = [Path(data_dir_or_dirs).resolve()]
+        data_dir = data_dirs[0]
     
-    all_files = vti_files + hdf5_files
+    # Find velocity files from ALL directories independently
+    all_vti_files = []
+    all_hdf5_files = []
+    
+    for dir_path in data_dirs:
+        if dir_path.exists() and dir_path.is_dir():
+            dir_vti = sorted(
+                glob.glob(str(dir_path / "*.vti")) + 
+                glob.glob(str(dir_path / "*.VTI")),
+                key=natural_sort_key
+            )
+            dir_hdf5 = sorted(
+                glob.glob(str(dir_path / "*.h5")) + 
+                glob.glob(str(dir_path / "*.H5")) +
+                glob.glob(str(dir_path / "*.hdf5")) + 
+                glob.glob(str(dir_path / "*.HDF5")),
+                key=natural_sort_key
+            )
+            all_vti_files.extend(dir_vti)
+            all_hdf5_files.extend(dir_hdf5)
+    
+    all_files = all_vti_files + all_hdf5_files
     
     # Physical parameters (show first, always visible)
     st.sidebar.header("⚙️ Physical Parameters")
@@ -428,6 +444,9 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
     if not all_files:
         st.error("No velocity files found. Expected: `*.vti`, `*.h5`, or `*.hdf5`")
         return
+    
+    # Create mapping from filename to full path (handle files from different directories)
+    filename_to_path = {Path(f).name: f for f in all_files}
     
     # File selection
     st.sidebar.header("📁 File Selection")
@@ -501,7 +520,11 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
     # Load data for Velocity-Dissipation joint PDF
     if selected_files_ud:
         for filename in selected_files_ud:
-            filepath = data_dir / filename
+            # Use full path from mapping (handles files from different directories)
+            filepath = filename_to_path.get(filename)
+            if not filepath:
+                st.warning(f"File not found: {filename}")
+                continue
             try:
                 with st.spinner(f"Loading {filename} for P(|u|, ε)..."):
                     vti_data = load_velocity_file_func(str(filepath))
@@ -537,7 +560,11 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
     # Load data for Velocity-Enstrophy joint PDF
     if selected_files_uo:
         for filename in selected_files_uo:
-            filepath = data_dir / filename
+            # Use full path from mapping (handles files from different directories)
+            filepath = filename_to_path.get(filename)
+            if not filepath:
+                st.warning(f"File not found: {filename}")
+                continue
             try:
                 with st.spinner(f"Loading {filename} for P(|u|, |ω|)..."):
                     vti_data = load_velocity_file_func(str(filepath))
@@ -559,7 +586,11 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
     # Load data for Dissipation-Enstrophy joint PDF
     if selected_files_do:
         for filename in selected_files_do:
-            filepath = data_dir / filename
+            # Use full path from mapping (handles files from different directories)
+            filepath = filename_to_path.get(filename)
+            if not filepath:
+                st.warning(f"File not found: {filename}")
+                continue
             try:
                 with st.spinner(f"Loading {filename} for P(ε, |ω|)..."):
                     vti_data = load_velocity_file_func(str(filepath))
@@ -573,7 +604,7 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
                     metadata = vti_data.get('metadata', {})
                     file_nu = metadata.get('nu', metadata.get('viscosity', None))
                     if file_nu is None:
-                        # Try parameter file
+                        # Try parameter file from first directory
                         if param_file.exists():
                             try:
                                 params = read_parameters(str(param_file))
@@ -595,7 +626,11 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
     # Load data for R-Q plot
     if selected_files_rq:
         for filename in selected_files_rq:
-            filepath = data_dir / filename
+            # Use full path from mapping (handles files from different directories)
+            filepath = filename_to_path.get(filename)
+            if not filepath:
+                st.warning(f"File not found: {filename}")
+                continue
             try:
                 with st.spinner(f"Loading {filename} for R-Q..."):
                     vti_data = load_velocity_file_func(str(filepath))
@@ -700,7 +735,7 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
             )
             
             if capture_button_func:
-                capture_button_func(fig_ud, title="P(|u|, ε)", source_page="Comparison")
+                capture_button_func(fig_ud, title="P(|u|, ε)", source_page="PDFs")
             
             if export_panel_func:
                 export_panel_func(fig_ud, data_dir, "velocity_dissipation_joint_pdf")
@@ -782,7 +817,7 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
             )
             
             if capture_button_func:
-                capture_button_func(fig_uo, title="P(|u|, |ω|)", source_page="Comparison")
+                capture_button_func(fig_uo, title="P(|u|, |ω|)", source_page="PDFs")
             
             if export_panel_func:
                 export_panel_func(fig_uo, data_dir, "velocity_enstrophy_joint_pdf")
@@ -831,11 +866,11 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
                     hovertemplate=f"ε = %{{x:.4e}}<br>|ω| = %{{y:.4f}}<br>{z_label} = %{{z:.2f}}<extra>{label}</extra>"
                 ))
             
-            x_label_do = "ε / ⟨ε⟩" if normalize_pdf else "ε"
-            y_label_do = "|ω| / σ<sub>|ω|</sub>" if normalize_pdf else "|ω|"
-            layout_kwargs_do = dict(
-                xaxis_title=x_label_do,
-                yaxis_title=y_label_do,
+                x_label_do = "ε / ⟨ε⟩" if normalize_pdf else "ε"
+                y_label_do = "|ω| / σ<sub>|ω|</sub>" if normalize_pdf else "|ω|"
+                layout_kwargs_do = dict(
+                    xaxis_title=x_label_do,
+                    yaxis_title=y_label_do,
                 height=ps_do.get("figure_height", 500) if ps_do else 500,
                 hovermode='closest',
                 legend=dict(x=1.02, y=1)
@@ -869,7 +904,7 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
             )
             
             if capture_button_func:
-                capture_button_func(fig_do, title="P(ε, |ω|)", source_page="Comparison")
+                capture_button_func(fig_do, title="P(ε, |ω|)", source_page="PDFs")
             
             if export_panel_func:
                 export_panel_func(fig_do, data_dir, "dissipation_enstrophy_joint_pdf")
@@ -983,7 +1018,7 @@ def render_joint_pdf_tab(data_dir, load_velocity_file_func,
             )
             
             if capture_button_func:
-                capture_button_func(fig_rq, title="R-Q Topological Space", source_page="Comparison")
+                capture_button_func(fig_rq, title="R-Q Topological Space", source_page="PDFs")
             
             if export_panel_func:
                 export_panel_func(fig_rq, data_dir, "rq_topological_space")

@@ -1,5 +1,5 @@
 """
-Multi-Simulation Comparison Page
+PDFs Page - Probability Density Functions for Multi-Simulation Analysis
 """
 
 import streamlit as st
@@ -17,7 +17,7 @@ from utils.velocity_magnitude_stats import render_velocity_magnitude_tab
 from utils.dissipation_stats import render_dissipation_tab
 from utils.joint_pdf_stats import render_joint_pdf_tab
 from utils.plot_style import resolve_line_style, apply_axis_limits, apply_figure_size
-from utils.comparison_plot_style import (
+from utils.pdfs_plot_style import (
     _load_ui_metadata, _save_ui_metadata, get_plot_style, apply_plot_style,
     _get_palette, plot_style_sidebar, export_panel
 )
@@ -61,7 +61,7 @@ def _load_velocity_file(filepath: str):
 # -----------------------------
 def main():
     inject_theme_css()
-    st.title("🔀 Multi-Simulation Comparison")
+    st.title("📊 PDFs")
     
     # Get data directories
     data_dirs = st.session_state.get("data_directories", [])
@@ -72,7 +72,38 @@ def main():
         st.warning("Please select a data directory from the main page.")
         return
     
-    data_dir = Path(data_dirs[0])
+    # Process ALL directories independently - collect files from all
+    import glob
+    from utils.file_detector import natural_sort_key
+    
+    all_vti_files = []
+    all_hdf5_files = []
+    
+    for data_dir_path in data_dirs:
+        # Resolve path to ensure it works regardless of how it was stored
+        try:
+            data_dir = Path(data_dir_path).resolve()
+            if data_dir.exists() and data_dir.is_dir():
+                # Collect files from THIS directory independently
+                dir_vti = sorted(
+                    glob.glob(str(data_dir / "*.vti")) + 
+                    glob.glob(str(data_dir / "*.VTI")),
+                    key=natural_sort_key
+                )
+                dir_hdf5 = sorted(
+                    glob.glob(str(data_dir / "*.h5")) + 
+                    glob.glob(str(data_dir / "*.H5")) +
+                    glob.glob(str(data_dir / "*.hdf5")) + 
+                    glob.glob(str(data_dir / "*.HDF5")),
+                    key=natural_sort_key
+                )
+                all_vti_files.extend(dir_vti)
+                all_hdf5_files.extend(dir_hdf5)
+        except Exception:
+            continue  # Skip invalid directories
+    
+    # Use first directory for metadata storage
+    data_dir = Path(data_dirs[0]).resolve()
     
     # Initialize plot styles
     st.session_state.setdefault("plot_styles", {})
@@ -84,22 +115,8 @@ def main():
             st.session_state.plot_styles = {}
         st.session_state["_last_comparison_dir"] = str(data_dir)
     
-    # Get all files for sidebar
-    import glob
-    from utils.file_detector import natural_sort_key
-    vti_files = sorted(
-        glob.glob(str(data_dir / "*.vti")) + 
-        glob.glob(str(data_dir / "*.VTI")),
-        key=natural_sort_key
-    )
-    hdf5_files = sorted(
-        glob.glob(str(data_dir / "*.h5")) + 
-        glob.glob(str(data_dir / "*.H5")) +
-        glob.glob(str(data_dir / "*.hdf5")) + 
-        glob.glob(str(data_dir / "*.HDF5")),
-        key=natural_sort_key
-    )
-    all_files = [Path(f).name for f in vti_files + hdf5_files]
+    # Combine all files from all directories
+    all_files = [Path(f).name for f in all_vti_files + all_hdf5_files]
     
     # Plot style sidebar
     plot_names = ["Velocity PDF", "R-Q Topological Space", "Vorticity PDF", "Enstrophy PDF", "Velocity Magnitude PDF", "Dissipation PDF", "Velocity-Dissipation Joint PDF", "Velocity-Enstrophy Joint PDF", "Dissipation-Enstrophy Joint PDF"]
@@ -119,7 +136,7 @@ def main():
     # ============================================
     with tabs[0]:
         render_vorticity_stats_tab(
-            data_dir, 
+            data_dirs,  # Pass all directories
             _load_velocity_file,
             get_plot_style_func=get_plot_style,
             apply_plot_style_func=apply_plot_style,
@@ -134,7 +151,7 @@ def main():
     # ============================================
     with tabs[1]:
         render_velocity_magnitude_tab(
-            data_dir, 
+            data_dirs,  # Pass all directories
             _load_velocity_file,
             get_plot_style_func=get_plot_style,
             apply_plot_style_func=apply_plot_style,
@@ -149,7 +166,7 @@ def main():
     # ============================================
     with tabs[2]:
         render_dissipation_tab(
-            data_dir, 
+            data_dirs,  # Pass all directories
             _load_velocity_file,
             get_plot_style_func=get_plot_style,
             apply_plot_style_func=apply_plot_style,
@@ -164,7 +181,7 @@ def main():
     # ============================================
     with tabs[3]:
         render_joint_pdf_tab(
-            data_dir, 
+            data_dirs,  # Pass all directories
             _load_velocity_file,
             get_plot_style_func=get_plot_style,
             apply_plot_style_func=apply_plot_style,

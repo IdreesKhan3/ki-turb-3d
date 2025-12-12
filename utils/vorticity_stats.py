@@ -80,6 +80,35 @@ def compute_vorticity_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=1.0, normalize=
     return omega_grid, pdf_omega
 
 
+def compute_vorticity_statistics(velocity, dx=1.0, dy=1.0, dz=1.0):
+    """
+    Compute statistical moments (mean, RMS, skewness, kurtosis) for vorticity magnitude.
+    
+    Returns:
+        mean, rms, skewness, kurtosis (floats)
+    """
+    from utils.iso_surfaces import compute_vorticity_vector
+    from utils.velocity_magnitude_stats import compute_skewness_kurtosis
+    
+    # Compute vorticity vector
+    vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
+    
+    # Compute magnitude: |ω| = √(ωx² + ωy² + ωz²)
+    omega_mag = np.sqrt(
+        vorticity[:, :, :, 0]**2 + 
+        vorticity[:, :, :, 1]**2 + 
+        vorticity[:, :, :, 2]**2
+    )
+    
+    # Flatten
+    omega_flat = omega_mag.flatten()
+    
+    # Compute statistics
+    mean, rms, skewness, kurtosis = compute_skewness_kurtosis(omega_flat)
+    
+    return mean, rms, skewness, kurtosis
+
+
 def compute_enstrophy_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=1.0, normalize=False):
     """
     Compute smooth Probability Density Function for enstrophy Ω = |ω|²
@@ -148,7 +177,36 @@ def compute_enstrophy_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=1.0, normalize=
     return enstrophy_grid, pdf_enstrophy
 
 
-def render_vorticity_stats_tab(data_dir, load_velocity_file_func,
+def compute_enstrophy_statistics(velocity, dx=1.0, dy=1.0, dz=1.0):
+    """
+    Compute statistical moments (mean, RMS, skewness, kurtosis) for enstrophy.
+    
+    Returns:
+        mean, rms, skewness, kurtosis (floats)
+    """
+    from utils.iso_surfaces import compute_vorticity_vector
+    from utils.velocity_magnitude_stats import compute_skewness_kurtosis
+    
+    # Compute vorticity vector
+    vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
+    
+    # Compute enstrophy: Ω = |ω|² = ωx² + ωy² + ωz²
+    enstrophy = (
+        vorticity[:, :, :, 0]**2 + 
+        vorticity[:, :, :, 1]**2 + 
+        vorticity[:, :, :, 2]**2
+    )
+    
+    # Flatten
+    enstrophy_flat = enstrophy.flatten()
+    
+    # Compute statistics
+    mean, rms, skewness, kurtosis = compute_skewness_kurtosis(enstrophy_flat)
+    
+    return mean, rms, skewness, kurtosis
+
+
+def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
                                get_plot_style_func=None, apply_plot_style_func=None,
                                get_palette_func=None, resolve_line_style_func=None,
                                export_panel_func=None, capture_button_func=None):
@@ -156,7 +214,7 @@ def render_vorticity_stats_tab(data_dir, load_velocity_file_func,
     Render the Vorticity & Enstrophy PDFs tab content
     
     Args:
-        data_dir: Path to data directory
+        data_dir_or_dirs: Path to data directory (Path) or list of directories (list of Path/str)
         load_velocity_file_func: Function to load velocity files (takes filepath)
         get_plot_style_func: Optional function to get plot style (plot_name) -> style_dict
         apply_plot_style_func: Optional function to apply plot style (fig, style_dict) -> fig
@@ -166,30 +224,49 @@ def render_vorticity_stats_tab(data_dir, load_velocity_file_func,
         capture_button_func: Optional function to add capture button (fig, title, source_page)
     """
     import glob
+    from pathlib import Path
     from utils.file_detector import natural_sort_key
     
     st.header("Vorticity & Enstrophy PDFs")
     st.markdown("Compare vorticity magnitude and enstrophy PDFs across different simulations/methods.")
     
-    # Find velocity files
-    vti_files = sorted(
-        glob.glob(str(data_dir / "*.vti")) + 
-        glob.glob(str(data_dir / "*.VTI")),
-        key=natural_sort_key
-    )
-    hdf5_files = sorted(
-        glob.glob(str(data_dir / "*.h5")) + 
-        glob.glob(str(data_dir / "*.H5")) +
-        glob.glob(str(data_dir / "*.hdf5")) + 
-        glob.glob(str(data_dir / "*.HDF5")),
-        key=natural_sort_key
-    )
+    # Handle both single directory and multiple directories
+    if isinstance(data_dir_or_dirs, (list, tuple)):
+        data_dirs = [Path(d).resolve() for d in data_dir_or_dirs]
+        data_dir = data_dirs[0]  # Use first for metadata
+    else:
+        data_dirs = [Path(data_dir_or_dirs).resolve()]
+        data_dir = data_dirs[0]
     
-    all_files = vti_files + hdf5_files
+    # Find velocity files from ALL directories independently
+    all_vti_files = []
+    all_hdf5_files = []
+    
+    for dir_path in data_dirs:
+        if dir_path.exists() and dir_path.is_dir():
+            dir_vti = sorted(
+                glob.glob(str(dir_path / "*.vti")) + 
+                glob.glob(str(dir_path / "*.VTI")),
+                key=natural_sort_key
+            )
+            dir_hdf5 = sorted(
+                glob.glob(str(dir_path / "*.h5")) + 
+                glob.glob(str(dir_path / "*.H5")) +
+                glob.glob(str(dir_path / "*.hdf5")) + 
+                glob.glob(str(dir_path / "*.HDF5")),
+                key=natural_sort_key
+            )
+            all_vti_files.extend(dir_vti)
+            all_hdf5_files.extend(dir_hdf5)
+    
+    all_files = all_vti_files + all_hdf5_files
     
     if not all_files:
         st.error("No velocity files found. Expected: `*.vti`, `*.h5`, or `*.hdf5`")
         return
+    
+    # Create mapping from filename to full path (handle files from different directories)
+    filename_to_path = {Path(f).name: f for f in all_files}
     
     # File selection - independent for each plot
     st.sidebar.header("📁 File Selection")
@@ -233,7 +310,11 @@ def render_vorticity_stats_tab(data_dir, load_velocity_file_func,
     # Load data for Vorticity PDF plot
     if selected_files_vort:
         for filename in selected_files_vort:
-            filepath = data_dir / filename
+            # Use full path from mapping (handles files from different directories)
+            filepath = filename_to_path.get(filename)
+            if not filepath:
+                st.warning(f"File not found: {filename}")
+                continue
             try:
                 with st.spinner(f"Loading {filename} for Vorticity PDF..."):
                     vti_data = load_velocity_file_func(str(filepath))
@@ -254,7 +335,11 @@ def render_vorticity_stats_tab(data_dir, load_velocity_file_func,
     # Load data for Enstrophy PDF plot
     if selected_files_enst:
         for filename in selected_files_enst:
-            filepath = data_dir / filename
+            # Use full path from mapping (handles files from different directories)
+            filepath = filename_to_path.get(filename)
+            if not filepath:
+                st.warning(f"File not found: {filename}")
+                continue
             try:
                 with st.spinner(f"Loading {filename} for Enstrophy PDF..."):
                     vti_data = load_velocity_file_func(str(filepath))
@@ -275,6 +360,45 @@ def render_vorticity_stats_tab(data_dir, load_velocity_file_func,
     if not vort_data and not enst_data:
         st.error("No valid velocity data loaded.")
         return
+    
+    # ============================================
+    # Statistics Section
+    # ============================================
+    with st.expander("📈 Statistical Moments (Skewness & Kurtosis)", expanded=False):
+        from utils.velocity_magnitude_stats import display_statistics_table
+        
+        # Compute statistics from first available file
+        stats_dict = {}
+        if selected_files_vort:
+            first_file = selected_files_vort[0]
+            filepath = data_dir / first_file
+            try:
+                vti_data = load_velocity_file_func(str(filepath))
+                velocity = vti_data['velocity']
+                if velocity is not None and len(velocity.shape) == 4:
+                    mean, rms, skew, kurt = compute_vorticity_statistics(velocity, dx=1.0, dy=1.0, dz=1.0)
+                    stats_dict['vorticity'] = (mean, rms, skew, kurt)
+            except:
+                pass
+        
+        if selected_files_enst:
+            first_file = selected_files_enst[0]
+            filepath = data_dir / first_file
+            try:
+                vti_data = load_velocity_file_func(str(filepath))
+                velocity = vti_data['velocity']
+                if velocity is not None and len(velocity.shape) == 4:
+                    mean, rms, skew, kurt = compute_enstrophy_statistics(velocity, dx=1.0, dy=1.0, dz=1.0)
+                    stats_dict['enstrophy'] = (mean, rms, skew, kurt)
+            except:
+                pass
+        
+        if stats_dict:
+            display_statistics_table(stats_dict, title="Vorticity & Enstrophy Statistics")
+        else:
+            st.info("Statistics will be computed when files are loaded.")
+    
+    st.markdown("---")
     
     # Create side-by-side plots
     col1, col2 = st.columns(2)
@@ -360,7 +484,7 @@ def render_vorticity_stats_tab(data_dir, load_velocity_file_func,
             )
             
             if capture_button_func:
-                capture_button_func(fig_vort, title="Vorticity Magnitude PDF", source_page="Comparison")
+                capture_button_func(fig_vort, title="Vorticity Magnitude PDF", source_page="PDFs")
             
             if export_panel_func:
                 export_panel_func(fig_vort, data_dir, "vorticity_pdf")
@@ -446,7 +570,7 @@ def render_vorticity_stats_tab(data_dir, load_velocity_file_func,
             )
             
             if capture_button_func:
-                capture_button_func(fig_enst, title="Enstrophy PDF", source_page="Comparison")
+                capture_button_func(fig_enst, title="Enstrophy PDF", source_page="PDFs")
             
             if export_panel_func:
                 export_panel_func(fig_enst, data_dir, "enstrophy_pdf")
