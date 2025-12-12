@@ -1,5 +1,5 @@
 """
-Flatness Factors Page (Streamlit) — High Standard + Persistent UI Metadata + Full Styling
+Flatness Factors Page (Streamlit) — High Standard + Full Styling
 
 Features:
 - Time-averaged flatness with ±1σ band at log-spaced r positions
@@ -7,12 +7,8 @@ Features:
 - Time window selection
 - Robust to missing/empty files
 - Cached I/O + averaging for speed
-- Persistent dataset-local JSON: legend_names.json stores:
-    * flatness legends
-    * flatness axis labels
-    * plot_style (fonts/ticks/grids/backgrounds/palette/highlight/per-sim)
-- Full user controls:
-    * legends, axis labels (persistent)
+- Full user controls (in-memory session state):
+    * legends, axis labels
     * fonts, sizes, tick style, grids (major/minor), background colors, theme
     * palette / custom colors
     * per-simulation line style overrides (color/width/dash/marker)
@@ -32,7 +28,6 @@ from plotly.colors import hex_to_rgb
 from pathlib import Path
 import sys
 import re
-import json
 
 # --- Project imports ---
 project_root = Path(__file__).parent.parent
@@ -51,61 +46,6 @@ from utils.plot_style import (
 )
 from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
-
-
-# ==========================================================
-# JSON persistence (dataset-local)
-# ==========================================================
-def _legend_json_path(data_dir: Path) -> Path:
-    return data_dir / "legend_names.json"
-
-def _default_labelify(name: str) -> str:
-    return name.replace("_", " ").title()
-
-def _load_ui_metadata(data_dir: Path):
-    """Load flatness legends + axis labels + plot_styles from legend_names.json if present."""
-    path = _legend_json_path(data_dir)
-    if not path.exists():
-        return
-    try:
-        meta = json.loads(path.read_text(encoding="utf-8"))
-
-        # Keep other pages' settings intact; just read our keys if present
-        st.session_state.flatness_legend_names = meta.get("flatness_legends", {})
-        st.session_state.axis_labels_flatness = meta.get("axis_labels_flatness", {})
-        
-        # Load plot_styles (per-plot system)
-        st.session_state.plot_styles = meta.get("plot_styles", {})
-        # Backward compatibility: if plot_styles doesn't exist, migrate from old plot_style
-        if not st.session_state.plot_styles and "plot_style" in meta:
-            # Migrate old single plot_style to plot
-            old_style = meta.get("plot_style", {})
-            st.session_state.plot_styles = {
-                "Flatness Factors": old_style.copy(),
-            }
-    except Exception:
-        st.toast("legend_names.json exists but could not be read. Using defaults.", icon="⚠️")
-
-def _save_ui_metadata(data_dir: Path):
-    """Merge-save UI state to legend_names.json."""
-    path = _legend_json_path(data_dir)
-    old = {}
-    if path.exists():
-        try:
-            old = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            old = {}
-
-    old.update({
-        "flatness_legends": st.session_state.get("flatness_legend_names", {}),
-        "axis_labels_flatness": st.session_state.get("axis_labels_flatness", {}),
-        "plot_styles": st.session_state.get("plot_styles", {}),
-    })
-
-    try:
-        path.write_text(json.dumps(old, indent=2), encoding="utf-8")
-    except Exception as e:
-        st.error(f"Could not save legend_names.json (read-only folder?): {e}")
 
 
 # ==========================================================
@@ -461,15 +401,8 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                                 key_prefix=f"{key_prefix}_sim", include_marker=True, show_enable_checkbox=True)
 
         st.markdown("---")
-        b1, b2 = st.columns(2)
         reset_pressed = False
-        with b1:
-            if st.button("💾 Save Plot Style", key=f"{key_prefix}_save"):
-                st.session_state.plot_styles[selected_plot] = ps
-                _save_ui_metadata(data_dir)
-                st.success(f"Saved style for '{selected_plot}'.")
-        with b2:
-            if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
                 st.session_state.plot_styles[selected_plot] = {}
                 
                 # Clear widget state so widgets re-read from defaults on next run
@@ -571,7 +504,6 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                     if k in st.session_state:
                         del st.session_state[k]
                 
-                _save_ui_metadata(data_dir)
                 st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
                 reset_pressed = True
                 st.rerun()
@@ -626,17 +558,6 @@ def main():
     })
     st.session_state.setdefault("plot_styles", {})
 
-    # Load JSON once per dataset change
-    if st.session_state.get("_last_flatness_dir") != str(data_dir):
-        _load_ui_metadata(data_dir)
-        if "plot_styles" not in st.session_state:
-            st.session_state.plot_styles = {}
-        st.session_state.setdefault("flatness_legend_names", {})
-        st.session_state.setdefault("axis_labels_flatness", {
-            "x": "Separation distance $r$ (lattice units)",
-            "y": "Longitudinal flatness $F_L(r)$",
-        })
-        st.session_state["_last_flatness_dir"] = str(data_dir)
 
     # Detect flatness files from all directories
     all_flatness_files = []
@@ -773,23 +694,16 @@ def main():
             key="axis_flat_y"
         )
 
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button("💾 Save labels/legends"):
-                _save_ui_metadata(data_dir)
-                st.success("Saved to legend_names.json")
-        with b2:
-            if st.button("♻️ Reset labels/legends"):
-                st.session_state.flatness_legend_names = {
-                    k: _format_legend_name(k) for k in sim_groups.keys()
-                }
-                st.session_state.axis_labels_flatness = {
-                    "x": "Separation distance $r$ (lattice units)",
-                    "y": "Longitudinal flatness $F_L(r)$",
-                }
-                _save_ui_metadata(data_dir)
-                st.toast("Reset + saved.", icon="♻️")
-                st.rerun()
+        if st.button("♻️ Reset labels/legends"):
+            st.session_state.flatness_legend_names = {
+                k: _format_legend_name(k) for k in sim_groups.keys()
+            }
+            st.session_state.axis_labels_flatness = {
+                "x": "Separation distance $r$ (lattice units)",
+                "y": "Longitudinal flatness $F_L(r)$",
+            }
+            st.toast("Reset.", icon="♻️")
+            st.rerun()
 
     # Sidebar: full plot style (persistent)
     plot_names = ["Flatness Factors"]

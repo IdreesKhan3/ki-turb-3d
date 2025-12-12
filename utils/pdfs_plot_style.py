@@ -4,7 +4,6 @@ Helper module for plot styling and persistence
 """
 
 import streamlit as st
-import json
 from pathlib import Path
 from utils.plot_style import (
     default_plot_style, apply_plot_style as apply_plot_style_base,
@@ -18,43 +17,6 @@ from utils.export_figs import export_panel as _export_panel
 
 # Re-export for backward compatibility
 export_panel = _export_panel
-
-
-# ==========================================================
-# JSON persistence
-# ==========================================================
-def _legend_json_path(data_dir: Path) -> Path:
-    return data_dir / "legend_names.json"
-
-def _load_ui_metadata(data_dir: Path):
-    """Load plot styles from legend_names.json."""
-    path = _legend_json_path(data_dir)
-    if not path.exists():
-        return
-    try:
-        meta = json.loads(path.read_text(encoding="utf-8"))
-        st.session_state.plot_styles = meta.get("plot_styles", {})
-    except Exception:
-        st.toast("legend_names.json exists but could not be read. Using defaults.", icon="⚠️")
-
-def _save_ui_metadata(data_dir: Path):
-    """Merge-save UI metadata without clobbering other pages."""
-    path = _legend_json_path(data_dir)
-    old = {}
-    if path.exists():
-        try:
-            old = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            old = {}
-
-    old.update({
-        "plot_styles": st.session_state.get("plot_styles", {}),
-    })
-
-    try:
-        path.write_text(json.dumps(old, indent=2), encoding="utf-8")
-    except Exception as e:
-        st.error(f"Could not save legend_names.json (read-only folder?): {e}")
 
 
 # ==========================================================
@@ -249,52 +211,44 @@ def plot_style_sidebar(data_dir: Path, file_list, plot_names: list):
         render_per_sim_style_ui(ps, file_groups, style_key="per_sim_style_comparison", key_prefix=f"{key_prefix}_file", include_marker=True, show_enable_checkbox=True)
         
         st.markdown("---")
-        b1, b2 = st.columns(2)
         reset_pressed = False
-        with b1:
-            if st.button("💾 Save Plot Style", key=f"{key_prefix}_save"):
-                st.session_state.plot_styles[selected_plot] = ps
-                _save_ui_metadata(data_dir)
-                st.success(f"Saved style for '{selected_plot}'.")
-        with b2:
-            if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
-                st.session_state.plot_styles[selected_plot] = {}
-                
-                # Clear widget state
-                widget_keys = [
-                    f"{key_prefix}_font_family", f"{key_prefix}_font_size", f"{key_prefix}_title_size",
-                    f"{key_prefix}_legend_size", f"{key_prefix}_tick_font_size", f"{key_prefix}_axis_title_size",
-                    f"{key_prefix}_plot_bgcolor", f"{key_prefix}_paper_bgcolor",
-                    f"{key_prefix}_tick_len", f"{key_prefix}_tick_w", f"{key_prefix}_ticks_outside",
-                    f"{key_prefix}_x_axis_type", f"{key_prefix}_y_axis_type",
-                    f"{key_prefix}_x_tick_format", f"{key_prefix}_x_tick_decimals", f"{key_prefix}_y_tick_format", f"{key_prefix}_y_tick_decimals",
-                    f"{key_prefix}_show_axis_lines", f"{key_prefix}_axis_line_width", f"{key_prefix}_axis_line_color", f"{key_prefix}_mirror_axes",
-                    f"{key_prefix}_show_grid", f"{key_prefix}_grid_on_x", f"{key_prefix}_grid_on_y", f"{key_prefix}_grid_w", f"{key_prefix}_grid_dash",
-                    f"{key_prefix}_grid_color", f"{key_prefix}_grid_opacity",
-                    f"{key_prefix}_show_minor_grid", f"{key_prefix}_minor_grid_w", f"{key_prefix}_minor_grid_dash", f"{key_prefix}_minor_grid_color", f"{key_prefix}_minor_grid_opacity",
-                    f"{key_prefix}_line_width", f"{key_prefix}_marker_size",
-                    f"{key_prefix}_palette", f"{key_prefix}_template",
-                    f"{key_prefix}_show_plot_title", f"{key_prefix}_plot_title",
-                    f"{key_prefix}_enable_x_limits", f"{key_prefix}_x_min", f"{key_prefix}_x_max",
-                    f"{key_prefix}_enable_y_limits", f"{key_prefix}_y_min", f"{key_prefix}_y_max",
-                    f"{key_prefix}_enable_custom_size", f"{key_prefix}_figure_width", f"{key_prefix}_figure_height",
-                    f"{key_prefix}_margin_left", f"{key_prefix}_margin_right", f"{key_prefix}_margin_top", f"{key_prefix}_margin_bottom",
-                    f"{key_prefix}_file_enable_per_sim",
-                ]
-                for i in range(10):
-                    widget_keys.append(f"{key_prefix}_cust_color_{i}")
-                for filename in file_list:
-                    for suffix in ["over_on", "over_color", "over_width", "over_dash", "over_marker", "over_msize"]:
-                        widget_keys.append(f"{key_prefix}_file_{suffix}_{filename}")
-                
-                for k in widget_keys:
-                    if k in st.session_state:
-                        del st.session_state[k]
-                
-                _save_ui_metadata(data_dir)
-                st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
-                reset_pressed = True
-                st.rerun()
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+            st.session_state.plot_styles[selected_plot] = {}
+            
+            # Clear widget state
+            widget_keys = [
+                f"{key_prefix}_font_family", f"{key_prefix}_font_size", f"{key_prefix}_title_size",
+                f"{key_prefix}_legend_size", f"{key_prefix}_tick_font_size", f"{key_prefix}_axis_title_size",
+                f"{key_prefix}_plot_bgcolor", f"{key_prefix}_paper_bgcolor",
+                f"{key_prefix}_tick_len", f"{key_prefix}_tick_w", f"{key_prefix}_ticks_outside",
+                f"{key_prefix}_x_axis_type", f"{key_prefix}_y_axis_type",
+                f"{key_prefix}_x_tick_format", f"{key_prefix}_x_tick_decimals", f"{key_prefix}_y_tick_format", f"{key_prefix}_y_tick_decimals",
+                f"{key_prefix}_show_axis_lines", f"{key_prefix}_axis_line_width", f"{key_prefix}_axis_line_color", f"{key_prefix}_mirror_axes",
+                f"{key_prefix}_show_grid", f"{key_prefix}_grid_on_x", f"{key_prefix}_grid_on_y", f"{key_prefix}_grid_w", f"{key_prefix}_grid_dash",
+                f"{key_prefix}_grid_color", f"{key_prefix}_grid_opacity",
+                f"{key_prefix}_show_minor_grid", f"{key_prefix}_minor_grid_w", f"{key_prefix}_minor_grid_dash", f"{key_prefix}_minor_grid_color", f"{key_prefix}_minor_grid_opacity",
+                f"{key_prefix}_line_width", f"{key_prefix}_marker_size",
+                f"{key_prefix}_palette", f"{key_prefix}_template",
+                f"{key_prefix}_show_plot_title", f"{key_prefix}_plot_title",
+                f"{key_prefix}_enable_x_limits", f"{key_prefix}_x_min", f"{key_prefix}_x_max",
+                f"{key_prefix}_enable_y_limits", f"{key_prefix}_y_min", f"{key_prefix}_y_max",
+                f"{key_prefix}_enable_custom_size", f"{key_prefix}_figure_width", f"{key_prefix}_figure_height",
+                f"{key_prefix}_margin_left", f"{key_prefix}_margin_right", f"{key_prefix}_margin_top", f"{key_prefix}_margin_bottom",
+                f"{key_prefix}_file_enable_per_sim",
+            ]
+            for i in range(10):
+                widget_keys.append(f"{key_prefix}_cust_color_{i}")
+            for filename in file_list:
+                for suffix in ["over_on", "over_color", "over_width", "over_dash", "over_marker", "over_msize"]:
+                    widget_keys.append(f"{key_prefix}_file_{suffix}_{filename}")
+            
+            for k in widget_keys:
+                if k in st.session_state:
+                    del st.session_state[k]
+            
+            st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
+            reset_pressed = True
+            st.rerun()
     
     if not reset_pressed:
         ps_copy = ps.copy()

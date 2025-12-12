@@ -444,6 +444,10 @@ def _tick_font(ps):
     return dict(family=ps.get("font_family", "Arial"), size=ps.get("tick_font_size", 12))
 
 
+def _default_labelify(name: str) -> str:
+    """Convert a name to a default label by replacing underscores and title-casing."""
+    return name.replace("_", " ").title()
+
 def _normalize_plot_name(plot_name: str) -> str:
     """
     Normalize plot name to a valid key format.
@@ -475,7 +479,7 @@ def default_plot_style():
         "legend_size": 12,
         "tick_font_size": 12,
         "axis_title_size": 14,
-        "font_color": "#000000",  # Default black for light theme
+        "font_color": None,  # Let apply_plot_style choose based on template
 
         "tick_len": 6,
         "tick_w": 1.2,
@@ -748,8 +752,6 @@ def apply_plot_style(fig, ps):
         legend=legend_config,
         showlegend=ps.get("show_legend", True),  # Top-level showlegend property (not in legend dict)
         hovermode="x unified",
-        plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
-        paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF"),
     )
     
     if ps.get("title_size") is not None and ps.get("plot_title"):
@@ -763,6 +765,12 @@ def apply_plot_style(fig, ps):
         )
     
     fig.update_layout(**layout_update)
+    
+    # Set backgrounds after template to ensure they override template defaults
+    fig.update_layout(
+        plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
+        paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF")
+    )
 
     tick_dir = "outside" if ps.get("ticks_outside", True) else "inside"
 
@@ -1035,76 +1043,28 @@ def render_legend_axis_labels_ui(data_dir=None, traces=None,
             key=f"{key_prefix}_axis_y"
         )
         
-        # Save/Reset buttons if data_dir provided
-        if data_dir is not None:
+        # Reset button
+        if reset_callback is not None:
             st.markdown("---")
-            b1, b2 = st.columns(2)
-            with b1:
-                if st.button("💾 Save labels/legends", key=f"{key_prefix}_save_labels"):
-                    if save_callback:
-                        save_callback(data_dir)
-                    else:
-                        # Default save behavior - try to save to legend_names.json
-                        try:
-                            from pathlib import Path
-                            import json
-                            json_path = data_dir / "legend_names.json"
-                            old = {}
-                            if json_path.exists():
-                                try:
-                                    old = json.loads(json_path.read_text(encoding="utf-8"))
-                                except Exception:
-                                    old = {}
-                            old[legend_names_key] = st.session_state[legend_names_key]
-                            old[axis_labels_key] = st.session_state[axis_labels_key]
-                            json_path.write_text(json.dumps(old, indent=2), encoding="utf-8")
-                        except Exception as e:
-                            st.warning(f"Could not save: {e}")
-                    st.success("Saved to legend_names.json")
-            with b2:
-                if st.button("♻️ Reset labels/legends", key=f"{key_prefix}_reset_labels"):
-                    # 1) Reset our own dicts
-                    st.session_state[legend_names_key] = {}
-                    st.session_state[axis_labels_key] = {'x': 'X', 'y': 'Y'}
-                    
-                    # 2) Reset widget state for axis text inputs
-                    for k in [f"{key_prefix}_axis_x", f"{key_prefix}_axis_y"]:
-                        if k in st.session_state:
-                            del st.session_state[k]
-                    
-                    # 3) Reset widget state for legend text inputs
-                    if traces:
-                        for idx, trace in enumerate(traces):
-                            # Same key logic used above
-                            if trace_key_func:
-                                trace_key = trace_key_func(trace)
-                            else:
-                                trace_key = f"{trace.get('data_source', '')}_{trace.get('x_col', '')}_{trace.get('y_col', '')}"
-                            widget_key = f"{key_prefix}_legend_{idx}_{trace_key}"
-                            if widget_key in st.session_state:
-                                del st.session_state[widget_key]
-                    
-                    if reset_callback:
-                        reset_callback()
-                    else:
-                        # Default reset behavior - try to save to legend_names.json
-                        try:
-                            from pathlib import Path
-                            import json
-                            json_path = data_dir / "legend_names.json"
-                            old = {}
-                            if json_path.exists():
-                                try:
-                                    old = json.loads(json_path.read_text(encoding="utf-8"))
-                                except Exception:
-                                    old = {}
-                            old[legend_names_key] = st.session_state[legend_names_key]
-                            old[axis_labels_key] = st.session_state[axis_labels_key]
-                            json_path.write_text(json.dumps(old, indent=2), encoding="utf-8")
-                        except Exception:
-                            pass  # Silent fail on reset save
-                    st.toast("Reset + saved.", icon="♻️")
-                    st.rerun()
+            if st.button("♻️ Reset labels/legends", key=f"{key_prefix}_reset_labels"):
+                st.session_state[legend_names_key] = {}
+                st.session_state[axis_labels_key] = {'x': 'X', 'y': 'Y'}
+                for k in [f"{key_prefix}_axis_x", f"{key_prefix}_axis_y"]:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                if traces:
+                    for idx, trace in enumerate(traces):
+                        if trace_key_func:
+                            trace_key = trace_key_func(trace)
+                        else:
+                            trace_key = f"{trace.get('data_source', '')}_{trace.get('x_col', '')}_{trace.get('y_col', '')}"
+                        widget_key = f"{key_prefix}_legend_{idx}_{trace_key}"
+                        if widget_key in st.session_state:
+                            del st.session_state[widget_key]
+                if reset_callback:
+                    reset_callback()
+                st.toast("Reset.", icon="♻️")
+                st.rerun()
     
     return st.session_state[legend_names_key], st.session_state[axis_labels_key]
 
@@ -1385,147 +1345,39 @@ def plot_style_sidebar(data_dir=None, sim_groups=None, style_key="per_sim_style"
                 include_marker=include_marker
             )
 
-        # Save/Reset buttons if data_dir provided
-        if data_dir is not None:
+        # Reset button
+        if reset_callback is not None:
             st.markdown("---")
-            b1, b2 = st.columns(2)
-            with b1:
-                if st.button("💾 Save Plot Style", key=f"{key_prefix}_save_style"):
-                    st.session_state.plot_style = ps
-                    if save_callback:
-                        save_callback(data_dir)
-                    else:
-                        # Default save behavior - try to save to legend_names.json
-                        try:
-                            from pathlib import Path
-                            import json
-                            json_path = data_dir / "legend_names.json"
-                            old = {}
-                            if json_path.exists():
-                                try:
-                                    old = json.loads(json_path.read_text(encoding="utf-8"))
-                                except Exception:
-                                    old = {}
-                            old["plot_style"] = ps
-                            json_path.write_text(json.dumps(old, indent=2), encoding="utf-8")
-                        except Exception as e:
-                            st.warning(f"Could not save: {e}")
-                    st.success("Saved plot style.")
-            with b2:
-                if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset_style"):
-                    # 1) Reset the underlying style dict
-                    st.session_state.plot_style = default_plot_style()
-
-                    # 2) Clear widget state so widgets re-read from defaults next run
-                    widget_keys = [
-                        # Fonts / legend
-                        f"{key_prefix}_font_family",
-                        f"{key_prefix}_font_size",
-                        f"{key_prefix}_title_size",
-                        f"{key_prefix}_legend_size",
-                        f"{key_prefix}_show_legend",
-                        f"{key_prefix}_tick_font_size",
-                        f"{key_prefix}_axis_title_size",
-                        # Plot Title
-                        f"{key_prefix}_show_plot_title",
-                        f"{key_prefix}_plot_title",
-                        # Backgrounds
-                        f"{key_prefix}_plot_bgcolor",
-                        f"{key_prefix}_paper_bgcolor",
-                        # Ticks
-                        f"{key_prefix}_tick_len",
-                        f"{key_prefix}_tick_w",
-                        f"{key_prefix}_ticks_outside",
-                        # Axis scale
-                        f"{key_prefix}_x_axis_type",
-                        f"{key_prefix}_y_axis_type",
-                        # Tick formats
-                        f"{key_prefix}_x_tick_format",
-                        f"{key_prefix}_x_tick_decimals",
-                        f"{key_prefix}_y_tick_format",
-                        f"{key_prefix}_y_tick_decimals",
-                        # Axis borders
-                        f"{key_prefix}_show_axis_lines",
-                        f"{key_prefix}_axis_line_width",
-                        f"{key_prefix}_axis_line_color",
-                        f"{key_prefix}_mirror_axes",
-                        # Major grid
-                        f"{key_prefix}_show_grid",
-                        f"{key_prefix}_grid_on_x",
-                        f"{key_prefix}_grid_on_y",
-                        f"{key_prefix}_grid_w",
-                        f"{key_prefix}_grid_dash",
-                        f"{key_prefix}_grid_color",
-                        f"{key_prefix}_grid_opacity",
-                        # Minor grid
-                        f"{key_prefix}_show_minor_grid",
-                        f"{key_prefix}_minor_grid_w",
-                        f"{key_prefix}_minor_grid_dash",
-                        f"{key_prefix}_minor_grid_color",
-                        f"{key_prefix}_minor_grid_opacity",
-                        # Curves
-                        f"{key_prefix}_line_width",
-                        f"{key_prefix}_marker_size",
-                        # Palette
-                        f"{key_prefix}_palette",
-                        # Axis limits
-                        f"{key_prefix}_enable_x_limits",
-                        f"{key_prefix}_x_min",
-                        f"{key_prefix}_x_max",
-                        f"{key_prefix}_enable_y_limits",
-                        f"{key_prefix}_y_min",
-                        f"{key_prefix}_y_max",
-                        # Figure size
-                        f"{key_prefix}_enable_custom_size",
-                        f"{key_prefix}_figure_width",
-                        f"{key_prefix}_figure_height",
-                        # Per-sim global toggle
-                        f"{key_prefix}_enable_per_sim",
-                    ]
-
-                    # Custom color inputs (if you ever used them)
-                    for i in range(10):
-                        widget_keys.append(f"{key_prefix}_cust_color_{i}")
-
-                    # Per-simulation style widgets (if sim_groups provided)
-                    if sim_groups:
-                        for sim_prefix in sim_groups.keys():
-                            for suffix in [
-                                "over_on",
-                                "over_color",
-                                "over_width",
-                                "over_dash",
-                                "over_marker",
-                                "over_msize",
-                            ]:
-                                widget_keys.append(f"{key_prefix}_{suffix}_{sim_prefix}")
-
-                    for k in widget_keys:
-                        if k in st.session_state:
-                            del st.session_state[k]
-
-                    # Optional: let external reset callback do extra cleanup
-                    if reset_callback:
-                        reset_callback()
-                    else:
-                        # Default: save default style to legend_names.json
-                        try:
-                            from pathlib import Path
-                            import json
-                            json_path = data_dir / "legend_names.json"
-                            old = {}
-                            if json_path.exists():
-                                try:
-                                    old = json.loads(json_path.read_text(encoding="utf-8"))
-                                except Exception:
-                                    old = {}
-                            old["plot_style"] = st.session_state.plot_style
-                            json_path.write_text(json.dumps(old, indent=2), encoding="utf-8")
-                        except Exception:
-                            pass  # silent fail
-
-                    st.toast("Reset + saved.", icon="♻️")
-                    st.rerun()
+            if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset_style"):
+                st.session_state.plot_style = default_plot_style()
+                widget_keys = [
+                            f"{key_prefix}_font_family", f"{key_prefix}_font_size", f"{key_prefix}_title_size",
+                            f"{key_prefix}_legend_size", f"{key_prefix}_show_legend", f"{key_prefix}_tick_font_size",
+                            f"{key_prefix}_axis_title_size", f"{key_prefix}_plot_bgcolor", f"{key_prefix}_paper_bgcolor",
+                            f"{key_prefix}_tick_len", f"{key_prefix}_tick_w", f"{key_prefix}_ticks_outside",
+                            f"{key_prefix}_x_axis_type", f"{key_prefix}_y_axis_type",
+                            f"{key_prefix}_x_tick_format", f"{key_prefix}_x_tick_decimals",
+                            f"{key_prefix}_y_tick_format", f"{key_prefix}_y_tick_decimals",
+                            f"{key_prefix}_show_axis_lines", f"{key_prefix}_axis_line_width",
+                            f"{key_prefix}_axis_line_color", f"{key_prefix}_mirror_axes",
+                            f"{key_prefix}_show_grid", f"{key_prefix}_grid_on_x", f"{key_prefix}_grid_on_y",
+                            f"{key_prefix}_grid_w", f"{key_prefix}_grid_dash", f"{key_prefix}_grid_color",
+                            f"{key_prefix}_grid_opacity", f"{key_prefix}_show_minor_grid",
+                            f"{key_prefix}_minor_grid_w", f"{key_prefix}_minor_grid_color",
+                            f"{key_prefix}_minor_grid_opacity", f"{key_prefix}_line_width",
+                            f"{key_prefix}_marker_size", f"{key_prefix}_show_plot_title",
+                            f"{key_prefix}_plot_title", f"{key_prefix}_enable_custom_size",
+                            f"{key_prefix}_figure_width", f"{key_prefix}_figure_height",
+                            f"{key_prefix}_enable_x_limits", f"{key_prefix}_x_min", f"{key_prefix}_x_max",
+                            f"{key_prefix}_enable_y_limits", f"{key_prefix}_y_min", f"{key_prefix}_y_max",
+                ]
+                for widget_key in widget_keys:
+                    if widget_key in st.session_state:
+                        del st.session_state[widget_key]
+                if reset_callback:
+                    reset_callback()
+                st.toast("Reset.", icon="♻️")
+                st.rerun()
     
     st.session_state.plot_style = ps
     return ps

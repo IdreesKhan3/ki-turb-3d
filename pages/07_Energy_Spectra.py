@@ -1,5 +1,5 @@
 """
-Energy Spectra Page (Streamlit) — High Standard + Persistent UI Metadata + Full Styling
+Energy Spectra Page (Streamlit) — High Standard + Full Styling
 
 NEW in this version:
 - Research-grade export panel:
@@ -9,7 +9,7 @@ NEW in this version:
     * One-click export for current figure(s)
   (*TIFF depends on kaleido + pillow; if TIFF fails, app explains.)
 
-Everything remains persistent per dataset in legend_names.json:
+Full user controls (in-memory session state):
 - legends, axis labels
 - plot style (fonts/ticks/grids/backgrounds/highlight/per-sim styles)
 """
@@ -18,7 +18,6 @@ import streamlit as st
 import numpy as np
 import glob # module
 import re   # module
-import json # module
 from pathlib import Path
 import sys
 import plotly.graph_objects as go
@@ -46,61 +45,10 @@ st.set_page_config(page_icon="⚫")
 
 
 # ==========================================================
-# JSON persistence (dataset-local)
+# Helpers
 # ==========================================================
-def _legend_json_path(data_dir: Path) -> Path:
-    return data_dir / "legend_names.json"
-
 def _default_labelify(name: str) -> str:
     return name.replace("_", " ").title()
-
-def _load_ui_metadata(data_dir: Path):
-    """Load legends + axis labels + plot_styles from legend_names.json if present."""
-    path = _legend_json_path(data_dir)
-    if not path.exists():
-        return
-
-    try:
-        meta = json.loads(path.read_text(encoding="utf-8"))
-
-        st.session_state.spectrum_legend_names = meta.get("raw_legends", {})
-        st.session_state.norm_legend_names = meta.get("norm_legends", {})
-
-        st.session_state.axis_labels_raw = meta.get("axis_labels_raw", {})
-        st.session_state.axis_labels_norm = meta.get("axis_labels_norm", {})
-
-        # Load plot_styles (new per-plot system)
-        st.session_state.plot_styles = meta.get("plot_styles", {})
-        # Backward compatibility: if plot_styles doesn't exist, migrate from old plot_style
-        if not st.session_state.plot_styles and "plot_style" in meta:
-            # Migrate old single plot_style to all plots
-            old_style = meta.get("plot_style", {})
-            st.session_state.plot_styles = {
-                "Raw Energy Spectrum": old_style.copy(),
-                "Normalized Spectrum": old_style.copy(),
-                "Time Evolution": old_style.copy(),
-            }
-
-    except Exception:
-        st.toast("legend_names.json exists but could not be read. Using defaults.",
-                 icon="⚠️")
-
-def _save_ui_metadata(data_dir: Path):
-    """Save UI state to legend_names.json."""
-    meta = {
-        "raw_legends": st.session_state.get("spectrum_legend_names", {}),
-        "norm_legends": st.session_state.get("norm_legend_names", {}),
-        "axis_labels_raw": st.session_state.get("axis_labels_raw", {}),
-        "axis_labels_norm": st.session_state.get("axis_labels_norm", {}),
-        "plot_styles": st.session_state.get("plot_styles", {}),
-    }
-    try:
-        _legend_json_path(data_dir).write_text(
-            json.dumps(meta, indent=2), encoding="utf-8"
-        )
-    except Exception as e:
-        st.error(f"Could not save legend_names.json (read-only folder?): {e}")
-
 
 # ==========================================================
 # Cached readers
@@ -528,15 +476,8 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list
                                     key_prefix=f"{key_prefix}_norm", include_marker=True, show_enable_checkbox=False)
 
         st.markdown("---")
-        b1, b2 = st.columns(2)
         reset_pressed = False
-        with b1:
-            if st.button("💾 Save Plot Style", key=f"{key_prefix}_save"):
-                st.session_state.plot_styles[selected_plot] = ps
-                _save_ui_metadata(data_dir)
-                st.success(f"Saved style for '{selected_plot}'.")
-        with b2:
-            if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
                 st.session_state.plot_styles[selected_plot] = {}
                 
                 # Clear widget state so widgets re-read from defaults on next run
@@ -649,7 +590,6 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list
                     if k in st.session_state:
                         del st.session_state[k]
                 
-                _save_ui_metadata(data_dir)
                 st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
                 reset_pressed = True
                 st.rerun()
@@ -894,12 +834,6 @@ def main():
         for key in norm_groups:
             norm_groups[key] = sorted(norm_groups[key], key=natural_sort_key)
 
-    if st.session_state.get("_last_legend_dir") != str(data_dir):
-        _load_ui_metadata(data_dir)
-        if "plot_styles" not in st.session_state:
-            st.session_state.plot_styles = {}
-        st.session_state["_last_legend_dir"] = str(data_dir)
-
     st.sidebar.header("Options")
     view_mode = st.sidebar.radio("View Mode", ["Time-Averaged", "Time Evolution"], index=0)
 
@@ -954,22 +888,16 @@ def main():
             )
 
             st.markdown("---")
-            b1, b2 = st.columns(2)
-            with b1:
-                if st.button("💾 Save labels/legends"):
-                    _save_ui_metadata(data_dir)
-                    st.success("Saved to legend_names.json")
-            with b2:
-                if st.button("♻️ Reset labels/legends"):
-                    st.session_state.spectrum_legend_names = {k: _default_labelify(k) for k in sim_groups.keys()}
-                    st.session_state.norm_legend_names = {k: _default_labelify(k) for k in norm_groups.keys()}
-                    st.session_state.axis_labels_raw = {"x": "Wavenumber k", "y": "Energy spectrum E(k)"}
-                    st.session_state.axis_labels_norm = {
-                        "x": "Normalized wavenumber kη",
-                        "y": "Normalized spectrum E<sub>norm</sub>(kη)",
-                    }
-                    _save_ui_metadata(data_dir)
-                    st.toast("Reset + saved.", icon="♻️")
+            if st.button("♻️ Reset labels/legends"):
+                st.session_state.spectrum_legend_names = {k: _default_labelify(k) for k in sim_groups.keys()}
+                st.session_state.norm_legend_names = {k: _default_labelify(k) for k in norm_groups.keys()}
+                st.session_state.axis_labels_raw = {"x": "Wavenumber k", "y": "Energy spectrum E(k)"}
+                st.session_state.axis_labels_norm = {
+                    "x": "Normalized wavenumber kη",
+                    "y": "Normalized spectrum E<sub>norm</sub>(kη)",
+                }
+                st.toast("Reset.", icon="♻️")
+                st.rerun()
 
     # Full plot style sidebar (includes backgrounds, ticks, per-sim, highlight)
     plot_names = ["Raw Energy Spectrum", "Normalized Spectrum", "Time Evolution"]

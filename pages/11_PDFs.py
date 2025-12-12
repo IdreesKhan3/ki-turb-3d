@@ -18,7 +18,7 @@ from utils.dissipation_stats import render_dissipation_tab
 from utils.joint_pdf_stats import render_joint_pdf_tab
 from utils.plot_style import resolve_line_style, apply_axis_limits, apply_figure_size
 from utils.pdfs_plot_style import (
-    _load_ui_metadata, _save_ui_metadata, get_plot_style, apply_plot_style,
+    get_plot_style, apply_plot_style,
     _get_palette, plot_style_sidebar, export_panel
 )
 from utils.report_builder import capture_button
@@ -107,13 +107,6 @@ def main():
     
     # Initialize plot styles
     st.session_state.setdefault("plot_styles", {})
-    
-    # Load UI metadata
-    if st.session_state.get("_last_comparison_dir") != str(data_dir):
-        _load_ui_metadata(data_dir)
-        if "plot_styles" not in st.session_state:
-            st.session_state.plot_styles = {}
-        st.session_state["_last_comparison_dir"] = str(data_dir)
     
     # Combine all files from all directories
     all_files = [Path(f).name for f in all_vti_files + all_hdf5_files]

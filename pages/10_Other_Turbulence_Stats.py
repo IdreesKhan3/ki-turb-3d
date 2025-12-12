@@ -23,7 +23,6 @@ from plotly.colors import hex_to_rgb
 from pathlib import Path
 import sys
 import re
-import json
 import glob
 
 # --- Project imports ---
@@ -42,59 +41,6 @@ from utils.plot_style import (
 )
 from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
-
-# ==========================================================
-# JSON persistence (dataset-local)
-# ==========================================================
-def _legend_json_path(data_dir: Path) -> Path:
-    return data_dir / "legend_names.json"
-
-def _default_labelify(name: str) -> str:
-    return name.replace("_", " ").title()
-
-def _load_ui_metadata(data_dir: Path):
-    path = _legend_json_path(data_dir)
-    if not path.exists():
-        return
-    try:
-        meta = json.loads(path.read_text(encoding="utf-8"))
-        st.session_state.energy_legend_names = meta.get("energy_legends", {})
-        st.session_state.axis_labels_energy = meta.get("axis_labels_energy", {})
-        st.session_state.plot_style = meta.get("plot_style", st.session_state.get("plot_style", {}))
-        # Load custom plot legend names and axis labels
-        if 'custom_plot_legend_names' not in st.session_state:
-            st.session_state.custom_plot_legend_names = meta.get("custom_plot_legend_names", {})
-        else:
-            st.session_state.custom_plot_legend_names.update(meta.get("custom_plot_legend_names", {}))
-        if 'custom_plot_axis_labels' not in st.session_state:
-            st.session_state.custom_plot_axis_labels = meta.get("custom_plot_axis_labels", {'x': 'X', 'y': 'Y'})
-        else:
-            st.session_state.custom_plot_axis_labels.update(meta.get("custom_plot_axis_labels", {}))
-    except Exception:
-        st.toast("legend_names.json exists but could not be read. Using defaults.", icon="⚠️")
-
-def _save_ui_metadata(data_dir: Path):
-    path = _legend_json_path(data_dir)
-    old = {}
-    if path.exists():
-        try:
-            old = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            old = {}
-
-    old.update({
-        "energy_legends": st.session_state.get("energy_legend_names", {}),
-        "axis_labels_energy": st.session_state.get("axis_labels_energy", {}),
-        "plot_style": st.session_state.get("plot_style", {}),
-        "custom_plot_legend_names": st.session_state.get("custom_plot_legend_names", {}),
-        "custom_plot_axis_labels": st.session_state.get("custom_plot_axis_labels", {'x': 'X', 'y': 'Y'}),
-    })
-
-    try:
-        path.write_text(json.dumps(old, indent=2), encoding="utf-8")
-    except Exception as e:
-        st.error(f"Could not save legend_names.json (read-only folder?): {e}")
-
 
 # ==========================================================
 # Plot styling (using shared utilities from utils.plot_style)
@@ -153,21 +99,22 @@ def apply_plot_style(fig, ps):
 
 def plot_style_sidebar(data_dir: Path, sim_groups):
     """Plot style sidebar using shared utilities."""
-    # Ensure per_sim_style_energy key exists
     if "plot_style" not in st.session_state:
         st.session_state.plot_style = default_plot_style()
     ps = st.session_state.plot_style
-    ensure_per_sim_defaults(ps, sim_groups, style_key="per_sim_style_energy", include_marker=True)
+    ensure_per_sim_defaults(ps, sim_groups, style_key="per_sim_style_turb_stats", include_marker=True)
     
-    # Use shared plot style sidebar
+    def _reset_style():
+        st.session_state.plot_style = default_plot_style()
+    
     return shared_plot_style_sidebar(
-        data_dir=data_dir,
+        data_dir=None,
         sim_groups=sim_groups,
-        style_key="per_sim_style_energy",
-        key_prefix="energy",
+        style_key="per_sim_style_turb_stats",
+        key_prefix="turb_stats",
         include_marker=True,
-        save_callback=_save_ui_metadata,
-        reset_callback=lambda: _save_ui_metadata(data_dir),
+        save_callback=None,
+        reset_callback=_reset_style,
         theme_selector=template_selector
     )
 
@@ -194,8 +141,6 @@ def main():
     # Use first directory for metadata storage
     data_dir = Path(data_dirs[0])
     
-    # Load persistent UI metadata (legends, axis labels, plot style)
-    _load_ui_metadata(data_dir)
     
     # Show which directories are loaded
     if len(data_dirs) > 1:
@@ -344,16 +289,13 @@ def main():
         st.info("No CSV files found. Please load data from the Overview page.")
         return
     
-    # Create sim_groups structure for plot style sidebar (extract unique prefixes from dataframe keys)
+    # Create sim_groups structure for plot style sidebar (use full unique dataframe key names)
     sim_groups = {}
     for key in all_dataframes.keys():
-        # Extract simulation prefix from key (e.g., "turbulence_stats_768" -> "768")
-        if '_' in key:
-            prefix = key.split('_')[-1]  # Get last part after underscore
-        else:
-            prefix = key
-        if prefix not in sim_groups:
-            sim_groups[prefix] = []  # Empty list is fine, just need the keys
+        # Use the full unique key name (e.g., "turbulence_stats_768", "eps_validation_768")
+        # This allows separate styling for stats vs validation files, like Energy Spectra page
+        if key not in sim_groups:
+            sim_groups[key] = []  # Empty list is fine, just need the keys
     
     # Add plot style sidebar (fonts, colors, grids, etc.)
     if sim_groups:
@@ -372,16 +314,19 @@ def main():
             'y': 'Y'
         }
     
-    # Legend & Axis Labels (persistent) - using shared utility
-    # Capture returned values to ensure we use the latest state (especially after reset)
+    # Legend & Axis Labels - using shared utility
+    def _reset_legend_axis():
+        st.session_state.custom_plot_legend_names = {}
+        st.session_state.custom_plot_axis_labels = {'x': 'X', 'y': 'Y'}
+    
     legend_names, axis_labels = render_legend_axis_labels_ui(
-        data_dir=data_dir,
+        data_dir=None,
         traces=st.session_state.custom_plot_traces if st.session_state.custom_plot_traces else None,
         legend_names_key="custom_plot_legend_names",
         axis_labels_key="custom_plot_axis_labels",
         trace_key_func=lambda trace: f"{trace['data_source']}_{trace['x_col']}_{trace['y_col']}",
-        save_callback=_save_ui_metadata,
-        reset_callback=lambda: _save_ui_metadata(data_dir),
+        save_callback=None,
+        reset_callback=_reset_legend_axis,
         key_prefix="custom"
     )
     
@@ -560,7 +505,28 @@ def main():
             if normalize_y:
                 hover_y_label = f"{hover_y_label} / max"
             
-            color = colors[idx % len(colors)] if colors else None
+            # Use full data_source name as simulation identifier for per-simulation styling
+            # e.g., "turbulence_stats_768", "eps_validation_768", "turbulence_stats_512", etc.
+            sim_prefix = data_source
+            
+            # Get per-simulation style (color, width, dash, marker, marker_size)
+            color, width, dash, marker, marker_size, override_on = resolve_line_style(
+                sim_prefix, idx, colors, ps, 
+                style_key="per_sim_style_energy", 
+                include_marker=True
+            )
+            
+            # Build line style dict
+            line_style = dict(width=width, color=color)
+            if dash and dash != "solid":
+                line_style["dash"] = dash
+            
+            # Determine mode and marker settings
+            mode = "lines"
+            marker_dict = None
+            if override_on and marker and marker != "none":
+                mode = "lines+markers"
+                marker_dict = dict(symbol=marker, size=marker_size)
             
             # Apply smoothing - show both original (dim) and smoothed (bright) if smoothing is enabled
             if smooth_window > 1 and len(y_data) > smooth_window:
@@ -584,26 +550,32 @@ def main():
                 
                 # Add smoothed line as main bright line
                 hover_y_label_smooth = f"{hover_y_label} (smoothed)"
-                fig.add_trace(go.Scatter(
+                scatter_kwargs = dict(
                     x=x_plot,
                     y=y_plot,
-                    mode="lines",
+                    mode=mode,
                     name=label,
-                    line=dict(width=ps.get("line_width", 2.2), color=color),
+                    line=line_style,
                     hovertemplate=f"{hover_x_label}=%{{x:.4g}}<br>{hover_y_label_smooth}=%{{y:.4g}}<extra></extra>"
-                ))
+                )
+                if marker_dict:
+                    scatter_kwargs["marker"] = marker_dict
+                fig.add_trace(go.Scatter(**scatter_kwargs))
             else:
                 # No smoothing - just plot original data
                 x_plot, y_plot = x_data, y_data
-                fig.add_trace(go.Scatter(
+                scatter_kwargs = dict(
                     x=x_plot,
                     y=y_plot,
-                    mode="lines",
+                    mode=mode,
                     name=label,
-                    line=dict(width=ps.get("line_width", 2.2), color=color),
+                    line=line_style,
                     hovertemplate=f"{hover_x_label}=%{{x:.4g}}<br>{hover_y_label}=%{{y:.4g}}<extra></extra>",
                     showlegend=True  # Explicitly show in legend
-                ))
+                )
+                if marker_dict:
+                    scatter_kwargs["marker"] = marker_dict
+                fig.add_trace(go.Scatter(**scatter_kwargs))
             
             all_x_labels.add(x_col)
             all_y_labels.add(y_col)
@@ -650,9 +622,11 @@ def main():
             fig = apply_plot_style(fig, ps)
             
             # Then apply layout-specific settings (axis labels, size, limits)
+            # Use update_xaxes/update_yaxes to preserve title_font settings
+            fig.update_xaxes(title_text=x_label)
+            fig.update_yaxes(title_text=y_label)
+            
             layout_kwargs = dict(
-                xaxis_title=x_label,
-                yaxis_title=y_label,
                 height=400,  # Default, will be overridden if custom size is enabled
                 margin=dict(l=60, r=20, t=40, b=55),
             )
@@ -662,6 +636,12 @@ def main():
             if ps.get("show_legend", True):
                 layout_kwargs["showlegend"] = True
             fig.update_layout(**layout_kwargs)
+            
+            # Explicitly set backgrounds after all layout updates to override template
+            fig.update_layout(
+                plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
+                paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF")
+            )
             
             # Final check: explicitly ensure legend is visible
             if ps.get("show_legend", True) and len(fig.data) > 0:
@@ -685,10 +665,11 @@ def main():
                 separatethousands=False,  # Don't add thousand separators
             )
             
-            # Display plot in a container with constrained width for better sizing
+            # Display plot - respect custom width if enabled
+            use_container = not ps.get("enable_custom_size", False)
             col1, col2, col3 = st.columns([1, 10, 1])
             with col2:
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=use_container)
             capture_button(fig, title="Custom Multi-Trace Plot", source_page="Other Turbulence Stats")
             
             # Export panel

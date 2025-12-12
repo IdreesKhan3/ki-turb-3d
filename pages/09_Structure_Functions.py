@@ -13,7 +13,7 @@ Features:
     2) ESS: S_p vs S_ref (ref order selectable)
     3) Optional anomalies plot (xi_p - p/3) with SL94 + experimental overlay
 - Computes ESS scaling exponents xi_p with user-fit range control
-- FULL user controls (persistent per dataset in legend_names.json):
+- FULL user controls (in-memory session state):
     * Legends, axis labels
     * Fonts, tick style, major/minor grids, background colors, theme
     * Palette / custom colors
@@ -34,7 +34,6 @@ from plotly.colors import hex_to_rgb
 from pathlib import Path
 import sys
 import re
-import json
 import glob
 
 # --- Project imports ---
@@ -56,6 +55,7 @@ from utils.plot_style import (
     render_plot_title_ui, _get_palette, _normalize_plot_name,
     resolve_line_style, render_per_sim_style_ui, ensure_per_sim_defaults
 )
+from utils.ess_inset import add_ess_inset
 
 # Binary/text readers (binary is required by plan, text is optional)
 from data_readers.binary_reader import read_structure_function_file
@@ -64,61 +64,6 @@ try:
     from data_readers.text_reader import read_structure_function_txt
 except Exception:
     read_structure_function_txt = None
-
-
-# ==========================================================
-# JSON persistence (dataset-local)
-# ==========================================================
-def _legend_json_path(data_dir: Path) -> Path:
-    return data_dir / "legend_names.json"
-
-def _default_labelify(name: str) -> str:
-    return name.replace("_", " ").title()
-
-def _load_ui_metadata(data_dir: Path):
-    """Load structure legends + axis labels + plot_styles from legend_names.json."""
-    path = _legend_json_path(data_dir)
-    if not path.exists():
-        return
-    try:
-        meta = json.loads(path.read_text(encoding="utf-8"))
-        st.session_state.structure_legend_names = meta.get("structure_legends", {})
-        st.session_state.axis_labels_structure = meta.get("axis_labels_structure", {})
-        
-        # Load plot_styles (per-plot system)
-        st.session_state.plot_styles = meta.get("plot_styles", {})
-        # Backward compatibility: if plot_styles doesn't exist, migrate from old plot_style
-        if not st.session_state.plot_styles and "plot_style" in meta:
-            # Migrate old single plot_style to all plots
-            old_style = meta.get("plot_style", {})
-            st.session_state.plot_styles = {
-                "S_p(r) vs r": old_style.copy(),
-                "ESS (S_p vs S_3)": old_style.copy(),
-                "Anomalies (ξₚ − p/3)": old_style.copy(),
-            }
-    except Exception:
-        st.toast("legend_names.json exists but could not be read. Using defaults.", icon="⚠️")
-
-def _save_ui_metadata(data_dir: Path):
-    """Merge-save UI metadata without clobbering other pages."""
-    path = _legend_json_path(data_dir)
-    old = {}
-    if path.exists():
-        try:
-            old = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            old = {}
-
-    old.update({
-        "structure_legends": st.session_state.get("structure_legend_names", {}),
-        "axis_labels_structure": st.session_state.get("axis_labels_structure", {}),
-        "plot_styles": st.session_state.get("plot_styles", {}),
-    })
-
-    try:
-        path.write_text(json.dumps(old, indent=2), encoding="utf-8")
-    except Exception as e:
-        st.error(f"Could not save legend_names.json (read-only folder?): {e}")
 
 
 # ==========================================================
@@ -305,7 +250,7 @@ def get_plot_style(plot_name: str):
     })
     
     # Set default axis types based on plot
-    if plot_name == "Anomalies (ξₚ − p/3)":
+    if plot_name == "Anomalies (ξₚ − p/3)" or plot_name == "ESS Inset":
         default.update({
             "x_axis_type": "linear",
             "y_axis_type": "linear",
@@ -332,7 +277,7 @@ def get_plot_style(plot_name: str):
     merged = apply_theme_to_plot_style(merged, current_theme)
     
     # Update She-Leveque and Experimental B93 curve colors for dark theme if they're still at light theme defaults
-    if "Dark" in current_theme and plot_name == "Anomalies (ξₚ − p/3)":
+    if "Dark" in current_theme and (plot_name == "Anomalies (ξₚ − p/3)" or plot_name == "ESS Inset"):
         if merged.get("she_leveque_color") == "#000000":
             merged["she_leveque_color"] = "#569cd6"  # Blue - visible on dark background
         if merged.get("experimental_b93_color") == "#00BFC4":
@@ -461,8 +406,8 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
         ps["std_alpha"] = st.slider("Std band opacity", 0.05, 0.6, float(ps.get("std_alpha", 0.18)),
                                     key=f"{key_prefix}_std_alpha")
 
-        # Reference line colors for Anomalies plot
-        if selected_plot == "Anomalies (ξₚ − p/3)":
+        # Reference line colors for Anomalies plot and ESS Inset
+        if selected_plot == "Anomalies (ξₚ − p/3)" or selected_plot == "ESS Inset":
             ps["she_leveque_color"] = st.color_picker(
                 "She–Leveque curve color",
                 ps.get("she_leveque_color", "#000000"),
@@ -472,6 +417,20 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                 "Experimental B93 color",
                 ps.get("experimental_b93_color", "#00BFC4"),
                 key=f"{key_prefix}_experimental_b93_color"
+            )
+        
+        # Zero line color for ESS Inset
+        if selected_plot == "ESS Inset":
+            ps["zero_line_color"] = st.color_picker(
+                "Zero line (Kolmogorov reference) color",
+                ps.get("zero_line_color", ps.get("axis_line_color", "#000000")),
+                key=f"{key_prefix}_zero_line_color"
+            )
+            ps["zero_line_width"] = st.slider(
+                "Zero line width",
+                0.5, 3.0,
+                float(ps.get("zero_line_width", ps.get("axis_line_width", 0.8))),
+                key=f"{key_prefix}_zero_line_width"
             )
 
         st.markdown("---")
@@ -536,32 +495,25 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                                 key_prefix=f"{key_prefix}_sim", include_marker=True, show_enable_checkbox=True)
 
         st.markdown("---")
-        b1, b2 = st.columns(2)
         reset_pressed = False
-        with b1:
-            if st.button("💾 Save Plot Style", key=f"{key_prefix}_save"):
-                st.session_state.plot_styles[selected_plot] = ps
-                _save_ui_metadata(data_dir)
-                st.success(f"Saved style for '{selected_plot}'.")
-        with b2:
-            if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
-                st.session_state.plot_styles[selected_plot] = {}
-                
-                # Clear widget state so widgets re-read from defaults on next run
-                widget_keys = [
-                    # Fonts
-                    f"{key_prefix}_font_family",
-                    f"{key_prefix}_font_size",
-                    f"{key_prefix}_title_size",
-                    f"{key_prefix}_legend_size",
-                    f"{key_prefix}_show_legend",
-                    f"{key_prefix}_tick_font_size",
-                    f"{key_prefix}_axis_title_size",
-                    # Backgrounds
-                    f"{key_prefix}_plot_bgcolor",
-                    f"{key_prefix}_paper_bgcolor",
-                    # Ticks
-                    f"{key_prefix}_tick_len",
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+            st.session_state.plot_styles[selected_plot] = {}
+            
+            # Clear widget state so widgets re-read from defaults on next run
+            widget_keys = [
+                # Fonts
+                f"{key_prefix}_font_family",
+                f"{key_prefix}_font_size",
+                f"{key_prefix}_title_size",
+                f"{key_prefix}_legend_size",
+                f"{key_prefix}_show_legend",
+                f"{key_prefix}_tick_font_size",
+                f"{key_prefix}_axis_title_size",
+                # Backgrounds
+                f"{key_prefix}_plot_bgcolor",
+                f"{key_prefix}_paper_bgcolor",
+                # Ticks
+                f"{key_prefix}_tick_len",
                     f"{key_prefix}_tick_w",
                     f"{key_prefix}_ticks_outside",
                     # Axis scale
@@ -595,9 +547,12 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                     f"{key_prefix}_line_width",
                     f"{key_prefix}_marker_size",
                     f"{key_prefix}_std_alpha",
-                    # Reference line colors (for Anomalies plot)
+                    # Reference line colors (for Anomalies plot and ESS Inset)
                     f"{key_prefix}_she_leveque_color",
                     f"{key_prefix}_experimental_b93_color",
+                    # Zero line (for ESS Inset)
+                    f"{key_prefix}_zero_line_color",
+                    f"{key_prefix}_zero_line_width",
                     # Colors
                     f"{key_prefix}_palette",
                     # Theme
@@ -624,32 +579,31 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                     # Per-sim global toggle
                     f"{key_prefix}_enable_per_sim",
                 ]
-                
-                # Custom color inputs
-                for i in range(10):
-                    widget_keys.append(f"{key_prefix}_cust_color_{i}")
-                
-                # Per-simulation style widgets
-                if sim_groups:
-                    for sim_prefix in sim_groups.keys():
-                        for suffix in [
-                            "over_on",
-                            "over_color",
-                            "over_width",
-                            "over_dash",
-                            "over_marker",
-                            "over_msize",
-                        ]:
-                            widget_keys.append(f"{key_prefix}_sim_{suffix}_{sim_prefix}")
-                
-                for k in widget_keys:
-                    if k in st.session_state:
-                        del st.session_state[k]
-                
-                _save_ui_metadata(data_dir)
-                st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
-                reset_pressed = True
-                st.rerun()
+            
+            # Custom color inputs
+            for i in range(10):
+                widget_keys.append(f"{key_prefix}_cust_color_{i}")
+            
+            # Per-simulation style widgets
+            if sim_groups:
+                for sim_prefix in sim_groups.keys():
+                    for suffix in [
+                        "over_on",
+                        "over_color",
+                        "over_width",
+                        "over_dash",
+                        "over_marker",
+                        "over_msize",
+                    ]:
+                        widget_keys.append(f"{key_prefix}_sim_{suffix}_{sim_prefix}")
+            
+            for k in widget_keys:
+                if k in st.session_state:
+                    del st.session_state[k]
+            
+            st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
+            reset_pressed = True
+            st.rerun()
 
     # Auto-save plot style changes (applies immediately) - but not if reset was pressed
     if not reset_pressed:
@@ -701,20 +655,14 @@ def main():
     # Defaults
     st.session_state.setdefault("structure_legend_names", {})
     st.session_state.setdefault("axis_labels_structure", {
-        "x_r": "Separation distance $r$",
-        "y_sp": "Structure functions $S_p(r)$",
-        "x_ess": r"$S_3(r)$",
-        "y_ess": r"$S_p(r)$",
-        "y_anom": r"$\xi_p - p/3$",
+        "x_r": "Separation distance r",
+        "y_sp": "Structure functions S<sub>p</sub>(r)",
+        "x_ess": "S<sub>3</sub>(r)",
+        "y_ess": "S<sub>p</sub>(r)",
+        "y_anom": "ξ<sub>p</sub> - p/3",
     })
     st.session_state.setdefault("plot_styles", {})
 
-    # Load json once per dataset change
-    if st.session_state.get("_last_struct_dir") != str(data_dir):
-        _load_ui_metadata(data_dir)
-        if "plot_styles" not in st.session_state:
-            st.session_state.plot_styles = {}
-        st.session_state["_last_struct_dir"] = str(data_dir)
 
     # Collect files from all directories
     all_bin_files = []
@@ -881,6 +829,7 @@ def main():
     show_error_bars = error_display in ["Error bars", "Both"]
     show_sl_theory = st.sidebar.checkbox("Show She-Leveque anomalies", value=True)
     show_exp_anom = st.sidebar.checkbox("Show experimental anomalies (B93)", value=True)
+    show_inset = st.sidebar.checkbox("Show ESS inset (anomalies)", value=True)
 
     st.sidebar.subheader("Fit range for ESS exponents")
     if r_s is not None and np.any(r_s > 0):
@@ -897,7 +846,7 @@ def main():
     with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
         st.markdown("### Legend names")
         for sim_prefix in sorted(sim_groups.keys()):
-            st.session_state.structure_legend_names.setdefault(sim_prefix, _default_labelify(sim_prefix))
+            st.session_state.structure_legend_names.setdefault(sim_prefix, sim_prefix.replace("_", " ").title())
             st.session_state.structure_legend_names[sim_prefix] = st.text_input(
                 f"Name for `{sim_prefix}`",
                 value=st.session_state.structure_legend_names[sim_prefix],
@@ -907,42 +856,35 @@ def main():
         st.markdown("---")
         st.markdown("### Axis labels")
         st.session_state.axis_labels_structure["x_r"] = st.text_input(
-            "S_p plot x-label", st.session_state.axis_labels_structure.get("x_r", "Separation distance $r$"), key="ax_struct_xr"
+            "S_p plot x-label", st.session_state.axis_labels_structure.get("x_r", "Separation distance r"), key="ax_struct_xr"
         )
         st.session_state.axis_labels_structure["y_sp"] = st.text_input(
-            "S_p plot y-label", st.session_state.axis_labels_structure.get("y_sp", "Structure functions $S_p(r)$"), key="ax_struct_ysp"
+            "S_p plot y-label", st.session_state.axis_labels_structure.get("y_sp", "Structure functions S<sub>p</sub>(r)"), key="ax_struct_ysp"
         )
         st.session_state.axis_labels_structure["x_ess"] = st.text_input(
-            "ESS x-label", st.session_state.axis_labels_structure.get("x_ess", r"$S_3(r)$"), key="ax_struct_xess"
+            "ESS x-label", st.session_state.axis_labels_structure.get("x_ess", "S<sub>3</sub>(r)"), key="ax_struct_xess"
         )
         st.session_state.axis_labels_structure["y_ess"] = st.text_input(
-            "ESS y-label", st.session_state.axis_labels_structure.get("y_ess", r"$S_p(r)$"), key="ax_struct_yess"
+            "ESS y-label", st.session_state.axis_labels_structure.get("y_ess", "S<sub>p</sub>(r)"), key="ax_struct_yess"
         )
         st.session_state.axis_labels_structure["y_anom"] = st.text_input(
-            "Anomaly y-label", st.session_state.axis_labels_structure.get("y_anom", r"$\xi_p - p/3$"), key="ax_struct_yanom"
+            "Anomaly y-label", st.session_state.axis_labels_structure.get("y_anom", "ξ<sub>p</sub> - p/3"), key="ax_struct_yanom"
         )
 
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button("💾 Save labels/legends"):
-                _save_ui_metadata(data_dir)
-                st.success("Saved to legend_names.json")
-        with b2:
-            if st.button("♻️ Reset labels/legends"):
-                st.session_state.structure_legend_names = {k: _default_labelify(k) for k in sim_groups.keys()}
-                st.session_state.axis_labels_structure.update({
-                    "x_r": "Separation distance $r$",
-                    "y_sp": "Structure functions $S_p(r)$",
-                    "x_ess": r"$S_3(r)$",
-                    "y_ess": r"$S_p(r)$",
-                    "y_anom": r"$\xi_p - p/3$",
-                })
-                _save_ui_metadata(data_dir)
-                st.toast("Reset + saved.", icon="♻️")
-                st.rerun()
+        if st.button("♻️ Reset labels/legends"):
+            st.session_state.structure_legend_names = {k: k.replace("_", " ").title() for k in sim_groups.keys()}
+            st.session_state.axis_labels_structure.update({
+                "x_r": "Separation distance r",
+                "y_sp": "Structure functions S<sub>p</sub>(r)",
+                "x_ess": "S<sub>3</sub>(r)",
+                "y_ess": "S<sub>p</sub>(r)",
+                "y_anom": "ξ<sub>p</sub> - p/3",
+            })
+            st.toast("Reset.", icon="♻️")
+            st.rerun()
 
     # Full style sidebar
-    plot_names = ["S_p(r) vs r", "ESS (S_p vs S_3)", "Anomalies (ξₚ − p/3)"]
+    plot_names = ["S_p(r) vs r", "ESS (S_p vs S_3)", "ESS Inset", "Anomalies (ξₚ − p/3)"]
     plot_style_sidebar(data_dir, sim_groups, plot_names)
 
     tabs = st.tabs(["Sₚ(r) vs r", "ESS (Sₚ vs S₃)", "Scaling Exponents Table"])
@@ -975,7 +917,7 @@ def main():
                 st.warning(f"No structure function data found for {sim_prefix}.")
                 continue
 
-            legend_base = st.session_state.structure_legend_names.get(sim_prefix, _default_labelify(sim_prefix))
+            legend_base = st.session_state.structure_legend_names.get(sim_prefix, sim_prefix.replace("_", " ").title())
             color_base, lw_base, dash_base, marker_base, msize_base, override_on = resolve_line_style(
                 sim_prefix, idx, colors_sp, ps_sp,
                 style_key="per_sim_style_structure",
@@ -1041,8 +983,8 @@ def main():
             st.info("No valid structure function data in selected range.")
         else:
             layout_kwargs = dict(
-                xaxis_title=st.session_state.axis_labels_structure.get("x_r", "Separation distance $r$"),
-                yaxis_title=st.session_state.axis_labels_structure.get("y_sp", "Structure functions $S_p(r)$"),
+                xaxis_title=st.session_state.axis_labels_structure.get("x_r", "Separation distance r"),
+                yaxis_title=st.session_state.axis_labels_structure.get("y_sp", "Structure functions S<sub>p</sub>(r)"),
                 legend_title="Simulation / Order",
                 height=500,  # Default, will be overridden if custom size is enabled
             )
@@ -1084,7 +1026,7 @@ def main():
                 st.warning(f"Reference order p={ref_p} not available for {sim_prefix}. Available orders: {sorted(Sp_mean.keys()) if Sp_mean else 'none'}")
                 continue
 
-            legend_base = st.session_state.structure_legend_names.get(sim_prefix, _default_labelify(sim_prefix))
+            legend_base = st.session_state.structure_legend_names.get(sim_prefix, sim_prefix.replace("_", " ").title())
             color, lw, dash, marker, msize, override_on = resolve_line_style(
                 sim_prefix, idx, colors_ess, ps_ess,
                 style_key="per_sim_style_structure",
@@ -1186,8 +1128,8 @@ def main():
             st.info("No valid ESS data to plot.")
         else:
             layout_kwargs = dict(
-                xaxis_title=st.session_state.axis_labels_structure.get("x_ess", r"$S_3(r)$"),
-                yaxis_title=st.session_state.axis_labels_structure.get("y_ess", r"$S_p(r)$"),
+                xaxis_title=st.session_state.axis_labels_structure.get("x_ess", "S<sub>3</sub>(r)"),
+                yaxis_title=st.session_state.axis_labels_structure.get("y_ess", "S<sub>p</sub>(r)"),
                 legend_title="Simulation / Order",
                 height=500,  # Default, will be overridden if custom size is enabled
             )
@@ -1195,6 +1137,32 @@ def main():
             layout_kwargs = apply_figure_size(layout_kwargs, ps_ess)
             fig_ess.update_layout(**layout_kwargs)
             fig_ess = apply_plot_style(fig_ess, ps_ess)
+            
+            # Add inset for anomalies (ξ_p - p/3) vs p
+            if show_inset:
+                # Get inset-specific plot style, fallback to ESS style if not configured
+                plot_name_inset = "ESS Inset"
+                ps_inset = get_plot_style(plot_name_inset)
+                # If inset style hasn't been customized, use ESS style as base
+                if not st.session_state.get("plot_styles", {}).get(plot_name_inset):
+                    # Merge ESS style into inset style as defaults
+                    for key, value in ps_ess.items():
+                        if key not in ps_inset or ps_inset[key] == default_plot_style().get(key):
+                            ps_inset[key] = value
+                
+                fig_ess = add_ess_inset(
+                    fig=fig_ess,
+                    xi_all=xi_all,
+                    anom_all=anom_all,
+                    xi_err_all=xi_err_all,
+                    sim_groups=sim_groups,
+                    legend_names=st.session_state.structure_legend_names,
+                    colors_palette=colors_ess,
+                    plot_style=ps_inset,
+                    show_sl_theory=show_sl_theory,
+                    show_exp_anom=show_exp_anom
+                )
+            
             st.plotly_chart(fig_ess, width='stretch')
             capture_button(fig_ess, title="Structure Functions ESS", source_page="Structure Functions")
             export_panel(fig_ess, data_dir, base_name="structure_functions_ess")
@@ -1222,7 +1190,7 @@ def main():
                 fig_anom.add_trace(go.Scatter(
                     x=ps_show, y=yvals,
                     mode="lines+markers",
-                    name=st.session_state.structure_legend_names.get(sim_prefix, _default_labelify(sim_prefix)),
+                    name=st.session_state.structure_legend_names.get(sim_prefix, sim_prefix.replace("_", " ").title()),
                     line=dict(color=color, width=max(1.0, lw*0.7)),
                     marker=dict(symbol=marker, size=max(4, int(msize*0.7))),
                     error_y=dict(type="data", array=yerr, visible=True, thickness=1),
@@ -1256,8 +1224,8 @@ def main():
             fig_anom.add_hline(y=0, line_dash="dot", line_color="black", line_width=1)
 
             layout_kwargs_anom = dict(
-                xaxis_title=r"$p$",
-                yaxis_title=st.session_state.axis_labels_structure.get("y_anom", r"$\xi_p - p/3$"),
+                xaxis_title="p",
+                yaxis_title=st.session_state.axis_labels_structure.get("y_anom", "ξ<sub>p</sub> - p/3"),
                 height=360,
                 legend_title="",
             )

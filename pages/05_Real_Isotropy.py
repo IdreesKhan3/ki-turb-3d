@@ -13,7 +13,7 @@ High-standard features:
     (d) |b12|, |b13|, |b23| + anisotropy index
     (e) energy-fraction deviations from isotropy
     (f) convergence (running std)
-- FULL persistent UI controls (same system as other pages)
+- Full user controls (in-memory session state): same system as other pages
 - Research-grade export (requires kaleido)
 
 Requires kaleido:
@@ -27,7 +27,6 @@ import plotly.graph_objects as go
 import plotly.colors as pc
 from plotly.colors import hex_to_rgb
 from pathlib import Path
-import json
 import sys
 import matplotlib.cm as cm
 
@@ -50,80 +49,10 @@ st.set_page_config(page_icon="⚫")
 
 
 # ==========================================================
-# JSON persistence (dataset-local)
+# Helpers
 # ==========================================================
-def _legend_json_path(data_dir: Path) -> Path:
-    return data_dir / "legend_names.json"
-
 def _default_labelify(name: str) -> str:
     return name.replace("_", " ").title()
-
-def _load_ui_metadata(data_dir: Path):
-    path = _legend_json_path(data_dir)
-    if not path.exists():
-        return
-    try:
-        meta = json.loads(path.read_text(encoding="utf-8"))
-        # Merge with defaults to ensure all required keys exist
-        default_legends = {
-            "Ex": "E<sub>x</sub>/E<sub>tot</sub>", 
-            "Ey": "E<sub>y</sub>/E<sub>tot</sub>", 
-            "Ez": "E<sub>z</sub>/E<sub>tot</sub>",
-            "b11": "b<sub>11</sub>", 
-            "b22": "b<sub>22</sub>", 
-            "b33": "b<sub>33</sub>",
-            "b12": "|b<sub>12</sub>|", 
-            "b13": "|b<sub>13</sub>|", 
-            "b23": "|b<sub>23</sub>|",
-            "anis": "Anisotropy index"
-        }
-        default_axis_labels = {
-            "time": "t/t₀", 
-            "energy_frac": "Energy fraction",
-            "bij": "Anisotropy tensor b<sub>ij</sub>",
-            "cross": "Cross-correlations / Anisotropy index",
-            "dev": "Absolute deviation",
-            "lumley_x": "ξ = (III<sub>b</sub>/2)<sup>1/3</sup>",
-            "lumley_y": "η = (-II<sub>b</sub>/3)<sup>1/2</sup>",
-            "convergence": "Running standard deviation",
-        }
-        # Start with defaults, then update with saved values
-        loaded_legends = default_legends.copy()
-        loaded_legends.update(meta.get("real_iso_legends", {}))
-        st.session_state.real_iso_legends = loaded_legends
-        
-        loaded_axis_labels = default_axis_labels.copy()
-        loaded_axis_labels.update(meta.get("axis_labels_real_iso", {}))
-        st.session_state.axis_labels_real_iso = loaded_axis_labels
-        
-        # Load plot-specific styles
-        st.session_state.plot_styles = meta.get("plot_styles", {})
-        # Backward compatibility: if plot_styles doesn't exist, use old plot_style
-        if not st.session_state.plot_styles and "plot_style" in meta:
-            st.session_state.plot_styles = {}
-    except Exception:
-        st.toast("legend_names.json exists but could not be read. Using defaults.", icon="⚠️")
-
-def _save_ui_metadata(data_dir: Path):
-    path = _legend_json_path(data_dir)
-    old = {}
-    if path.exists():
-        try:
-            old = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            old = {}
-
-    old.update({
-        "real_iso_legends": st.session_state.get("real_iso_legends", {}),
-        "axis_labels_real_iso": st.session_state.get("axis_labels_real_iso", {}),
-        "plot_styles": st.session_state.get("plot_styles", {}),
-    })
-
-    try:
-        path.write_text(json.dumps(old, indent=2), encoding="utf-8")
-    except Exception as e:
-        st.error(f"Could not save legend_names.json: {e}")
-
 
 # ==========================================================
 # Plot styling system (using centralized module)
@@ -490,15 +419,8 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                                            disabled=not s["enabled"])
 
         st.markdown("---")
-        b1, b2 = st.columns(2)
         reset_pressed = False
-        with b1:
-            if st.button("💾 Save Plot Style", key=f"{key_prefix}_save"):
-                st.session_state.plot_styles[selected_plot] = ps
-                _save_ui_metadata(data_dir)
-                st.success(f"Saved style for '{selected_plot}'.")
-        with b2:
-            if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
                 # 1) Reset the underlying style dict
                 st.session_state.plot_styles[selected_plot] = {}
                 
@@ -607,8 +529,6 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                     if k in st.session_state:
                         del st.session_state[k]
                 
-                # Save the reset state
-                _save_ui_metadata(data_dir)
                 st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
                 reset_pressed = True
                 st.rerun()
@@ -802,18 +722,13 @@ def main():
     if "plot_styles" not in st.session_state:
         st.session_state.plot_styles = {}
 
-    if st.session_state.get("_last_realiso_dir") != str(data_dir):
-        _load_ui_metadata(data_dir)
-        # After loading, ensure all required keys are present
-        for key, value in default_legends.items():
-            if key not in st.session_state.real_iso_legends:
-                st.session_state.real_iso_legends[key] = value
-        for key, value in default_axis_labels.items():
-            if key not in st.session_state.axis_labels_real_iso:
-                st.session_state.axis_labels_real_iso[key] = value
-        if "plot_styles" not in st.session_state:
-            st.session_state.plot_styles = {}
-        st.session_state["_last_realiso_dir"] = str(data_dir)
+    # Ensure all required keys are present
+    for key, value in default_legends.items():
+        if key not in st.session_state.real_iso_legends:
+            st.session_state.real_iso_legends[key] = value
+    for key, value in default_axis_labels.items():
+        if key not in st.session_state.axis_labels_real_iso:
+            st.session_state.axis_labels_real_iso[key] = value
 
     # locate required file
     files = detect_simulation_files(str(data_dir))
@@ -885,37 +800,31 @@ def main():
                 k, st.session_state.axis_labels_real_iso[k], key=f"realiso_ax_{k}"
             )
 
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("💾 Save labels/legends"):
-                _save_ui_metadata(data_dir)
-                st.success("Saved to legend_names.json")
-        with c2:
-            if st.button("♻️ Reset labels/legends"):
-                st.session_state.real_iso_legends = {
-                    "Ex": "E<sub>x</sub>/E<sub>tot</sub>", 
-                    "Ey": "E<sub>y</sub>/E<sub>tot</sub>", 
-                    "Ez": "E<sub>z</sub>/E<sub>tot</sub>",
-                    "b11": "b<sub>11</sub>", 
-                    "b22": "b<sub>22</sub>", 
-                    "b33": "b<sub>33</sub>",
-                    "b12": "|b<sub>12</sub>|", 
-                    "b13": "|b<sub>13</sub>|", 
-                    "b23": "|b<sub>23</sub>|",
-                    "anis": "Anisotropy index"
-                }
-                st.session_state.axis_labels_real_iso = {
-                    "time": "t/t₀",
-                    "energy_frac": "Energy fraction",
-                    "bij": "Anisotropy tensor b<sub>ij</sub>",
-                    "cross": "Cross-correlations / Anisotropy index",
-                    "dev": "Absolute deviation",
-                    "lumley_x": "ξ = (III<sub>b</sub>/2)<sup>1/3</sup>",
-                    "lumley_y": "η = (-II<sub>b</sub>/3)<sup>1/2</sup>",
-                    "convergence": "Running standard deviation",
-                }
-                _save_ui_metadata(data_dir)
-                st.toast("Reset + saved.", icon="♻️")
+        if st.button("♻️ Reset labels/legends"):
+            st.session_state.real_iso_legends = {
+                "Ex": "E<sub>x</sub>/E<sub>tot</sub>", 
+                "Ey": "E<sub>y</sub>/E<sub>tot</sub>", 
+                "Ez": "E<sub>z</sub>/E<sub>tot</sub>",
+                "b11": "b<sub>11</sub>", 
+                "b22": "b<sub>22</sub>", 
+                "b33": "b<sub>33</sub>",
+                "b12": "|b<sub>12</sub>|", 
+                "b13": "|b<sub>13</sub>|", 
+                "b23": "|b<sub>23</sub>|",
+                "anis": "Anisotropy index"
+            }
+            st.session_state.axis_labels_real_iso = {
+                "time": "t/t₀", 
+                "energy_frac": "Energy fraction",
+                "bij": "Anisotropy tensor b<sub>ij</sub>",
+                "cross": "Cross-correlations / Anisotropy index",
+                "dev": "Absolute deviation",
+                "lumley_x": "ξ = (III<sub>b</sub>/2)<sup>1/3</sup>",
+                "lumley_y": "η = (-II<sub>b</sub>/3)<sup>1/2</sup>",
+                "convergence": "Running standard deviation",
+            }
+            st.toast("Reset.", icon="♻️")
+            st.rerun()
 
     # Sidebar: analysis controls
     st.sidebar.subheader("Analysis Controls")

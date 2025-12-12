@@ -12,7 +12,7 @@ Features:
     (1) Time-averaged IC(k)
     (2) Time-averaged E11,E22,E33
     (3) Snapshot IC(k) lines + avg overlay (convergence)
-- FULL persistent UI controls (legend names, axis labels, plot style)
+- Full user controls (in-memory session state): legend names, axis labels, plot style
 - Research-grade export (PNG/PDF/SVG/EPS/JPG/WEBP/TIFF/HTML)
 
 Requires kaleido:
@@ -26,7 +26,6 @@ import plotly.graph_objects as go
 import plotly.colors as pc
 from plotly.colors import hex_to_rgb
 from pathlib import Path
-import json
 import re
 import glob
 import sys
@@ -50,70 +49,10 @@ st.set_page_config(page_icon="⚫")
 
 
 # ==========================================================
-# JSON persistence (dataset-local)
+# Helpers
 # ==========================================================
-def _legend_json_path(data_dir: Path) -> Path:
-    return data_dir / "legend_names.json"
-
 def _default_labelify(name: str) -> str:
     return name.replace("_", " ").title()
-
-def _load_ui_metadata(data_dir: Path):
-    path = _legend_json_path(data_dir)
-    if not path.exists():
-        return
-    try:
-        meta = json.loads(path.read_text(encoding="utf-8"))
-        # Merge with defaults to ensure all required keys exist
-        default_legends = {
-            "IC": "IC(k) (time-avg)",
-            "IC_snap": "IC(k) snapshots",
-            "E11": "E<sub>11</sub>(k)",
-            "E22": "E<sub>22</sub>(k)",
-            "E33": "E<sub>33</sub>(k)",
-        }
-        default_axis_labels = {
-            "k": "k",
-            "ic": "IC(k)",
-            "ek": "E<sub>ii</sub>(k)",
-        }
-        # Start with defaults, then update with saved values
-        loaded_legends = default_legends.copy()
-        loaded_legends.update(meta.get("spec_iso_legends", {}))
-        st.session_state.spec_iso_legends = loaded_legends
-        
-        loaded_axis_labels = default_axis_labels.copy()
-        loaded_axis_labels.update(meta.get("axis_labels_spec_iso", {}))
-        st.session_state.axis_labels_spec_iso = loaded_axis_labels
-        
-        # Load plot-specific styles
-        st.session_state.plot_styles = meta.get("plot_styles", {})
-        # Backward compatibility: if plot_styles doesn't exist, use old plot_style
-        if not st.session_state.plot_styles and "plot_style" in meta:
-            st.session_state.plot_styles = {}
-    except Exception:
-        st.toast("legend_names.json exists but could not be read. Using defaults.", icon="⚠️")
-
-def _save_ui_metadata(data_dir: Path):
-    path = _legend_json_path(data_dir)
-    old = {}
-    if path.exists():
-        try:
-            old = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            old = {}
-
-    old.update({
-        "spec_iso_legends": st.session_state.get("spec_iso_legends", {}),
-        "axis_labels_spec_iso": st.session_state.get("axis_labels_spec_iso", {}),
-        "plot_styles": st.session_state.get("plot_styles", {}),
-    })
-
-    try:
-        path.write_text(json.dumps(old, indent=2), encoding="utf-8")
-    except Exception as e:
-        st.error(f"Could not save legend_names.json: {e}")
-
 
 # ==========================================================
 # Plot styling system (using centralized module)
@@ -433,15 +372,8 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                                            disabled=not s["enabled"])
 
         st.markdown("---")
-        b1, b2 = st.columns(2)
         reset_pressed = False
-        with b1:
-            if st.button("💾 Save Plot Style", key=f"{key_prefix}_save"):
-                st.session_state.plot_styles[selected_plot] = ps
-                _save_ui_metadata(data_dir)
-                st.success(f"Saved style for '{selected_plot}'.")
-        with b2:
-            if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
                 st.session_state.plot_styles[selected_plot] = {}
                 
                 # Clear widget state so widgets re-read from defaults on next run
@@ -525,7 +457,6 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                     if k in st.session_state:
                         del st.session_state[k]
                 
-                _save_ui_metadata(data_dir)
                 st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
                 reset_pressed = True
                 st.rerun()
@@ -708,18 +639,13 @@ def main():
     if "plot_styles" not in st.session_state:
         st.session_state.plot_styles = {}
 
-    if st.session_state.get("_last_speciso_dir") != str(data_dir):
-        _load_ui_metadata(data_dir)
-        # After loading, ensure all required keys are present
-        for key, value in default_legends.items():
-            if key not in st.session_state.spec_iso_legends:
-                st.session_state.spec_iso_legends[key] = value
-        for key, value in default_axis_labels.items():
-            if key not in st.session_state.axis_labels_spec_iso:
-                st.session_state.axis_labels_spec_iso[key] = value
-        if "plot_styles" not in st.session_state:
-            st.session_state.plot_styles = {}
-        st.session_state["_last_speciso_dir"] = str(data_dir)
+    # Ensure all required keys are present
+    for key, value in default_legends.items():
+        if key not in st.session_state.spec_iso_legends:
+            st.session_state.spec_iso_legends[key] = value
+    for key, value in default_axis_labels.items():
+        if key not in st.session_state.axis_labels_spec_iso:
+            st.session_state.axis_labels_spec_iso[key] = value
 
     # Find isotropy files from ALL directories independently
     all_ic_files = []
@@ -758,27 +684,21 @@ def main():
             st.session_state.axis_labels_spec_iso[k] = st.text_input(
                 k, st.session_state.axis_labels_spec_iso[k], key=f"speciso_ax_{k}"
             )
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("💾 Save labels/legends"):
-                _save_ui_metadata(data_dir)
-                st.success("Saved to legend_names.json")
-        with c2:
-            if st.button("♻️ Reset labels/legends"):
-                st.session_state.spec_iso_legends = {
-                    "IC": "IC(k) (time-avg)",
-                    "IC_snap": "IC(k) snapshots",
-                    "E11": "E<sub>11</sub>(k)",
-                    "E22": "E<sub>22</sub>(k)",
-                    "E33": "E<sub>33</sub>(k)",
-                }
-                st.session_state.axis_labels_spec_iso = {
-                    "k": "k",
-                    "ic": "IC(k)",
-                    "ek": "E<sub>ii</sub>(k)",
-                }
-                _save_ui_metadata(data_dir)
-                st.toast("Reset + saved.", icon="♻️")
+        if st.button("♻️ Reset labels/legends"):
+            st.session_state.spec_iso_legends = {
+                "IC": "IC(k) (time-avg)",
+                "IC_snap": "IC(k) snapshots",
+                "E11": "E<sub>11</sub>(k)",
+                "E22": "E<sub>22</sub>(k)",
+                "E33": "E<sub>33</sub>(k)",
+            }
+            st.session_state.axis_labels_spec_iso = {
+                "k": "k",
+                "ic": "IC(k)",
+                "ek": "E<sub>ii</sub>(k)",
+            }
+            st.toast("Reset.", icon="♻️")
+            st.rerun()
 
     # Sidebar time window
     st.sidebar.subheader("Time Window")
