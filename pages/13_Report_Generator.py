@@ -147,7 +147,7 @@ def main():
     if not st.session_state.report_sections:
         st.markdown("### Start your report")
         c1, c2 = st.columns(2)
-        if c1.button("➕ Add Title/Text", key="start_text", use_container_width=True):
+        if c1.button("➕ Add Title/Text", key="start_text", width='stretch'):
             st.session_state.report_sections.append({
                 "title": "Introduction",
                 "type": "text",
@@ -157,7 +157,7 @@ def main():
                 "source_page": "Manual"
             })
             st.rerun()
-        if c2.button("➕ Create Table", key="start_table", use_container_width=True):
+        if c2.button("➕ Create Table", key="start_table", width='stretch'):
             insert_section(-1, "manual_table")
             st.rerun()
     
@@ -219,14 +219,14 @@ def main():
                         section['dataframe'],
                         key=f"tbl_ed_{idx}",
                         num_rows="dynamic",
-                        use_container_width=True
+                        width='stretch'
                     )
                 elif 'content' in section and isinstance(section['content'], pd.DataFrame):
                     section['content'] = st.data_editor(
                         section['content'],
                         key=f"tbl_man_{idx}",
                         num_rows="dynamic",
-                        use_container_width=True
+                        width='stretch'
                     )
                     section['dataframe'] = section['content']
                 else:
@@ -236,7 +236,7 @@ def main():
             
             elif section['type'] == "plot":
                 if section.get('figure'):
-                    st.plotly_chart(section['figure'], use_container_width=True, key=f"plt_{idx}")
+                    st.plotly_chart(section['figure'], width='stretch', key=f"plt_{idx}")
                 else:
                     st.warning("⚠️ Plot data missing or placeholder.")
                 section['caption'] = st.text_input("Caption", value=section.get('caption', ''), key=f"pc_{idx}")
@@ -266,7 +266,7 @@ def main():
     with col2:
         st.write("")
         st.write("")
-        if st.button("🚀 Generate File", type="primary", use_container_width=True):
+        if st.button("🚀 Generate File", type="primary", width='stretch'):
             if not st.session_state.report_sections:
                 st.error("Please add at least one section to the report.")
                 return

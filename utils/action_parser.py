@@ -49,7 +49,7 @@ APPLICATION INFORMATION:
 
 STREAMLIT APP CONTEXT:
 - This is a Streamlit application with multiple pages in the pages/ directory
-- Pages are Python files named like "01_Page_Name.py", "01_Chatbot.py", etc.
+- Pages are Python files named like "01_Page_Name.py", "01_AI_Assistant.py", etc.
 - The app uses Streamlit's session state (st.session_state) to maintain state across pages
 - Navigation between pages is done via the "navigate" action with target_page parameter
 - The app has a theme system with "Light Scientific" and "Dark Scientific" themes
@@ -70,7 +70,7 @@ AVAILABLE ACTIONS:
 - run_shell_command: Execute shell command (use "command")
 - execute_code: Execute Python code (use "code"). Can access Streamlit via 'import streamlit as st'
 - search_codebase: Search code (use "query") - Use this to find code before editing
-- navigate: Navigate to Streamlit page (use "target_page" like "01_Chatbot" or "07_Energy_Spectra")
+- navigate: Navigate to Streamlit page (use "target_page" like "01_AI_Assistant" or "07_Energy_Spectra")
 - load_data: Load data directory (use "path") - updates Streamlit session state. Be intelligent: 
   * If user gives a hint (e.g., "DNS", "250", "examples/DNS"), the system will search and show suggestions
   * If exact path doesn't exist, the system will find similar directories and show suggestions
@@ -315,7 +315,7 @@ Generate the next logical step as a JSON array."""
                         lines.append(f"  - {page_name}")
                     if len(sorted_pages) > 15:
                         lines.append(f"  ... and {len(sorted_pages) - 15} more pages")
-                    lines.append("  (Use 'navigate' action with target_page like '01_Chatbot' to switch pages)")
+                    lines.append("  (Use 'navigate' action with target_page like '01_AI_Assistant' to switch pages)")
             
             common_dirs = []
             for dir_name in ["pages", "utils", "data_readers", "visualizations", "scripts", "SRC", "hdf5_lib"]:

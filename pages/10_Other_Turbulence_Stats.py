@@ -669,7 +669,7 @@ def main():
             use_container = not ps.get("enable_custom_size", False)
             col1, col2, col3 = st.columns([1, 10, 1])
             with col2:
-                st.plotly_chart(fig, use_container_width=use_container)
+                st.plotly_chart(fig, width='stretch' if use_container else 'content')
             capture_button(fig, title="Custom Multi-Trace Plot", source_page="Other Turbulence Stats")
             
             # Export panel

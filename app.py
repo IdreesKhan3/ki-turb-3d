@@ -458,7 +458,7 @@ def main():
         <div style='background: {card_bg}; padding: 0.6rem; border-radius: 4px; border-left: 3px solid {accent_color}; margin-bottom: 0.8rem;'>
             <p style='margin: 0; font-size: 0.9rem; color: {text_color}; line-height: 1.5;'>
                 <strong>KI-TURB 3D</strong> analyzes <strong>Lattice Boltzmann Method (LBM)</strong> <strong>Direct Numerical Simulation (DNS)</strong> and <strong>Large Eddy Simulation (LES)</strong> turbulence data. 
-                Primary method: <strong>Multiple Relaxation Time (MRT)</strong>; also supports <strong>Single Relaxation Time (SRT/BGK)</strong>. 
+                Data is primarily from <strong>Multiple Relaxation Time (MRT)</strong> simulations; the tool can be used seamlessly for <strong>Single Relaxation Time (SRT)</strong>, <strong>Bhatnagar-Gross-Krook (BGK)</strong>, and <strong>Two Relaxation Time (TRT)</strong> data. 
                 Core analysis: Energy spectra <em>E</em>(<em>k</em>), structure functions <em>S</em><sub><em>p</em></sub>(<em>r</em>), scaling exponents ξ<sub><em>p</em></sub> via <strong>Extended Self-Similarity (ESS)</strong>, isotropy validation, flatness factors, probability density functions (PDFs), time series statistics, energy balance, 3D visualization, and multi-simulation comparison.
             </p>
         </div>
@@ -545,9 +545,15 @@ def main():
             </div>
             """, unsafe_allow_html=True)
             st.markdown(f"""
-            <div style='padding: 0.5rem; border-radius: 4px; background: {card_bg}; border-left: 3px solid {accent_color};'>
+            <div style='padding: 0.5rem; border-radius: 4px; background: {card_bg}; border-left: 3px solid {accent_color}; margin-bottom: 0.4rem;'>
                 <strong style='color: {text_color}; font-size: 0.9rem; display: block; margin-bottom: 0.2rem;'>Overview</strong>
                 <span style='color: {secondary_text}; font-size: 0.75rem; line-height: 1.3;'>Simulation metadata & stats</span>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style='padding: 0.5rem; border-radius: 4px; background: {card_bg}; border-left: 3px solid {accent_color};'>
+                <strong style='color: {text_color}; font-size: 0.9rem; display: block; margin-bottom: 0.2rem;'>AI Assistant</strong>
+                <span style='color: {secondary_text}; font-size: 0.75rem; line-height: 1.3;'>Natural language interface</span>
             </div>
             """, unsafe_allow_html=True)
         

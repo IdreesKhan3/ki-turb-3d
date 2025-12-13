@@ -735,23 +735,23 @@ def main():
                 st.markdown("**Quick View Presets:**")
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("Front View", key="d3q19_front", use_container_width=True):
+                    if st.button("Front View", key="d3q19_front", width='stretch'):
                         st.session_state.d3q19_settings['camera_elevation'] = 0.0
                         st.session_state.d3q19_settings['camera_azimuth'] = 0.0
                         st.session_state.d3q19_settings['camera_zoom'] = 1.0
                         st.rerun()
-                    if st.button("Side View", key="d3q19_side", use_container_width=True):
+                    if st.button("Side View", key="d3q19_side", width='stretch'):
                         st.session_state.d3q19_settings['camera_elevation'] = 0.0
                         st.session_state.d3q19_settings['camera_azimuth'] = 90.0
                         st.session_state.d3q19_settings['camera_zoom'] = 1.0
                         st.rerun()
                 with col2:
-                    if st.button("Top View", key="d3q19_top", use_container_width=True):
+                    if st.button("Top View", key="d3q19_top", width='stretch'):
                         st.session_state.d3q19_settings['camera_elevation'] = 90.0
                         st.session_state.d3q19_settings['camera_azimuth'] = 0.0
                         st.session_state.d3q19_settings['camera_zoom'] = 1.0
                         st.rerun()
-                    if st.button("Isometric", key="d3q19_iso", use_container_width=True):
+                    if st.button("Isometric", key="d3q19_iso", width='stretch'):
                         st.session_state.d3q19_settings['camera_elevation'] = 35.0
                         st.session_state.d3q19_settings['camera_azimuth'] = 45.0
                         st.session_state.d3q19_settings['camera_zoom'] = 1.0
@@ -829,7 +829,7 @@ def main():
         fig = plot_d3q19_lattice(**st.session_state.d3q19_settings)
         st.plotly_chart(
             fig, 
-            use_container_width=True,
+            width='stretch',
             config={
                 'displayModeBar': True,
                 'displaylogo': False,

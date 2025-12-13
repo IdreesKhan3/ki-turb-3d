@@ -28,7 +28,7 @@ import plotly.colors as pc
 from plotly.colors import hex_to_rgb
 from pathlib import Path
 import sys
-import matplotlib.cm as cm
+import matplotlib
 
 
 # --- Project imports ---
@@ -1085,7 +1085,7 @@ def main():
         # Original plots line segments between consecutive points, each colored by time
         # This creates a "wire" effect where the trajectory follows different paths
         n = len(xi)
-        viridis = cm.get_cmap('viridis')
+        viridis = matplotlib.colormaps.get_cmap('viridis')
         # Plot line segments between consecutive points (wire-like appearance)
         # Each segment is colored according to time using viridis colormap (alpha=0.8 matching original)
         for i in range(1, n):

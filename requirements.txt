@@ -10,7 +10,5 @@ pyvista>=0.42.0  # For 3D volume visualization (optional, for advanced VTI viewi
 h5py>=3.9.0  # For HDF5 file support
 requests>=2.31.0  # For Ollama API calls
 google-generativeai>=0.3.0  # For Google Gemini (optional)
-openai>=1.0.0  # For OpenAI API (optional)
-anthropic>=0.18.0  # For Anthropic Claude (optional)
 beautifulsoup4>=4.12.0  # For web scraping and HTML parsing (optional, for web search)
 

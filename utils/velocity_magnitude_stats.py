@@ -287,7 +287,7 @@ def display_statistics_table(statistics_dict, title="Statistical Moments"):
     if table_data:
         import pandas as pd
         df = pd.DataFrame(table_data)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width='stretch', hide_index=True)
 
 
 def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,

@@ -327,7 +327,7 @@ def render_mrt_matrix_generator():
     st.markdown("---")
     
     # Compute matrices
-    if st.button("🔧 Generate MRT Matrix", type="primary", use_container_width=True):
+    if st.button("🔧 Generate MRT Matrix", type="primary", width='stretch'):
         with st.spinner("Computing MRT matrix..."):
             # Validate directions
             is_valid, errors, warnings = validate_d3q19_directions(dirx, diry, dirz)
@@ -401,7 +401,7 @@ def render_mrt_matrix_generator():
             
             # Apply column coloring and format as integers (no decimals)
             styled_M = df_M.style.apply(lambda df: get_column_styles(df, column_colors), axis=None).format("{:.0f}")
-            st.dataframe(styled_M, height=600, use_container_width=True)
+            st.dataframe(styled_M, height=600, width='stretch')
             
             # Download button
             csv_M = df_M.to_csv()
@@ -429,7 +429,7 @@ def render_mrt_matrix_generator():
             
             # Apply column coloring and format with 6 decimals
             styled_M_inv = df_M_inv.style.apply(lambda df: get_column_styles(df, column_colors), axis=None).format("{:.6f}")
-            st.dataframe(styled_M_inv, height=600, use_container_width=True)
+            st.dataframe(styled_M_inv, height=600, width='stretch')
             
             csv_M_inv = df_M_inv.to_csv()
             st.download_button(
@@ -462,7 +462,7 @@ def render_mrt_matrix_generator():
             # Reduce width of S vector table
             col_s1, col_s2, col_s3 = st.columns([0.2, 0.6, 0.2])
             with col_s2:
-                st.dataframe(styled_S, use_container_width=True, hide_index=True)
+                st.dataframe(styled_S, width='stretch', hide_index=True)
             
             csv_S = df_S.to_csv(index=False)
             st.download_button(
@@ -494,7 +494,7 @@ def render_mrt_matrix_generator():
                 return f"{val:.3f}" if abs(val) > 1e-10 else "0"
             
             styled_df = df_S_diag.style.apply(lambda df: get_column_styles(df, column_colors), axis=None).format(format_diag_S)
-            st.dataframe(styled_df, height=600, use_container_width=True)
+            st.dataframe(styled_df, height=600, width='stretch')
             
             csv_S_diag = df_S_diag.to_csv()
             st.download_button(
@@ -549,4 +549,4 @@ def render_mrt_matrix_generator():
         styled_dir_df = dir_df.style.apply(lambda df: get_column_styles(df, dir_column_colors), axis=None)
         col_dir1, col_dir2, col_dir3 = st.columns([0.2, 0.6, 0.2])
         with col_dir2:
-            st.dataframe(styled_dir_df, use_container_width=True, hide_index=True)
+            st.dataframe(styled_dir_df, width='stretch', hide_index=True)
