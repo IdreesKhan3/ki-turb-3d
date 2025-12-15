@@ -544,26 +544,6 @@ def main():
         if 'd3q19_settings' not in st.session_state:
             st.session_state.d3q19_settings = _default_d3q19_settings()
         
-        # Load saved settings if available
-        settings_file = project_root / "d3q19_settings.json"
-        # Valid symbols for Plotly Scatter3d
-        valid_symbols = ['circle', 'circle-open', 'square', 'square-open', 'diamond', 'diamond-open', 'cross', 'x']
-        if settings_file.exists():
-            try:
-                with open(settings_file, 'r') as f:
-                    saved_settings = json.load(f)
-                    # Merge with defaults
-                    for key, value in saved_settings.items():
-                        if key in st.session_state.d3q19_settings:
-                            # Validate symbol values
-                            if key in ['node_style', 'origin_style'] and value not in valid_symbols:
-                                # Convert invalid symbol to default
-                                st.session_state.d3q19_settings[key] = 'circle'
-                            else:
-                                st.session_state.d3q19_settings[key] = value
-            except Exception:
-                pass
-        
         # Sidebar controls
         with st.sidebar:
             st.header("🎨 D3Q19 Visualization Controls")
@@ -809,24 +789,61 @@ def main():
                     key="d3q19_background_color"
                 )
             
-            # Save/Reset buttons
+            # Reset button
             st.markdown("---")
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("💾 Save Settings", key="d3q19_save"):
-                    try:
-                        with open(settings_file, 'w') as f:
-                            json.dump(st.session_state.d3q19_settings, f, indent=2)
-                        st.success("Settings saved!")
-                    except Exception as e:
-                        st.error(f"Could not save settings: {e}")
-            with col2:
-                if st.button("♻️ Reset to Defaults", key="d3q19_reset"):
-                    st.session_state.d3q19_settings = _default_d3q19_settings()
-                    st.rerun()
+            if st.button("♻️ Reset to Defaults", key="d3q19_reset"):
+                st.session_state.d3q19_settings = _default_d3q19_settings()
+                st.toast("Reset.", icon="♻️")
+                st.rerun()
         
-        # Generate and display visualization
-        fig = plot_d3q19_lattice(**st.session_state.d3q19_settings)
+        # Generate and display visualization with theme-aware colors
+        current_theme = st.session_state.get("theme", "Light Scientific")
+        is_dark = "Dark" in current_theme
+        
+        # Override colors for dark theme
+        plot_settings = st.session_state.d3q19_settings.copy()
+        if is_dark:
+            # Use dark background
+            if plot_settings.get('background_color', '#FFFFFF') == '#FFFFFF':
+                plot_settings['background_color'] = '#1e1e1e'
+            # Use light colors for labels and text
+            if plot_settings.get('label_color', '#000000') == '#000000':
+                plot_settings['label_color'] = '#d4d4d4'
+            # Use light colors for cube edges if black (make borders visible)
+            if plot_settings.get('cube_edge_color', '#000000') == '#000000':
+                plot_settings['cube_edge_color'] = '#808080'  # Brighter gray for better visibility
+            # Ensure cube edges are visible (increase width if too thin)
+            if plot_settings.get('cube_edge_width', 1.0) < 1.5:
+                plot_settings['cube_edge_width'] = 2.0
+            # Use light grid color
+            if 'grid_color' not in plot_settings or plot_settings.get('grid_color', '#000000') == '#000000':
+                plot_settings['grid_color'] = '#3e3e42'
+            # Use light color for node edges if black (for better visibility)
+            if plot_settings.get('node_edge_color', '#000000') == '#000000':
+                plot_settings['node_edge_color'] = '#d4d4d4'
+        
+        fig = plot_d3q19_lattice(**plot_settings)
+        
+        # Update title and axis label colors for dark theme
+        if is_dark:
+            fig.update_layout(
+                title_font=dict(color='#ffffff'),
+                scene=dict(
+                    xaxis=dict(
+                        title_font=dict(color='#d4d4d4'),
+                        tickfont=dict(color='#d4d4d4')
+                    ),
+                    yaxis=dict(
+                        title_font=dict(color='#d4d4d4'),
+                        tickfont=dict(color='#d4d4d4')
+                    ),
+                    zaxis=dict(
+                        title_font=dict(color='#d4d4d4'),
+                        tickfont=dict(color='#d4d4d4')
+                    )
+                )
+            )
+        
         st.plotly_chart(
             fig, 
             width='stretch',

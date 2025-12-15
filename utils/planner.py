@@ -72,11 +72,17 @@ Generate a numbered execution plan. Break this down into clear, actionable steps
 Return ONLY the plan text, no JSON, no code blocks."""
 
         try:
+            # Extract images from context if available (for vision-capable models)
+            images = None
+            if context and isinstance(context, dict) and "images" in context:
+                images = context.get("images")
+            
             # NO JSON constraint - free text for reasoning
             response = self.llm.generate(
                 prompt, 
                 system_prompt=self.system_prompt, 
-                temperature=0.3  # Lower temperature for more focused planning
+                temperature=0.3,  # Lower temperature for more focused planning
+                images=images  # Pass images if available
             )
             
             # Clean up response (remove any accidental JSON markers)

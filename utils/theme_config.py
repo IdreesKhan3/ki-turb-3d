@@ -334,6 +334,12 @@ def inject_theme_css(theme_name: str = None):
             caret-color: {bright_text} !important;
         }}
         
+        /* Placeholder text for input fields */
+        .stTextInput > div > div > input::placeholder {{
+            color: {bright_text} !important;
+            opacity: 0.7 !important;
+        }}
+        
         .stSelectbox > div > div > select {{
             background-color: {input_bg} !important;
             color: {bright_text} !important;
@@ -551,13 +557,49 @@ def inject_theme_css(theme_name: str = None):
         }}
         
         /* Multi-select */
+        .stMultiSelect > div {{
+            background-color: {input_bg} !important;
+        }}
+        
         .stMultiSelect > div > div {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+        }}
+        
+        .stMultiSelect [data-baseweb="select"] {{
+            background-color: {input_bg} !important;
+        }}
+        
+        .stMultiSelect [data-baseweb="select"] > div {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+        }}
+        
+        .stMultiSelect [data-baseweb="select"] > div > div {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+        }}
+        
+        .stMultiSelect [data-baseweb="select"] input {{
+            background-color: {input_bg} !important;
+            color: {bright_text} !important;
+        }}
+        
+        .stMultiSelect [data-baseweb="select"] span {{
             background-color: {input_bg} !important;
             color: {bright_text} !important;
         }}
         
         .stMultiSelect label {{
             color: {text_color} !important;
+            background-color: transparent !important;
+        }}
+        
+        /* Override white backgrounds in multiselect */
+        .stMultiSelect [style*="background-color: white"],
+        .stMultiSelect [style*="background-color: #fff"],
+        .stMultiSelect [style*="background-color: #ffffff"] {{
+            background-color: {input_bg} !important;
         }}
         
         /* Slider */

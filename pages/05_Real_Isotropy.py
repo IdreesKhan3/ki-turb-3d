@@ -1042,16 +1042,21 @@ def main():
         eta_axi_exp = -xi_vals[xi_vals <= 0]  # Expansion (ξ ≤ 0): η = -ξ
         eta_axi_con = xi_vals[xi_vals >= 0]    # Contraction (ξ ≥ 0): η = ξ
         
+        # Theme-aware colors for boundary lines
+        current_theme = st.session_state.get("theme", "Light Scientific")
+        is_dark = "Dark" in current_theme
+        boundary_color = "#d4d4d4" if is_dark else "black"
+        
         # Plot boundaries (matching original: 3 boundary lines)
         fig_b.add_trace(go.Scatter(
             x=xi_vals[xi_vals <= 0], y=eta_axi_exp, mode="lines",
-            line=dict(color="black", width=1.5),
+            line=dict(color=boundary_color, width=1.5),
             name="Axisymmetric expansion",
             showlegend=True
         ))
         fig_b.add_trace(go.Scatter(
             x=xi_vals[xi_vals >= 0], y=eta_axi_con, mode="lines",
-            line=dict(color="black", width=1.5),
+            line=dict(color=boundary_color, width=1.5),
             name="Axisymmetric contraction",
             showlegend=True
         ))
@@ -1073,9 +1078,17 @@ def main():
         ))
         # Add filled area (fills between lower boundary and two-component limit)
         # Note: Original code uses fill_between without label, so not in legend
+        # Theme-aware fill color for dark theme
+        if is_dark:
+            # Use transparent dark gray for dark theme
+            fill_color = "rgba(62, 62, 66, 0.3)"  # #3e3e42 with 30% opacity
+        else:
+            # Use light gray for light theme
+            fill_color = "rgba(211, 211, 211, 0.3)"  # lightgray with 30% opacity
+        
         fig_b.add_trace(go.Scatter(
             x=xi_vals, y=eta_two_comp, mode="lines",
-            fill="tonexty", fillcolor="lightgray", opacity=0.3,
+            fill="tonexty", fillcolor=fill_color,
             line=dict(width=0),
             showlegend=False,  # Not in legend (matching original fill_between behavior)
             hoverinfo="skip"

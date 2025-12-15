@@ -185,10 +185,13 @@ class GeminiLLM(LLMProvider):
         return self.api_key is not None
     
     def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
-        """Generate response using Gemini"""
+        """Generate response using Gemini (supports vision with images)"""
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"{system_prompt}\n\n{prompt}"
+        
+        # Get images from kwargs (if provided)
+        images = kwargs.get("images", None)
         
         # Configure JSON mode for Gemini if requested
         strict_json = kwargs.get("format") == "json"
@@ -212,10 +215,26 @@ class GeminiLLM(LLMProvider):
             
             def call_api():
                 try:
-                    response = self.client.generate_content(
-                        full_prompt,
-                        generation_config=generation_config
-                    )
+                    # Build content: text + images (if any)
+                    if images and isinstance(images, list) and len(images) > 0:
+                        # Multi-modal: text + images
+                        content_parts = [full_prompt]
+                        for img in images:
+                            if isinstance(img, dict) and "mime_type" in img and "data" in img:
+                                content_parts.append({
+                                    "mime_type": img["mime_type"],
+                                    "data": img["data"]
+                                })
+                        response = self.client.generate_content(
+                            content_parts,
+                            generation_config=generation_config
+                        )
+                    else:
+                        # Text-only
+                        response = self.client.generate_content(
+                            full_prompt,
+                            generation_config=generation_config
+                        )
                     result_queue.put(response)
                 except Exception as e:
                     exception_queue.put(e)

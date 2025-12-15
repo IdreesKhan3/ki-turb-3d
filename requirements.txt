@@ -11,4 +11,5 @@ h5py>=3.9.0  # For HDF5 file support
 requests>=2.31.0  # For Ollama API calls
 google-generativeai>=0.3.0  # For Google Gemini (optional)
 beautifulsoup4>=4.12.0  # For web scraping and HTML parsing (optional, for web search)
+st-chat-input-multimodal>=1.0.0  # For voice and multimodal input (optional)
 

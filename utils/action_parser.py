@@ -72,23 +72,31 @@ Your goal is to autonomously explore, understand, and modify the codebase to ful
 
 CRITICAL INSTRUCTIONS:
 1. RESPONSE FORMAT: You must return ONLY a JSON array of actions. No conversational text outside the JSON.
-2. UNDERSTAND USER INTENT: Interpret user requests flexibly - users may phrase requests in many ways:
-   - "remove", "delete", "drop", "get rid of" → deletion operations
-   - "change", "modify", "update", "edit", "replace", "fix" → modification operations
-   - "add", "create", "make", "write" → creation operations
-   - "show", "open", "read", "view", "display" → read operations
-   - "find", "locate", "where is" → file location queries
-   - Understand the user's goal and choose appropriate actions flexibly.
+2. EXPLANATION REQUESTS: If the user asks to explain/clarify/describe something AND does not request a codebase change, return a single `conversational_response` action. Do NOT read/search files unless the user explicitly references a specific file path.
+3. UNDERSTAND USER INTENT: Interpret user requests by understanding the ACTION the user wants, not just matching keywords:
+   - **INTENT-BASED CLASSIFICATION:** Determine what the user wants to DO:
+     * If user wants to CHANGE/ALTER code/files → modification operations (modify_file, rename_file, delete_file)
+     * If user wants to CREATE new content → creation operations (create_file)
+     * If user wants to VIEW/SEE information → read operations (read_file, extract_section, search_codebase)
+     * If user wants to FIND location → file location queries (find_file)
+   - **KEY PRINCIPLE:** If the user asks you to DO something that changes the codebase (optimize, improve, refactor, fix, update, edit, modify, change, etc.), you MUST generate a modify_file action. Reading the file is just the first step - you MUST follow through with the modification.
+   - **CRITICAL RULE:** When user requests ANY code modification (optimize, improve, refactor, fix, update, edit, etc.):
+     * Step 1: Read the file to understand current code
+     * Step 2: Generate the optimized/improved version
+     * Step 3: Generate modify_file action with the new code (use 'new_content' for full rewrites)
+     * DO NOT stop at Step 1 - you MUST complete all steps!
+   - **CRITICAL:** When users request UI changes (theme, data loading), EXECUTE the action immediately. Do NOT just explain how to do it - actually do it!
 3. FILE OPERATIONS - Flexible Approaches:
    - **Reading files:** Choose the best method based on context:
      * For huge files (>500 lines): Use 'extract_section' with a query, or 'read_file' with start_line/end_line
      * For smaller files: 'read_file' or 'extract_section' both work
      * If user mentions line numbers: Use 'read_file' with those line numbers
-   - **Modifying files:** Understand what the user wants to change:
-     * If user mentions a function/subroutine/class name: Use 'extract_section' to get it, then 'modify_file' to change it
-     * If user mentions specific lines: Use 'read_file' with line range, then 'modify_file'
-     * If user wants to delete something: Extract or read it first, then use 'modify_file' with empty 'replace_text'
-     * If user wants to replace something: Extract or read it first, then use 'modify_file' with new 'replace_text'
+   - **Modifying files:** When user wants to CHANGE code (any phrasing: optimize, improve, refactor, fix, update, edit, modify, change, etc.):
+     * ALWAYS follow this pattern: [read_file] → [modify_file with optimized code]
+     * For full file optimization/improvement: Use 'modify_file' with 'new_content' containing the complete optimized version
+     * For targeted changes: Use 'extract_section' or 'read_file' to get the specific part, then 'modify_file' with 'search_text'/'replace_text'
+     * For deletions: Use 'modify_file' with empty 'replace_text'
+     * **NEVER** stop after reading - you MUST generate the modify_file action!
    - **Creating files:** User says "create", "add", "make" → use 'create_file'
    - **Deleting files:** User says "delete", "remove" a file → use 'delete_file' (don't read first)
 4. AVAILABLE TOOLS - Use flexibly based on user intent:
@@ -125,11 +133,6 @@ CRITICAL INSTRUCTIONS:
    - Example: User asks "where is [filename]"
      * Use: [{"action": "find_file", "filename": "[filename]"}, {"action": "conversational_response", "message": "Based on find_file results: [actual_path]"}]
 
-DISALLOWED ACTIONS:
-- Do NOT generate these actions: navigate, modify_plot_style, modify_labels, select_plot_type, export_plot, generate_report.
-- Never output these action names even as strings in JSON; use conversational_response instead.
-- If the user asks for any of these, respond with conversational_response explaining they are not supported.
-
 APPLICATION INFORMATION:
 - App Name: KI-TURB 3D (KI=>khan idrees)
 - You are the AI assistant for the KI-TURB 3D (KI=>khan idrees) platform
@@ -142,6 +145,16 @@ STREAMLIT APP CONTEXT:
 - The app has a theme system with "Light Scientific" and "Dark Scientific" themes
 - Data is loaded into session state and can be accessed across pages
 - The app structure includes: pages/, utils/, data_readers/, visualizations/, scripts/
+
+UI OPERATIONS - EXECUTE IMMEDIATELY:
+- When users request UI changes, you MUST execute the action - do NOT just explain how to do it!
+- **Theme Changes:** If user says "change theme", "set theme", "switch to dark/light", "change color", etc.:
+  * IMMEDIATELY execute: [{"action": "set_theme", "theme": "[theme_name]"}]
+  * Do NOT respond with conversational_response explaining how to change it - just do it!
+- **Data Loading:** If user says "load data", "load files", "load directory", etc.:
+  * IMMEDIATELY execute: [{"action": "load_data", "path": "[path]"}]
+  * Do NOT just explain - actually load the data!
+- These UI operations are safe and immediate - execute them without hesitation.
 
 AVAILABLE ACTIONS:
 - conversational_response: Answer questions, provide information (use "message")
@@ -177,6 +190,14 @@ AVAILABLE ACTIONS:
   * For example, if user says "DNS/250" but only "DNS/256" exists, the system will find it and you should suggest loading "DNS/256"
   * Always be helpful and proactive in suggesting alternatives when paths don't match exactly
 - set_theme: Change app theme (use "theme" or "theme_name" parameter. Accepts: "dark", "light", "Dark Scientific", "Light Scientific", or any variation)
+    - **CRITICAL:** When user asks to "change theme", "set theme", "switch to dark/light", "change color", etc., you MUST execute this action immediately.
+    - Do NOT just explain how to change the theme - actually execute the set_theme action!
+    - Examples:
+      * User: "change theme to dark" → [{"action": "set_theme", "theme": "dark"}]
+      * User: "switch to light mode" → [{"action": "set_theme", "theme": "light"}]
+      * User: "change the color to dark" → [{"action": "set_theme", "theme": "dark"}]
+      * User: "set theme to Dark Scientific" → [{"action": "set_theme", "theme": "Dark Scientific"}]
+    - The system will automatically match partial theme names (e.g., "dark" matches "Dark Scientific")
 - git_operation: Git commands (use "operation", "files", "message")
 - web_search: Search the web using Google/DuckDuckGo (use "query", optional "num_results")
 - search_papers: Search research papers from arXiv/Google Scholar/PubMed (use "query", "source" like "arxiv", optional "max_results")
@@ -231,12 +252,18 @@ USER REQUEST: {user_input}
 Generate the next logical step as a JSON array."""
 
         try:
+            # Extract images from context if available (for vision-capable models)
+            images = None
+            if context and isinstance(context, dict) and "images" in context:
+                images = context.get("images")
+            
             # Force JSON mode and use low temperature for precision
             response = self.llm.generate(
                 prompt, 
                 system_prompt=self.system_prompt, 
                 temperature=0.1, 
-                format="json"
+                format="json",
+                images=images  # Pass images if available
             )
             
             # Extract JSON from response (handle markdown code blocks)
@@ -251,8 +278,11 @@ Generate the next logical step as a JSON array."""
             if not actions:
                 return self._handle_conversational_fallback(user_input, context, "No actions generated")
             
-            # Validate and normalize actions
-            validated = self._validate_actions(actions)
+            # Normalize actions FIRST (fixes empty action types, etc.) before validation
+            normalized_actions = self._normalize_actions(actions)
+            
+            # Validate normalized actions
+            validated = self._validate_actions(normalized_actions)
             if not validated["valid"]:
                 return self._retry_with_validation_error(user_input, context, validated["errors"])
             
@@ -650,10 +680,14 @@ CRITICAL: Return corrected JSON array with valid actions only."""
             parsed = json.loads(json_str)
             actions = self._normalize_parsed_response(parsed)
             
-            # Validate again
-            validated = self._validate_actions(actions)
+            # Normalize actions FIRST (fixes empty action types, etc.) before validation
+            normalized_actions = self._normalize_actions(actions)
+            
+            # Validate normalized actions
+            validated = self._validate_actions(normalized_actions)
             if validated["valid"]:
-                return self._normalize_actions(validated["actions"])
+                # Actions are already normalized, just return them
+                return validated["actions"]
             else:
                 # Return error message if still invalid
                 return self._make_conversational_response(
@@ -715,19 +749,18 @@ CRITICAL: Return corrected JSON array with valid actions only."""
             if not isinstance(action, dict):
                 continue
             
-            action_type = action.get("action", "").strip().lower()
+            # Get action type - handle None, empty string, or missing key
+            action_type_raw = action.get("action")
+            if action_type_raw is None:
+                action_type_raw = ""
+            action_type = str(action_type_raw).strip().lower()
             
-            # Only fix truly broken cases (empty or placeholder text)
-            if not action_type or action_type.lower() in ["action_name", "none", "null", ""]:
-                # Infer from content
-                if "message" in action or "response" in action or "answer" in action:
+            # Fix broken cases (empty, None, placeholder text, or whitespace-only)
+            if not action_type or action_type in ["action_name", "none", "null", ""]:
+                # Infer from content - prioritize conversational response for explanations
+                if "message" in action or "response" in action or "answer" in action or "explain" in str(action).lower():
                     action["action"] = "conversational_response"
-                elif "code" in action:
-                    action["action"] = "execute_code"
-                elif "command" in action:
-                    action["action"] = "run_shell_command"
-                else:
-                    action["action"] = "conversational_response"
+                    # Ensure message field exists
                     if "message" not in action:
                         for key in ["response", "answer", "text", "content"]:
                             if key in action:
@@ -735,6 +768,22 @@ CRITICAL: Return corrected JSON array with valid actions only."""
                                 break
                         if "message" not in action:
                             action["message"] = "I'm here to help! What would you like to do?"
+                elif "code" in action:
+                    action["action"] = "execute_code"
+                elif "command" in action:
+                    action["action"] = "run_shell_command"
+                else:
+                    # Default to conversational response for any unclear action
+                    action["action"] = "conversational_response"
+                    if "message" not in action:
+                        for key in ["response", "answer", "text", "content", "explanation"]:
+                            if key in action:
+                                action["message"] = str(action[key])
+                                break
+                        if "message" not in action:
+                            action["message"] = "I'm here to help! What would you like to do?"
+                # Update action_type after fixing
+                action_type = action["action"]
             else:
                 # Enforce whitelist - reject unknown action types
                 if action_type not in self.ALLOWED_ACTIONS:
