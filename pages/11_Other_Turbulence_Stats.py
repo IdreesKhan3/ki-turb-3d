@@ -724,17 +724,6 @@ def main():
                 capture_button(df=df_stats, title="Time Series Data", source_page="Other Turbulence Stats")
                 
                 st.markdown("---")
-        
-        # Display eps validation tables if needed
-        eps_tables = {k: v for k, v in table_data.items() if v['type'] == 'eps_validation'}
-        if eps_tables and len(data_dirs) == 1:
-            # Only show eps validation table for single directory (multi-dir handled in plotting)
-            st.header("Energy Balance Validation")
-            key = list(eps_tables.keys())[0]
-            df_val = eps_tables[key]['df']
-            st.dataframe(df_val, width='stretch', height=300)
-            capture_button(df=df_val, title="Energy Balance Validation", source_page="Other Turbulence Stats")
-
 
 if __name__ == "__main__":
     main()

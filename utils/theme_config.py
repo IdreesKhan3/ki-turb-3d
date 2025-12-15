@@ -213,9 +213,71 @@ def inject_theme_css(theme_name: str = None):
         
         st.markdown(f"""
         <style>
+        /* CSS Variables for theme (accessible to custom components) */
+        :root {{
+            --background-color: {bg_color};
+            --container-bg: {container_bg};
+            --app-bg: {bg_color};
+            --app-container-bg: {container_bg};
+            --app-input-bg: {input_bg};
+            --app-border: {border_color};
+            --app-text: {text_color};
+            --app-text-strong: {bright_text};
+            --app-sidebar-bg: {sidebar_color};
+            --app-header-bg: {header_bg};
+        }}
+        
         /* Main app background */
         .stApp {{
             background-color: {bg_color} !important;
+        }}
+        
+        /* Sticky input bar area (stForm) - aggressive targeting */
+        [data-testid="stForm"],
+        [data-testid="stForm"] *,
+        [data-testid="stForm"] * * {{
+            background: var(--background-color) !important;
+        }}
+        
+        [data-testid="stForm"] {{
+            background: var(--background-color) !important;
+        }}
+        
+        /* All possible Streamlit containers around the form */
+        [data-testid="stForm"] .element-container,
+        [data-testid="stForm"] .block-container,
+        [data-testid="stForm"] [data-testid="stVerticalBlock"],
+        [data-testid="stForm"] [data-testid="stHorizontalBlock"],
+        [data-testid="stForm"] [data-testid="stColumn"],
+        [data-testid="stForm"] > div,
+        [data-testid="stForm"] > div > div,
+        [data-testid="stForm"] > div > div > div,
+        /* Target columns that contain the input */
+        [data-testid="column"]:has([data-testid="stForm"]),
+        [data-testid="column"]:has(iframe[title*="multimodal"]),
+        [data-testid="column"]:has(iframe[title*="chat_input"]),
+        /* Target any div that might wrap the form */
+        div:has([data-testid="stForm"]),
+        div:has(iframe[title*="multimodal"]),
+        div:has(iframe[title*="chat_input"]) {{
+            background: var(--background-color) !important;
+        }}
+        
+        /* Remove card styling - blend with page */
+        [data-testid="stForm"] > div {{
+            background: var(--background-color) !important;
+            border-radius: 0 !important;
+            padding: 0 !important;
+        }}
+        
+        /* Override any white backgrounds aggressively */
+        [data-testid="stForm"] [style*="background-color: white"],
+        [data-testid="stForm"] [style*="background-color: #fff"],
+        [data-testid="stForm"] [style*="background-color: #ffffff"],
+        [data-testid="stForm"] * [style*="background-color: white"],
+        [data-testid="stForm"] * [style*="background-color: #fff"],
+        [data-testid="stForm"] * [style*="background-color: #ffffff"] {{
+            background: var(--background-color) !important;
         }}
         
         /* Scrollbar - always visible */
@@ -1274,6 +1336,51 @@ def inject_theme_css(theme_name: str = None):
         input[type="url"],
         textarea {{
             caret-color: {bright_text} !important;
+        }}
+        
+        /* Force st_chat_input_multimodal to render dark (component is inside an iframe) */
+        div[data-testid="stIFrame"] iframe[title*="chat_input_multimodal"],
+        div[data-testid="stIFrame"] iframe[title*="st_chat_input_multimodal"],
+        div[data-testid="stIFrame"] iframe[src*="st_chat_input_multimodal"],
+        div[data-testid="stIFrame"] iframe[title*="multimodal"],
+        iframe[title*="chat_input_multimodal"],
+        iframe[title*="st_chat_input_multimodal"],
+        iframe[src*="st_chat_input_multimodal"] {{
+            filter: invert(1) hue-rotate(180deg) !important;
+            border-radius: 8px !important;
+        }}
+        
+        /* Dark surround for the multimodal component container - match page background */
+        div[data-testid="stIFrame"] {{
+            background: {bg_color} !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
+        }}
+        
+        div[data-testid="stIFrame"] > div {{
+            background: transparent !important;
+        }}
+        
+        div[data-testid="stIFrame"] iframe {{
+            background: transparent !important;
+            border-radius: 0 !important;
+        }}
+        
+        /* Target the parent element-container - match page background */
+        div.element-container:has(div[data-testid="stIFrame"] iframe[title*="chat_input_multimodal"]),
+        div.element-container:has(div[data-testid="stIFrame"] iframe[src*="st_chat_input_multimodal"]),
+        div.element-container:has(div[data-testid="stIFrame"] iframe[title*="multimodal"]) {{
+            background: {bg_color} !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
+        }}
+        
+        /* Ensure main app canvas stays dark */
+        html, body,
+        [data-testid="stAppViewContainer"],
+        [data-testid="stMain"],
+        [data-testid="stMainBlockContainer"] {{
+            background: {bg_color} !important;
         }}
         </style>
         """, unsafe_allow_html=True)

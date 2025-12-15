@@ -734,8 +734,8 @@ def main():
     files = detect_simulation_files(str(data_dir))
     eps_file = None
     
-    # First, check files detected by file_detector (eps_validation key)
-    for f in files.get("eps_validation", []):
+    # First, check files detected by file_detector (spectral_turb_stats key)
+    for f in files.get("spectral_turb_stats", []):
         if Path(f).name == "eps_real_validation.csv" or Path(f).name.startswith("eps_real_validation"):
             eps_file = Path(f)
             break
@@ -746,7 +746,7 @@ def main():
         if exact_file.exists():
             eps_file = exact_file
     
-    # If still not found, check for any eps_real_validation*.csv file
+    # If still not found, check for any eps_real_validation*.csv file (generalized for data1, data2, etc.)
     if eps_file is None:
         import glob
         pattern = str(data_dir / "eps_real_validation*.csv")
@@ -766,7 +766,34 @@ def main():
                 st.write(f"  - {f.name}")
         return
 
-    stress_file = data_dir / "reynolds_stress_validation.csv"
+    # Find Reynolds stress file using same pattern as eps file
+    stress_file = None
+    
+    # Extract tag from eps filename (e.g., "_data1" from "eps_real_validation_data1.csv")
+    eps_name = eps_file.name
+    if "_data" in eps_name:
+        import re
+        tag_match = re.search(r'_data\d+', eps_name)
+        if tag_match:
+            tag = tag_match.group(0)  # e.g., "_data1"
+            # Try to find matching stress file with same tag
+            stress_with_tag = data_dir / f"reynolds_stress_validation{tag}.csv"
+            if stress_with_tag.exists():
+                stress_file = stress_with_tag
+    
+    # If not found with matching tag, check for exact filename
+    if stress_file is None:
+        exact_stress = data_dir / "reynolds_stress_validation.csv"
+        if exact_stress.exists():
+            stress_file = exact_stress
+    
+    # If still not found, check for any reynolds_stress_validation*.csv file (same as eps pattern)
+    if stress_file is None:
+        import glob
+        pattern = str(data_dir / "reynolds_stress_validation*.csv")
+        matches = glob.glob(pattern)
+        if matches:
+            stress_file = Path(matches[0])  # Use first match
 
     turb = load_turbulence_data(eps_file)
     R = load_reynolds_stress(stress_file, turb)

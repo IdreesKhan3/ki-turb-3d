@@ -275,7 +275,7 @@ def main():
                 "Directory paths (one per line):",
                 value="\n".join(st.session_state.data_directories) if st.session_state.data_directories else "",
                 height=150,
-                help="Enter absolute paths or paths relative to project root, one per line.\nExample:\nexamples/showcase/DNS/768\nexamples/showcase/DNS/512\nexamples/showcase/LES/128"
+                help="Enter absolute paths or paths relative to project root, one per line.\nExample:\nexamples/DNS/512\nexamples/DNS/256\nexamples/LES/128"
             )
             
             if st.button("Load Multiple Directories", type="primary"):
@@ -305,11 +305,11 @@ def main():
             st.markdown("---")
             st.markdown("**Quick Multi-Select:**")
             quick_dirs = [
-                ("DNS/768", "examples/showcase/DNS/768"),
-                ("DNS/512", "examples/showcase/DNS/512"),
-                ("DNS/256", "examples/showcase/DNS/256"),
-                ("DNS/128", "examples/showcase/DNS/128"),
-                ("LES/128", "examples/showcase/LES/128"),
+                ("DNS/512", "examples/DNS/512"),
+                ("DNS/256", "examples/DNS/256"),
+                ("DNS/128", "examples/DNS/128"),
+                ("LES/128", "examples/LES/128"),
+                ("LES/64", "examples/LES/64"),
             ]
             
             selected_quick = st.multiselect(
@@ -338,18 +338,19 @@ def main():
         user_dir = st.text_input(
             "Directory path:",
             value="",
-            help="Enter absolute path or path relative to project root (e.g., examples/showcase/DNS/256)"
+            help="Enter absolute path or path relative to project root (e.g., examples/DNS/256)"
         )
         
         # Quick access to common locations
         with st.expander("📂 Quick Access to Project Directories", expanded=False):
             st.markdown("**Common locations:**")
             quick_paths = [
-                ("examples/showcase/DNS/256", "examples/showcase/DNS/256"),
-                ("examples/showcase/DNS/512", "examples/showcase/DNS/512"),
-                ("examples/showcase/DNS/768", "examples/showcase/DNS/768"),
-                ("examples/showcase/LES/128", "examples/showcase/LES/128"),
-                ("examples/showcase", "examples/showcase"),
+                ("examples/DNS/128", "examples/DNS/128"),
+                ("examples/DNS/256", "examples/DNS/256"),
+                ("examples/DNS/512", "examples/DNS/512"),
+                ("examples/LES/64", "examples/LES/64"),
+                ("examples/LES/128", "examples/LES/128"),
+                ("examples", "examples"),
             ]
             for label, path in quick_paths:
                 resolved = _resolve_directory_path(path)
@@ -369,7 +370,7 @@ def main():
                     st.success(f"Data loaded from: {user_dir}")
             elif user_dir:
                 st.error(f"Directory not found: {user_dir}")
-                st.info(f"Tip: Use path relative to project root (e.g., examples/showcase/DNS/256)")
+                st.info(f"Tip: Use path relative to project root (e.g., examples/DNS/256)")
             else:
                 st.warning("Please enter a directory path.")
         
@@ -380,8 +381,8 @@ def main():
         # Find all data directories in the project
         all_dirs = []
         
-        # Search in examples/showcase
-        example_base = project_root / "examples" / "showcase"
+        # Search in examples
+        example_base = project_root / "examples"
         if example_base.exists():
             # Look for DNS subdirectories
             dns_dir = example_base / "DNS"
@@ -395,7 +396,7 @@ def main():
                 for subdir in sorted(les_dir.iterdir()):
                     if subdir.is_dir():
                         all_dirs.append(("LES/" + subdir.name, subdir))
-            # Also check direct subdirectories in showcase
+            # Also check direct subdirectories in examples
             for subdir in sorted(example_base.iterdir()):
                 if subdir.is_dir() and subdir.name not in ["DNS", "LES"]:
                     all_dirs.append((subdir.name, subdir))
