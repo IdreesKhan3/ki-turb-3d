@@ -7,13 +7,52 @@ import streamlit as st
 from pathlib import Path
 import sys
 import glob
+import logging
 
-# Add project root to path
+# Add project root to path (for direct execution)
+# If installed as package, this is not needed
 project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from utils.theme_config import get_theme_list, inject_theme_css, get_theme
 from utils.file_detector import detect_simulation_files, natural_sort_key
+
+# App version for logging
+APP_VERSION = "1.0.0"
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # Console output
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Log app startup with version info
+def _get_version_info():
+    """Get version info including git commit if available."""
+    version_info = f"KI-TURB 3D v{APP_VERSION}"
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode == 0:
+            commit_hash = result.stdout.strip()
+            version_info += f" (commit: {commit_hash})"
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        pass  # Git not available or not a git repo
+    return version_info
+
+logger.info(f"Starting {_get_version_info()}")
+logger.info(f"Project root: {project_root}")
 
 # Page configuration
 st.set_page_config(
@@ -96,8 +135,10 @@ def _scan_directory_for_files(data_dir_path: str):
 def _load_directories_and_scan(valid_dirs: list):
     """Load multiple directories and scan all files, updating session state."""
     if not valid_dirs:
+        logger.warning("_load_directories_and_scan called with empty directory list")
         return False
     
+    logger.info(f"Loading {len(valid_dirs)} directory(ies): {[str(Path(d).name) for d in valid_dirs]}")
     st.session_state.data_directories = valid_dirs
     st.session_state.data_directory = valid_dirs[0]
     st.session_state.data_loaded = True
@@ -105,12 +146,31 @@ def _load_directories_and_scan(valid_dirs: list):
     # Scan all directories and collect all files
     all_files_by_type = {}
     for data_dir_path in valid_dirs:
+        logger.info(f"Scanning directory: {data_dir_path}")
         dir_files = _scan_directory_for_files(data_dir_path)
         # Merge files from all directories
         for file_type, file_list in dir_files.items():
             if file_type not in all_files_by_type:
                 all_files_by_type[file_type] = []
             all_files_by_type[file_type].extend(file_list)
+        # Log file counts per type for this directory
+        file_counts = {ft: len(fl) for ft, fl in dir_files.items() if fl}
+        if file_counts:
+            logger.info(f"Found files in {Path(data_dir_path).name}: {file_counts}")
+    
+    # Deduplicate by full_path
+    for ft, lst in all_files_by_type.items():
+        seen = set()
+        dedup = []
+        for item in lst:
+            if item["full_path"] not in seen:
+                dedup.append(item)
+                seen.add(item["full_path"])
+        all_files_by_type[ft] = dedup
+    
+    # Log total file counts after deduplication
+    total_counts = {ft: len(fl) for ft, fl in all_files_by_type.items() if fl}
+    logger.info(f"Total files loaded (after deduplication): {total_counts}")
     
     st.session_state.all_loaded_files = all_files_by_type
     return True
@@ -121,11 +181,14 @@ def _load_single_directory_and_merge(dir_path: str):
     Load a single directory and merge its files into existing all_loaded_files.
     If in multi-directory mode, adds to data_directories. Otherwise replaces.
     """
+    logger.info(f"Loading directory: {dir_path}")
     resolved = _resolve_directory_path(dir_path)
     if not resolved:
+        logger.warning(f"Directory not found or invalid: {dir_path}")
         return False
     
     abs_path_str = str(resolved)
+    logger.info(f"Resolved directory path: {abs_path_str}")
     st.session_state.data_directory = abs_path_str
     
     # Handle multi-directory mode
@@ -133,8 +196,12 @@ def _load_single_directory_and_merge(dir_path: str):
         # Add to existing directories if not already there
         if abs_path_str not in st.session_state.data_directories:
             st.session_state.data_directories.append(abs_path_str)
+            logger.info(f"Added to multi-directory list. Total directories: {len(st.session_state.data_directories)}")
         # Merge files into existing all_loaded_files
         new_files = _scan_directory_for_files(abs_path_str)
+        file_counts = {ft: len(fl) for ft, fl in new_files.items() if fl}
+        if file_counts:
+            logger.info(f"Scanned files: {file_counts}")
         if 'all_loaded_files' not in st.session_state or not st.session_state.all_loaded_files:
             st.session_state.all_loaded_files = new_files
         else:
@@ -143,10 +210,23 @@ def _load_single_directory_and_merge(dir_path: str):
                 if file_type not in st.session_state.all_loaded_files:
                     st.session_state.all_loaded_files[file_type] = []
                 st.session_state.all_loaded_files[file_type].extend(file_list)
+        
+        # Deduplicate by full_path after merging
+        for ft, lst in st.session_state.all_loaded_files.items():
+            seen = set()
+            dedup = []
+            for item in lst:
+                if item["full_path"] not in seen:
+                    dedup.append(item)
+                    seen.add(item["full_path"])
+            st.session_state.all_loaded_files[ft] = dedup
     else:
         # Single directory mode - replace
         st.session_state.data_directories = [abs_path_str]
         st.session_state.all_loaded_files = _scan_directory_for_files(abs_path_str)
+        file_counts = {ft: len(fl) for ft, fl in st.session_state.all_loaded_files.items() if fl}
+        if file_counts:
+            logger.info(f"Loaded files: {file_counts}")
     
     st.session_state.data_loaded = True
     return True
@@ -160,18 +240,22 @@ def _resolve_directory_path(user_dir: str):
         Path object if found, None otherwise
     """
     if not user_dir:
+        logger.debug("Empty directory path provided")
         return None
     
     # Try as absolute path first
     abs_path = Path(user_dir)
     if abs_path.exists() and abs_path.is_dir():
+        logger.debug(f"Resolved as absolute path: {abs_path.absolute()}")
         return abs_path.absolute()
     
     # Try as relative path from project root
     relative_path = project_root / user_dir
     if relative_path.exists() and relative_path.is_dir():
+        logger.debug(f"Resolved as relative path: {relative_path.absolute()}")
         return relative_path.absolute()
     
+    logger.warning(f"Could not resolve directory path: {user_dir}")
     return None
 
 
@@ -294,7 +378,7 @@ def main():
                     for i, d in enumerate(valid_dirs, 1):
                         try:
                             rel_path = Path(d).relative_to(project_root)
-                            st.caption(f"  {i}. APP/{rel_path}")
+                            st.caption(f"  {i}. {rel_path}")
                         except ValueError:
                             st.caption(f"  {i}. {d}")
                     st.rerun()
@@ -333,105 +417,105 @@ def main():
         else:
             # Single directory mode (original behavior)
             st.markdown("**Select your simulation output folder:**")
-        
-        # Allow both absolute and relative paths
-        user_dir = st.text_input(
-            "Directory path:",
-            value="",
-            help="Enter absolute path or path relative to project root (e.g., examples/DNS/256)"
-        )
-        
-        # Quick access to common locations
-        with st.expander("📂 Quick Access to Project Directories", expanded=False):
-            st.markdown("**Common locations:**")
-            quick_paths = [
-                ("examples/DNS/128", "examples/DNS/128"),
-                ("examples/DNS/256", "examples/DNS/256"),
-                ("examples/DNS/512", "examples/DNS/512"),
-                ("examples/LES/64", "examples/LES/64"),
-                ("examples/LES/128", "examples/LES/128"),
-                ("examples", "examples"),
-            ]
-            for label, path in quick_paths:
-                resolved = _resolve_directory_path(path)
-                if resolved:
-                    if st.button(f"{label}", key=f"quick_{path}", width='stretch'):
-                        if _load_single_directory_and_merge(path):
-                            st.success(f"Loaded: APP/{path}")
-                            st.rerun()
-        
-        if st.button("Load Data", type="primary"):
-            if _load_single_directory_and_merge(user_dir):
-                resolved = _resolve_directory_path(user_dir)
-                try:
-                    rel_path = resolved.relative_to(project_root)
-                    st.success(f"Data loaded from: APP/{rel_path}")
-                except ValueError:
-                    st.success(f"Data loaded from: {user_dir}")
-            elif user_dir:
-                st.error(f"Directory not found: {user_dir}")
-                st.info(f"Tip: Use path relative to project root (e.g., examples/DNS/256)")
-            else:
-                st.warning("Please enter a directory path.")
-        
-        # Optional: Browse project directories
-        st.markdown("---")
-        st.markdown("**Or browse project directories:**")
-        
-        # Find all data directories in the project
-        all_dirs = []
-        
-        # Search in examples
-        example_base = project_root / "examples"
-        if example_base.exists():
-            # Look for DNS subdirectories
-            dns_dir = example_base / "DNS"
-            if dns_dir.exists():
-                for subdir in sorted(dns_dir.iterdir()):
-                    if subdir.is_dir():
-                        all_dirs.append(("DNS/" + subdir.name, subdir))
-            # Check LES subdirectories
-            les_dir = example_base / "LES"
-            if les_dir.exists():
-                for subdir in sorted(les_dir.iterdir()):
-                    if subdir.is_dir():
-                        all_dirs.append(("LES/" + subdir.name, subdir))
-            # Also check direct subdirectories in examples
-            for subdir in sorted(example_base.iterdir()):
-                if subdir.is_dir() and subdir.name not in ["DNS", "LES"]:
-                    all_dirs.append((subdir.name, subdir))
-        
-        # Search in other common locations (optional - can be expanded)
-        # You can add more search paths here if needed
-        
-        if all_dirs:
-            # Create user-friendly display names (relative to project root)
-            dir_options = {}
-            for name, path in all_dirs:
-                # Get relative path from project root
-                try:
-                    rel_path = path.relative_to(project_root)
-                    display_name = f"{name} (APP/{rel_path})"
-                except ValueError:
-                    # If path is not relative to project root, just use name
-                    display_name = name
-                dir_options[display_name] = str(path)
             
-            selected_dir = st.selectbox(
-                "Select dataset directory:",
-                options=list(dir_options.keys()),
-                help="Choose a dataset directory from the project"
+            # Allow both absolute and relative paths
+            user_dir = st.text_input(
+                "Directory path:",
+                value="",
+                help="Enter absolute path or path relative to project root (e.g., examples/DNS/256)"
             )
-            if st.button("Load Selected Directory", type="primary"):
-                selected_path = dir_options[selected_dir]
-                if _load_single_directory_and_merge(selected_path):
+            
+            # Quick access to common locations
+            with st.expander("📂 Quick Access to Project Directories", expanded=False):
+                st.markdown("**Common locations:**")
+                quick_paths = [
+                    ("examples/DNS/128", "examples/DNS/128"),
+                    ("examples/DNS/256", "examples/DNS/256"),
+                    ("examples/DNS/512", "examples/DNS/512"),
+                    ("examples/LES/64", "examples/LES/64"),
+                    ("examples/LES/128", "examples/LES/128"),
+                    ("examples", "examples"),
+                ]
+                for label, path in quick_paths:
+                    resolved = _resolve_directory_path(path)
+                    if resolved:
+                        if st.button(f"{label}", key=f"quick_{path}", width='stretch'):
+                            if _load_single_directory_and_merge(path):
+                                st.success(f"Loaded: {path}")
+                                st.rerun()
+            
+            if st.button("Load Data", type="primary"):
+                if _load_single_directory_and_merge(user_dir):
+                    resolved = _resolve_directory_path(user_dir)
                     try:
-                        rel_path = Path(selected_path).relative_to(project_root)
-                        st.success(f"Data loaded from: APP/{rel_path}")
+                        rel_path = resolved.relative_to(project_root)
+                        st.success(f"Data loaded from: {rel_path}")
                     except ValueError:
-                        st.success(f"Data loaded from: {selected_path}")
-        else:
-            st.info("No data directories found. You can still load your own data using the directory path above.")
+                        st.success(f"Data loaded from: {user_dir}")
+                elif user_dir:
+                    st.error(f"Directory not found: {user_dir}")
+                    st.info(f"Tip: Use path relative to project root (e.g., examples/DNS/256)")
+                else:
+                    st.warning("Please enter a directory path.")
+            
+            # Optional: Browse project directories
+            st.markdown("---")
+            st.markdown("**Or browse project directories:**")
+            
+            # Find all data directories in the project
+            all_dirs = []
+            
+            # Search in examples
+            example_base = project_root / "examples"
+            if example_base.exists():
+                # Look for DNS subdirectories
+                dns_dir = example_base / "DNS"
+                if dns_dir.exists():
+                    for subdir in sorted(dns_dir.iterdir()):
+                        if subdir.is_dir():
+                            all_dirs.append(("DNS/" + subdir.name, subdir))
+                # Check LES subdirectories
+                les_dir = example_base / "LES"
+                if les_dir.exists():
+                    for subdir in sorted(les_dir.iterdir()):
+                        if subdir.is_dir():
+                            all_dirs.append(("LES/" + subdir.name, subdir))
+                # Also check direct subdirectories in examples
+                for subdir in sorted(example_base.iterdir()):
+                    if subdir.is_dir() and subdir.name not in ["DNS", "LES"]:
+                        all_dirs.append((subdir.name, subdir))
+            
+            # Search in other common locations (optional - can be expanded)
+            # More search paths can be added here if needed
+            
+            if all_dirs:
+                # Create user-friendly display names (relative to project root)
+                dir_options = {}
+                for name, path in all_dirs:
+                    # Get relative path from project root
+                    try:
+                        rel_path = path.relative_to(project_root)
+                        display_name = f"{name} ({rel_path})"
+                    except ValueError:
+                        # If path is not relative to project root, just use name
+                        display_name = name
+                    dir_options[display_name] = str(path)
+                
+                selected_dir = st.selectbox(
+                    "Select dataset directory:",
+                    options=list(dir_options.keys()),
+                    help="Choose a dataset directory from the project"
+                )
+                if st.button("Load Selected Directory", type="primary"):
+                    selected_path = dir_options[selected_dir]
+                    if _load_single_directory_and_merge(selected_path):
+                        try:
+                            rel_path = Path(selected_path).relative_to(project_root)
+                            st.success(f"Data loaded from: {rel_path}")
+                        except ValueError:
+                            st.success(f"Data loaded from: {selected_path}")
+            else:
+                st.info("No data directories found. You can still load your own data using the directory path above.")
     
     # Main content area
     if st.session_state.data_loaded:
@@ -576,7 +660,7 @@ def main():
                 data_dir = Path(data_dir_path)
                 try:
                     rel_path = data_dir.relative_to(project_root)
-                    display_path = f"APP/{rel_path}"
+                    display_path = str(rel_path)
                 except ValueError:
                     display_path = str(data_dir)
                 st.markdown(f"  **{i}.** `{display_path}`")
@@ -586,7 +670,7 @@ def main():
             data_dir = Path(st.session_state.data_directory)
             try:
                 rel_path = data_dir.relative_to(project_root)
-                display_path = f"APP/{rel_path}"
+                display_path = str(rel_path)
             except ValueError:
                 display_path = str(data_dir)
             st.success(f"✅ Data loaded from: `{display_path}`")

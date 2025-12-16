@@ -75,6 +75,9 @@ def main():
             st.markdown(r"""
             where $\bar{S}_{ij} = \tfrac{1}{2}(\partial_i \bar{u}_j + \partial_j \bar{u}_i)$ and $|\bar{S}| = (2\,\bar{S}_{ij}\bar{S}_{ij})^{1/2}$
             """)
+        
+        st.divider()
+        st.markdown("**Reference:** All equations in this section can be found in [Pope (2001)](/Citation#pope2001).")
     
     with tab2:
         st.header("Lattice Boltzmann Method")
@@ -98,7 +101,7 @@ def main():
             
             st.markdown("**Transformation matrix $\mathbf{M}$ (D3Q19):**")
             st.markdown(r"""
-            The 19×19 transformation matrix $\mathbf{M}$ is constructed using the orthogonal moment basis (d'Humières et al. 2002).
+            The 19×19 transformation matrix $\mathbf{M}$ is constructed using the orthogonal moment basis ([d'Humières, 2002](/Citation#dhumieres2002)).
             The matrix transforms distribution functions $f_\alpha$ to moment space: $\mathbf{m} = \mathbf{M} \mathbf{f}$.
             """)
             st.info("💡 *Full 19×19 matrix display available in MRT Matrix Generator tool (coming soon)*")
@@ -158,7 +161,7 @@ def main():
         
         # MRT LES - PRIMARY, EXPANDED
         with st.expander("**MRT - LES Formulation** (Primary)", expanded=True):
-            st.markdown("**Effective viscosity approach:**")
+            st.markdown("**Effective viscosity approach:** ([Yu et al., 2006](/Citation#yu2006))")
             st.latex(r"""
             \begin{aligned}
             \nu_e &= \nu_0 + \nu_t \\
@@ -200,11 +203,10 @@ def main():
             """)
         
         st.markdown("---")
-        st.markdown("### Reference: BGK/SRT (for app flexibility demonstration)")
+        st.markdown("### BGK/SRT")
         
         # BGK (SRT) DNS - REFERENCE ONLY, COMPACT
-        with st.expander("**BGK (SRT) - DNS** (Reference)", expanded=False):
-            st.markdown("*Shown for reference - app can analyze BGK/SRT data, but MRT is primary*")
+        with st.expander("**BGK (SRT) - DNS**", expanded=False):
             st.latex(r"""
             f_\alpha(\mathbf{x} + \mathbf{c}_\alpha \delta t, t + \delta t) - f_\alpha(\mathbf{x}, t) = 
             -\frac{1}{\tau} \left(f_\alpha(\mathbf{x}, t) - f_\alpha^{eq}(\mathbf{x}, t)\right) + \mathbf{F}_\alpha^{\text{ext}}
@@ -214,7 +216,7 @@ def main():
             """)
         
         # BGK LES - REFERENCE ONLY, COMPACT
-        with st.expander("**BGK (SRT) - LES** (Reference)", expanded=False):
+        with st.expander("**BGK (SRT) - LES**", expanded=False):
             st.markdown("*Shown for reference - app can analyze BGK/SRT data, but MRT is primary*")
             st.latex(r"""
             \bar{f}_\alpha(\mathbf{x} + \mathbf{c}_\alpha \delta t, t + \delta t) - \bar{f}_\alpha(\mathbf{x}, t) = 
@@ -230,6 +232,14 @@ def main():
             \frac{\partial f}{\partial t} + \xi_\alpha \frac{\partial f}{\partial x_\alpha} + \mathbf{F}_\alpha \frac{\partial f}{\partial \xi_\alpha} = \Omega(f)
             """)
             st.caption("Foundation: continuous kinetic equation")
+        
+        st.divider()
+        st.markdown("**References:**")
+        st.markdown("""
+        - **MRT formulation:** [d'Humières (2002)](/Citation#dhumieres2002) — Multiple-relaxation-time lattice Boltzmann models
+        - **LES with MRT:** [Yu et al. (2006)](/Citation#yu2006) — LES of turbulent flows using MRT-LBM
+        - **General LBM method:** [Krüger et al. (2017)](/Citation#kruger2017) — The lattice Boltzmann method
+        """)
     
     with tab3:
         st.header("Turbulence Analysis Equations")
@@ -276,14 +286,14 @@ def main():
             st.markdown(r"""
             where $\delta u_L(r) = u_L(\mathbf{x} + r\mathbf{e}_L) - u_L(\mathbf{x})$ is the longitudinal velocity increment.
             """)
-            st.markdown("**Extended Self-Similarity (ESS):**")
+            st.markdown("**Extended Self-Similarity (ESS):** ([Benzi et al., 1993](/Citation#benzi1993))")
             st.latex(r"""
             S_p(r) \propto S_3(r)^{\xi_p}
             """)
             st.markdown(r"""
             The scaling exponent $\xi_p$ is obtained from the slope of $\log S_p$ vs $\log S_3$.
             """)
-            st.markdown("**She–Leveque 1994 scaling (theoretical):**")
+            st.markdown("**She–Leveque 1994 scaling (theoretical):** ([She & Leveque, 1994](/Citation#she1994))")
             st.latex(r"""
             \zeta_p = \frac{p}{9} + 2\left(1 - \left(\frac{2}{3}\right)^{p/3}\right)
             """)
@@ -393,11 +403,11 @@ def main():
             st.latex(r"""
             |\boldsymbol{\omega}| = \sqrt{\omega_x^2 + \omega_y^2 + \omega_z^2}
             """)
-            st.markdown("**Q-criterion (vortex identification):**")
+            st.markdown("**Q-criterion (vortex identification):** ([Kareem & Asker, 2022](/Citation#kareem2022))")
             st.latex(r"""
             Q = -\frac{1}{2}A_{ij}A_{ij} = \frac{1}{4}(\omega_i\omega_i - 2S_{ij}S_{ij})
             """)
-            st.markdown("**R-criterion:**")
+            st.markdown("**R-criterion:** ([Kareem & Asker, 2022](/Citation#kareem2022))")
             st.latex(r"""
             R = -\frac{1}{3}A_{ij}A_{jk}A_{ki} = -\frac{1}{3}\left(S_{ij}S_{jk}S_{ki} + \frac{3}{4}\omega_i\omega_j S_{ij}\right)
             """)
@@ -466,7 +476,7 @@ def main():
             st.latex(r"""
             P(X, Y) = \frac{1}{N \Delta X \Delta Y} \sum_{i=1}^{N} \delta(X - X_i) \delta(Y - Y_i)
             """)
-            st.markdown("**R-Q Topological Space:**")
+            st.markdown("**R-Q Topological Space:** ([Kareem & Asker, 2022](/Citation#kareem2022))")
             st.latex(r"""
             Q = \frac{1}{4}(\omega_i\omega_i - 2S_{ij}S_{ij}), \quad 
             R = -\frac{1}{3}\left(S_{ij}S_{jk}S_{ki} + \frac{3}{4}\omega_i\omega_j S_{ij}\right)
@@ -520,7 +530,7 @@ def main():
         
         # Q_S^S Method (Additional 3D Visualization)
         with st.expander("**Q_S^S Method for Vortex Visualization**", expanded=False):
-            st.markdown("**Main equation:**")
+            st.markdown("**Main equation:** ([Kareem & Asker, 2022](/Citation#kareem2022))")
             st.latex(r"""
             Q_S^S = \left[(Q_W^3 + Q_S^3) + (\Sigma^2 - R_s^2)\right]^{1/3}
             """)
@@ -534,6 +544,15 @@ def main():
             st.markdown(r"""
             where $\Omega_{ij}$ is the rotation tensor (antisymmetric part), $S_{ij}$ is the deformation tensor (symmetric part), and $\omega_i$ is the vorticity vector.
             """)
+        
+        st.divider()
+        st.markdown("**References:**")
+        st.markdown("""
+        - **Most equations:** [Pope (2001)](/Citation#pope2001) — Turbulent flows
+        - **Extended Self-Similarity (ESS):** [Benzi et al. (1993)](/Citation#benzi1993) — Extended self-similarity in turbulent flows
+        - **She–Leveque theoretical scaling:** [She & Leveque (1994)](/Citation#she1994) — Universal scaling laws in fully developed turbulence
+        - **Q-criterion, R-criterion, R-Q topological space, Q_S^S method:** [Kareem & Asker (2022)](/Citation#kareem2022) — Simulations of isotropic turbulent flows using LBM
+        """)
     
     # D3Q19 Lattice Visualization Tab
     with tab4:

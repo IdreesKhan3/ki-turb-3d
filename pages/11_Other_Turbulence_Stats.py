@@ -151,7 +151,7 @@ def main():
                 data_dir_obj = Path(data_dir_path)
                 try:
                     rel_path = data_dir_obj.relative_to(project_root)
-                    st.markdown(f"**{i}.** `APP/{rel_path}`")
+                    st.markdown(f"**{i}.** `{rel_path}`")
                 except ValueError:
                     st.markdown(f"**{i}.** `{data_dir_path}`")
         st.markdown("---")

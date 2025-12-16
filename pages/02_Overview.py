@@ -16,12 +16,89 @@ sys.path.insert(0, str(project_root))
 from data_readers.csv_reader import read_eps_validation_csv
 from data_readers.parameter_reader import read_parameters, format_parameters_for_display
 from data_readers.binary_reader import read_tau_analysis_file
-from data_readers.vti_reader import read_vti_file, compute_compressibility_metrics as compute_compressibility_vti
 from data_readers.hdf5_reader import read_hdf5_file, compute_compressibility_metrics as compute_compressibility_h5
 from utils.file_detector import detect_simulation_files
 from utils.theme_config import inject_theme_css
 
 st.set_page_config(page_icon="⚫")
+
+@st.cache_data
+def read_parameters_cached(filepath: str, mtime: float):
+    """
+    Cached parameter reader keyed by file path + modification time.
+    
+    Args:
+        filepath: Path to simulation.input file
+        mtime: File modification time (for cache invalidation)
+    
+    Returns:
+        Dictionary of parameters
+    """
+    return read_parameters(filepath)
+
+@st.cache_data
+def compute_compressibility_from_slice(filepath: str, mtime: float, max_size: int = 128):
+    """
+    Compute compressibility metrics from a subsampled slice of velocity field (.h5 only).
+    Uses caching keyed by file path + modification time.
+    
+    Args:
+        filepath: Path to .h5 velocity file
+        mtime: File modification time (for cache invalidation)
+        max_size: Maximum size for subsampling (default 128^3)
+    
+    Returns:
+        Dictionary with compressibility metrics or None if error
+    """
+    try:
+        h5_data = read_hdf5_file(filepath)
+        velocity = h5_data['velocity']
+        
+        # Validate velocity array shape: must be (nx, ny, nz, 3)
+        if len(velocity.shape) != 4:
+            raise ValueError(f"Expected 4D velocity array (nx, ny, nz, 3), got shape {velocity.shape}")
+        if velocity.shape[3] != 3:
+            raise ValueError(f"Expected 3 velocity components in last dimension, got shape {velocity.shape}. Expected format: (nx, ny, nz, 3)")
+        
+        nx, ny, nz = velocity.shape[:3]
+        
+        # Subsample if grid is too large
+        if nx * ny * nz > max_size ** 3:
+            # Use middle slice in z-direction (most representative)
+            z_mid = nz // 2
+            velocity_slice = velocity[:, :, z_mid:z_mid+1, :]  # Keep 3D shape
+            # Also subsample in x and y if needed
+            if nx > max_size:
+                x_step = nx // max_size
+                velocity_slice = velocity_slice[::x_step, :, :, :]
+            if ny > max_size:
+                y_step = ny // max_size
+                velocity_slice = velocity_slice[:, ::y_step, :, :]
+        else:
+            velocity_slice = velocity
+        
+        # Compute compressibility on subsample
+        return compute_compressibility_h5(velocity_slice)
+    except Exception:
+        return None
+
+def is_examples_les_dir(data_dir: Path, project_root: Path) -> bool:
+    """
+    Strict path-based LES detection: only examples/LES/* directories are considered LES.
+    
+    Args:
+        data_dir: Path to simulation directory
+        project_root: Path to project root
+    
+    Returns:
+        True if directory is under examples/LES/, False otherwise
+    """
+    try:
+        rel = data_dir.resolve().relative_to(project_root.resolve())
+    except Exception:
+        return False
+    parts = [p.lower() for p in rel.parts]
+    return len(parts) >= 2 and parts[0] == "examples" and parts[1] == "les"
 
 def main():
     # Apply theme CSS (persists across pages)
@@ -47,7 +124,7 @@ def main():
                 data_dir = Path(data_dir_path)
                 try:
                     rel_path = data_dir.relative_to(project_root)
-                    st.markdown(f"**{i}.** `APP/{rel_path}`")
+                    st.markdown(f"**{i}.** `{rel_path}`")
                 except ValueError:
                     st.markdown(f"**{i}.** `{data_dir_path}`")
         st.markdown("---")
@@ -82,19 +159,31 @@ def main():
             'is_les': False,
         }
     
-        # Determine if LES: only directories in \APP\user\LES are treated as LES
-        # Check if path contains APP/user/LES (case-insensitive, cross-platform)
-        path_str = str(data_dir).replace('\\', '/')
-        is_les_dir = '/APP/user/LES' in path_str.upper() or '\\APP\\user\\LES' in str(data_dir).upper()
-        
-        # Load parameters
+        # Load parameters and cache in sim_data to avoid re-reading
+        params = None
         if files['parameters']:
-            params = read_parameters(str(files['parameters'][0]))
-            formatted_params = format_parameters_for_display(params)
-            sim_data['params'] = formatted_params
-            sim_data['is_les'] = is_les_dir  # Use directory-based detection
+            param_file = str(files['parameters'][0])
+            try:
+                mtime = Path(param_file).stat().st_mtime
+                params = read_parameters_cached(param_file, mtime)
+            except Exception:
+                params = None
+            
+            if params:
+                formatted_params = format_parameters_for_display(params)
+                sim_data['params'] = formatted_params
+                sim_data['raw_params'] = params  # Store raw params for later use
+        
+        # Strict path-based LES detection: only examples/LES/* directories
+        sim_data['is_les'] = is_examples_les_dir(data_dir, project_root)
         
         all_simulations_data.append(sim_data)
+    
+    # Guard: Check if any valid directories were processed
+    if not all_simulations_data:
+        st.error("No valid simulation directories could be processed.")
+        st.info("Please check that the directories exist and contain simulation files.")
+        return
     
     # Display parameters - show comparison if multiple, single view if one
     if len(data_dirs) > 1:
@@ -111,32 +200,32 @@ def main():
         
         if comparison_data:
             comparison_df = pd.DataFrame(comparison_data)
-            st.dataframe(comparison_df, width='stretch', hide_index=True)
+            st.dataframe(comparison_df, use_container_width=True, hide_index=True)
     else:
         # Single simulation - original detailed view
         if all_simulations_data[0]['params']:
             st.header("Simulation Parameters")
             formatted_params = all_simulations_data[0]['params']
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.subheader("Grid Parameters")
-            for label, info in formatted_params.items():
-                if 'Grid' in label or 'Size' in label or 'Interval' in label or 'Tag' in label:
-                    st.text(f"{label}: {info['value']} {info['unit']}")
-        
-        with col2:
-            st.subheader("Physical Parameters")
-            for label, info in formatted_params.items():
-                if 'Viscosity' in label or 'Velocity' in label or 'Relaxation' in label or 'Forcing' in label or 'Perturbation' in label:
-                    st.text(f"{label}: {info['value']} {info['unit']}")
-        
-        with col3:
-            st.subheader("LBM Parameters")
-            for label, info in formatted_params.items():
-                if 'Lattice' in label or 'Speed' in label or 'Length' in label or 'Smagorinsky' in label:
-                    st.text(f"{label}: {info['value']} {info['unit']}")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.subheader("Grid Parameters")
+                for label, info in formatted_params.items():
+                    if 'Grid' in label or 'Size' in label or 'Interval' in label or 'Tag' in label:
+                        st.text(f"{label}: {info['value']} {info['unit']}")
+            
+            with col2:
+                st.subheader("Physical Parameters")
+                for label, info in formatted_params.items():
+                    if 'Viscosity' in label or 'Velocity' in label or 'Relaxation' in label or 'Forcing' in label or 'Perturbation' in label:
+                        st.text(f"{label}: {info['value']} {info['unit']}")
+            
+            with col3:
+                st.subheader("LBM Parameters")
+                for label, info in formatted_params.items():
+                    if 'Lattice' in label or 'Speed' in label or 'Length' in label or 'Smagorinsky' in label:
+                        st.text(f"{label}: {info['value']} {info['unit']}")
     
     # Compute Mach and Knudsen numbers for each simulation
     for sim in all_simulations_data:
@@ -145,73 +234,75 @@ def main():
         knudsen_number = None
         is_les = sim['is_les']
         
-        if files['spectral_turb_stats']:
-            # Load validation data for u_rms_real
-            val_df = read_eps_validation_csv(str(files['spectral_turb_stats'][0]))
-            if 'u_rms_real' in val_df.columns and len(val_df) > 0:
-                u_rms_latest = val_df['u_rms_real'].iloc[-1]
-                c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
-                mach_number = u_rms_latest / c_s
+        # Improved Mach computation: iterate over all candidate CSVs, prefer newest
+        if files.get('spectral_turb_stats'):
+            candidates = sorted(
+                [Path(p) for p in files['spectral_turb_stats']],
+                key=lambda p: p.stat().st_mtime,
+                reverse=True
+            )
+            for csv_path in candidates:
+                try:
+                    df = read_eps_validation_csv(str(csv_path))
+                    if 'u_rms_real' in df.columns and len(df) > 0:
+                        u_rms_latest = df['u_rms_real'].iloc[-1]
+                        c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
+                        mach_number = u_rms_latest / c_s
+                        break
+                except Exception:
+                    continue
         
         # Compute Knudsen number
-        # LES (only in \APP\user\LES): Use effective/turbulent tau (τ_e) from tau_analysis for Kn_t
-        # DNS (all other directories): Use molecular tau (τ₀) from parameters file
-        if files['parameters']:
-            params = read_parameters(str(files['parameters'][0]))
+        # Always compute molecular Kn if nu exists
+        # Only if is_les is True, attempt turbulent and override
+        params = sim.get('raw_params', None)
+        if params is None and files['parameters']:
+            # Fallback: read if not cached (shouldn't happen, but safe)
+            param_file = str(files['parameters'][0])
+            try:
+                mtime = Path(param_file).stat().st_mtime
+                params = read_parameters_cached(param_file, mtime)
+                sim['raw_params'] = params  # Cache for future use
+            except Exception:
+                params = None
+        
+        if params:
             nu = params.get('nu', None)
             if nu is not None:
                 c_s2 = 1.0 / 3.0
+                c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
+                dx = 1.0  # Grid spacing in lattice units (Δx)
                 
-                if is_les:
-                    # LES: Compute turbulent Knudsen number Kn_t using effective tau from tau_analysis
-                    # Kn_t = ((τ_e - 1/2) * √3 * Δx) / Δx = (τ_e - 1/2) * √3
-                    if files['tau_analysis']:
-                        params = read_parameters(str(files['parameters'][0]))
-                        nx = params.get('nx', None)
-                        ny = params.get('ny', None)
-                        nz = params.get('nz', None)
-                        
-                        if nx and ny and nz:
-                            tau_file = str(files['tau_analysis'][-1])
-                            try:
-                                tau_e = read_tau_analysis_file(tau_file, nx, ny, nz)  # Effective tau
-                                dx = 1.0
-                                sqrt3 = np.sqrt(3.0)
-                                knudsen_number = ((tau_e - 0.5) * sqrt3 * dx) / dx
-                            except Exception:
-                                knudsen_number = None
-                        else:
-                            knudsen_number = None
-                    else:
-                        knudsen_number = None
-                else:
-                    # DNS: Use molecular tau (τ₀) from parameters file (input file)
-                    # Kn = (c_s * (τ₀ - 1/2) * Δx) / Δx = c_s * (τ₀ - 1/2)
-                    tau_0 = nu / c_s2 + 0.5  # Molecular tau from viscosity in input file
-                    c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
-                    dx = 1.0  # Grid spacing in lattice units (Δx)
-                    knudsen_number = (c_s * (tau_0 - 0.5) * dx) / dx
+                # Always compute molecular Kn first
+                tau_0 = nu / c_s2 + 0.5  # Molecular tau from viscosity in input file
+                knudsen_number = (c_s * (tau_0 - 0.5) * dx) / dx
+                
+                # Only override with turbulent Kn if this is a strict LES directory
+                if is_les and files['tau_analysis']:
+                    nx = params.get('nx', None)
+                    ny = params.get('ny', None)
+                    nz = params.get('nz', None)
+                    
+                    if nx and ny and nz:
+                        tau_file = str(files['tau_analysis'][-1])
+                        try:
+                            tau_e = read_tau_analysis_file(tau_file, nx, ny, nz)  # Effective tau
+                            sqrt3 = np.sqrt(3.0)
+                            knudsen_number = ((tau_e - 0.5) * sqrt3 * dx) / dx
+                        except Exception:
+                            pass  # Keep molecular Kn if turbulent computation fails
         
         sim['mach_number'] = mach_number
         sim['knudsen_number'] = knudsen_number
         
-        # Compute compressibility from velocity field files
+        # Compute compressibility from velocity field files (using cached subsample, .h5 only)
         compressibility_metrics = None
-        if files['velocity_vti']:
-            # Try to read first VTI file
+        if files['velocity_h5']:
+            filepath = str(files['velocity_h5'][0])
             try:
-                vti_data = read_vti_file(str(files['velocity_vti'][0]))
-                velocity = vti_data['velocity']
-                compressibility_metrics = compute_compressibility_vti(velocity)
-            except Exception as e:
-                compressibility_metrics = None
-        elif files['velocity_h5']:
-            # Try to read first H5 file
-            try:
-                h5_data = read_hdf5_file(str(files['velocity_h5'][0]))
-                velocity = h5_data['velocity']
-                compressibility_metrics = compute_compressibility_h5(velocity)
-            except Exception as e:
+                mtime = Path(filepath).stat().st_mtime
+                compressibility_metrics = compute_compressibility_from_slice(filepath, mtime)
+            except Exception:
                 compressibility_metrics = None
         
         sim['compressibility'] = compressibility_metrics
@@ -240,7 +331,8 @@ def main():
                 
                 # Knudsen Number with reason if N/A
                 if sim['knudsen_number'] is not None:
-                    row['Knudsen Number'] = f"{sim['knudsen_number']:.6f}"
+                    kn_label = " (turbulent)" if sim['is_les'] else " (molecular)"
+                    row['Knudsen Number'] = f"{sim['knudsen_number']:.6f}{kn_label}"
                 else:
                     if not files['parameters']:
                         row['Knudsen Number'] = "N/A (no simulation.input)"
@@ -254,8 +346,8 @@ def main():
                     max_div = sim['compressibility']['max_divergence']
                     row['Max Divergence |∇·u|'] = f"{max_div:.6e}"
                 else:
-                    if not files['velocity_vti'] and not files['velocity_h5']:
-                        row['Max Divergence |∇·u|'] = "N/A (no .vti or .h5 files)"
+                    if not files['velocity_h5']:
+                        row['Max Divergence |∇·u|'] = "N/A (no .h5 files)"
                     else:
                         row['Max Divergence |∇·u|'] = "N/A (computation failed)"
                 
@@ -263,7 +355,7 @@ def main():
             
             if validation_data:
                 validation_df = pd.DataFrame(validation_data)
-                st.dataframe(validation_df, width='stretch', hide_index=True)
+                st.dataframe(validation_df, use_container_width=True, hide_index=True)
                 st.caption("💡 N/A values indicate missing required files or data for computation")
         else:
             # Single simulation - detailed view
@@ -301,21 +393,26 @@ def main():
             with col2:
                 if knudsen_number is not None:
                     # Knudsen number traffic light logic
+                    is_les = sim['is_les']
+                    kn_label = "Kn_t" if is_les else "Kn"
+                    kn_type = "turbulent" if is_les else "molecular"
+                    
                     if knudsen_number > 0.1:
                         status_color = "🔴"
-                        status_text = "**Invalid:** Kn > 0.1"
+                        status_text = f"**Invalid:** {kn_label} > 0.1"
                         status_msg = "Transition regime. Boltzmann equation is not recovering Navier-Stokes hydrodynamics correctly for this scale."
                     elif knudsen_number > 0.01:
                         status_color = "🟡"
-                        status_text = "**Warning:** 0.01 < Kn < 0.1"
+                        status_text = f"**Warning:** 0.01 < {kn_label} < 0.1"
                         status_msg = "Slip regime. Boundary conditions might be inaccurate; fine for some bulk flows but risky for DNS."
                     else:
                         status_color = "🟢"
-                        status_text = "**Valid:** Kn < 0.01"
+                        status_text = f"**Valid:** {kn_label} < 0.01"
                         status_msg = "Continuum regime. Navier-Stokes valid."
                     
+                    metric_label = f"Knudsen Number ({kn_type})"
                     st.metric(
-                        "Knudsen Number", 
+                        metric_label, 
                         f"{knudsen_number:.6f}",
                         delta=None
                     )
@@ -353,9 +450,9 @@ def main():
                     st.caption(status_msg)
                 else:
                     files = all_simulations_data[0]['files']
-                    if not files['velocity_vti'] and not files['velocity_h5']:
+                    if not files['velocity_h5']:
                         st.metric("Max Divergence |∇·u|", "N/A")
-                        st.caption("No .vti or .h5 velocity field files found")
+                        st.caption("No .h5 velocity field files found")
                     else:
                         st.metric("Max Divergence |∇·u|", "N/A")
                         st.caption("Failed to compute compressibility")
@@ -379,24 +476,24 @@ def main():
             availability_data.append(row)
         
         availability_df = pd.DataFrame(availability_data)
-        st.dataframe(availability_df, width='stretch', hide_index=True)
+        st.dataframe(availability_df, use_container_width=True, hide_index=True)
         st.caption("💡 ❌ indicates the file type is not found in that directory. ✅ means files are available.")
     else:
         # Single simulation - original checklist
         files = all_simulations_data[0]['files']
-    checklist = {
-        'Real Turbulence Stats': len(files['real_turb_stats']) > 0,
-        'Energy Spectra': len(files['spectrum']) > 0,
-        'Normalized Spectra': len(files['norm_spectrum']) > 0,
-        'Structure Functions': len(files['structure_functions_txt']) > 0 or len(files['structure_functions_bin']) > 0,
-        'Flatness': len(files['flatness']) > 0,
-        'Isotropy': len(files['isotropy']) > 0,
-        'Spectral Turbulence Stats': len(files['spectral_turb_stats']) > 0,
-    }
-    
-    for item, available in checklist.items():
-        status = "✅" if available else "❌"
-        st.markdown(f"{status} {item}")
+        checklist = {
+            'Real Turbulence Stats': len(files['real_turb_stats']) > 0,
+            'Energy Spectra': len(files['spectrum']) > 0,
+            'Normalized Spectra': len(files['norm_spectrum']) > 0,
+            'Structure Functions': len(files['structure_functions_txt']) > 0 or len(files['structure_functions_bin']) > 0,
+            'Flatness': len(files['flatness']) > 0,
+            'Isotropy': len(files['isotropy']) > 0,
+            'Spectral Turbulence Stats': len(files['spectral_turb_stats']) > 0,
+        }
+        
+        for item, available in checklist.items():
+            status = "✅" if available else "❌"
+            st.markdown(f"{status} {item}")
     
     # Theory Equations Section
     st.markdown("---")

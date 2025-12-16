@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+title: "KI-TURB 3D: Turbulence Analysis & Visualization Suite"
+version: 1.0.0
+date-released: 2024-01-01
+authors:
+  - given-names: "[Your First Name]"
+    family-names: "[Your Last Name]"
+    orcid: "https://orcid.org/0000-0000-0000-0000"
+    affiliation: "[Your Institution]"
+    email: "[your.email@example.com]"
+keywords:
+  - "turbulence"
+  - "lattice boltzmann method"
+  - "direct numerical simulation"
+  - "large eddy simulation"
+  - "data visualization"
+  - "streamlit"
+license: "[MIT/Apache-2.0/GPL/etc - check your LICENSE file]"
+repository-code: "https://github.com/[username]/[repository]"
+abstract: "KI-TURB 3D is a comprehensive web-based application for analyzing and visualizing turbulence data from Lattice Boltzmann Method (LBM) Direct Numerical Simulation (DNS) and Large Eddy Simulation (LES) simulations."
+

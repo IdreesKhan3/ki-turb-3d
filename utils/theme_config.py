@@ -1038,64 +1038,112 @@ def inject_theme_css(theme_name: str = None):
             color: {text_color} !important;
         }}
         
+        /* Inline code in markdown */
         .stMarkdown code {{
-            background-color: {container_bg} !important;
-            color: {bright_text} !important;
+            background-color: #2d2d30 !important;
+            color: #e8e8e8 !important;
+            border: 1px solid var(--app-border) !important;
         }}
         
-        /* Code blocks - dark theme with syntax highlighting */
-        .stCodeBlock {{
+        /* Code blocks - target all pre/code elements in main content */
+        .main pre,
+        .main code,
+        .main pre code,
+        [data-testid="stAppViewContainer"] pre,
+        [data-testid="stAppViewContainer"] code,
+        [data-testid="stAppViewContainer"] pre code,
+        [data-testid="stCodeBlock"],
+        [data-testid="stCodeBlock"] *,
+        .stCodeBlock,
+        .stCodeBlock * {{
             background-color: #1e1e1e !important;
-            border: 1px solid {border_color} !important;
-        }}
-        
-        .stCodeBlock pre {{
-            background-color: #1e1e1e !important;
+            background: #1e1e1e !important;
             color: #d4d4d4 !important;
         }}
         
-        .stCodeBlock code {{
+        [data-testid="stCodeBlock"] pre,
+        [data-testid="stCodeBlock"] code,
+        [data-testid="stCodeBlock"] pre code,
+        .stCodeBlock pre,
+        .stCodeBlock code,
+        .stCodeBlock pre code {{
             background-color: #1e1e1e !important;
+            background: #1e1e1e !important;
             color: #d4d4d4 !important;
+            opacity: 1 !important;
+            -webkit-text-fill-color: #d4d4d4 !important;
         }}
         
         /* Syntax highlighting colors (VS Code dark theme) */
+        div[data-testid="stCodeBlock"] .hljs-keyword,
+        div[data-testid="stCodeBlock"] code .hljs-keyword,
         .stCodeBlock .hljs-keyword,
         .stCodeBlock code .hljs-keyword {{
             color: #569cd6 !important;
         }}
         
+        div[data-testid="stCodeBlock"] .hljs-string,
+        div[data-testid="stCodeBlock"] code .hljs-string,
         .stCodeBlock .hljs-string,
         .stCodeBlock code .hljs-string {{
             color: #ce9178 !important;
         }}
         
+        div[data-testid="stCodeBlock"] .hljs-function,
+        div[data-testid="stCodeBlock"] code .hljs-function,
         .stCodeBlock .hljs-function,
         .stCodeBlock code .hljs-function {{
             color: #dcdcaa !important;
         }}
         
+        div[data-testid="stCodeBlock"] .hljs-comment,
+        div[data-testid="stCodeBlock"] code .hljs-comment,
         .stCodeBlock .hljs-comment,
         .stCodeBlock code .hljs-comment {{
             color: #6a9955 !important;
         }}
         
+        div[data-testid="stCodeBlock"] .hljs-number,
+        div[data-testid="stCodeBlock"] code .hljs-number,
         .stCodeBlock .hljs-number,
         .stCodeBlock code .hljs-number {{
             color: #b5cea8 !important;
         }}
         
+        div[data-testid="stCodeBlock"] .hljs-variable,
+        div[data-testid="stCodeBlock"] code .hljs-variable,
         .stCodeBlock .hljs-variable,
         .stCodeBlock code .hljs-variable {{
             color: #9cdcfe !important;
         }}
         
+        div[data-testid="stCodeBlock"] .hljs-built_in,
+        div[data-testid="stCodeBlock"] code .hljs-built_in,
         .stCodeBlock .hljs-built_in,
         .stCodeBlock code .hljs-built_in {{
             color: #4ec9b0 !important;
         }}
         
+        /* Code blocks in wrapper containers */
+        .element-container div[data-testid="stCodeBlock"],
+        .block-container div[data-testid="stCodeBlock"],
+        [data-testid="stVerticalBlock"] div[data-testid="stCodeBlock"],
+        [data-testid="stHorizontalBlock"] div[data-testid="stCodeBlock"],
+        .element-container .stCodeBlock,
+        .block-container .stCodeBlock {{
+            background-color: #1e1e1e !important;
+        }}
+        
+        .element-container div[data-testid="stCodeBlock"] *,
+        .block-container div[data-testid="stCodeBlock"] *,
+        .element-container .stCodeBlock *,
+        .block-container .stCodeBlock * {{
+            background-color: #1e1e1e !important;
+            color: #d4d4d4 !important;
+        }}
+        
         /* Code blocks in chat messages */
+        .stChatMessage div[data-testid="stCodeBlock"],
         .stChatMessage .stCodeBlock,
         .stChatMessage code {{
             background-color: #1e1e1e !important;
@@ -1103,6 +1151,24 @@ def inject_theme_css(theme_name: str = None):
         }}
         
         .stChatMessage pre {{
+            background-color: #1e1e1e !important;
+            color: #d4d4d4 !important;
+        }}
+        
+        /* Universal code block override - highest priority */
+        .stApp div[data-testid="stCodeBlock"],
+        .stApp .stCodeBlock,
+        .main div[data-testid="stCodeBlock"],
+        .main .stCodeBlock,
+        [data-testid="stAppViewContainer"] div[data-testid="stCodeBlock"],
+        [data-testid="stAppViewContainer"] .stCodeBlock {{
+            background-color: #1e1e1e !important;
+        }}
+        
+        .stApp div[data-testid="stCodeBlock"] *,
+        .stApp .stCodeBlock *,
+        .main div[data-testid="stCodeBlock"] *,
+        .main .stCodeBlock * {{
             background-color: #1e1e1e !important;
             color: #d4d4d4 !important;
         }}
