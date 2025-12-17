@@ -811,15 +811,23 @@ def main():
 
     # Theory section
     with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown("**Longitudinal Flatness Factor**")
-        st.markdown("The longitudinal flatness factor $F_L(r)$ measures intermittency of velocity increments:")
-        st.latex(r"F_L(r) = \frac{\langle [\delta u_L(r)]^4 \rangle}{\langle [\delta u_L(r)]^2 \rangle^2}")
-        st.markdown("where $\\delta u_L(r) = u_L(\\mathbf{x}+r\\mathbf{e}_L) - u_L(\\mathbf{x})$.")
+        st.markdown("**Longitudinal flatness factor:**")
+        st.latex(r"""
+        F_L(r) = \frac{\langle [\delta u_L(r)]^4 \rangle}{\langle [\delta u_L(r)]^2 \rangle^2}
+        """)
+        st.markdown(r"""
+        where $\delta u_L(r) = u_L(\mathbf{x} + r\mathbf{e}_L) - u_L(\mathbf{x})$ is the longitudinal velocity increment.
+        """)
         
-        st.markdown("**Interpretation**")
-        st.markdown("- $F_L(r)=3$: Gaussian increments (no intermittency)")
-        st.markdown("- $F_L(r)>3$: intermittent, fat-tailed PDFs")
-        st.markdown("- $F_L(r)<3$: sub-Gaussian")
+        st.markdown("**Interpretation:**")
+        st.markdown(r"""
+        - $F_L(r) = 3$: Gaussian increments (no intermittency)
+        - $F_L(r) > 3$: Intermittent, fat-tailed PDFs
+        - $F_L(r) < 3$: Sub-Gaussian
+        """)
+        
+        st.divider()
+        st.markdown("**Reference:** [Pope (2001)](/Citation#pope2001) — Turbulent flows")
 
 
 if __name__ == "__main__":

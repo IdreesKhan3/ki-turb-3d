@@ -669,7 +669,7 @@ def main():
             return
         
         # Use first directory for metadata storage
-        data_dir = Path(data_dirs[0])
+        data_dir = Path(data_dirs[0]).resolve()
     else:
         # Custom file selection mode
         st.sidebar.markdown("---")
@@ -1282,19 +1282,45 @@ def main():
     # ======================================================
     # Theory / Equations
     # ======================================================
-    with st.expander("Theory / Equations", expanded=False):
-        st.markdown("**3D kinetic energy spectrum (Fourier space)**")
-        st.latex(r"E(\kappa)=\sum_{\kappa\le |\mathbf{k}|<\kappa+\Delta \kappa} \frac{1}{2}\left(|\hat{u}(\mathbf{k})|^2+|\hat{v}(\mathbf{k})|^2+|\hat{w}(\mathbf{k})|^2\right)")
+    with st.expander("📚 Theory & Equations", expanded=False):
+        st.markdown("**3D kinetic energy spectrum (Fourier space):**")
+        st.latex(r"""
+        E(k) = \sum_{k \le |\mathbf{k}| < k + \Delta k} \frac{1}{2} \left( |\hat{u}(\mathbf{k})|^2 + |\hat{v}(\mathbf{k})|^2 + |\hat{w}(\mathbf{k})|^2 \right)
+        """)
         
-        st.markdown("**Total kinetic energy and RMS velocity**")
-        st.latex(r"\mathrm{TKE}=\sum_{\kappa}E(\kappa), \qquad u_{\mathrm{rms}}=\sqrt{\frac{2}{3}\mathrm{TKE}}")
+        st.markdown("**Total kinetic energy and RMS velocity:**")
+        st.latex(r"""
+        \mathrm{TKE} = \sum_k E(k), \qquad u_{\mathrm{rms}} = \sqrt{\frac{2}{3} \mathrm{TKE}}
+        """)
 
-        st.markdown("**Kolmogorov inertial-range scaling**")
-        st.latex(r"E(\kappa)\propto \kappa^{-5/3}")
+        st.markdown("**Kolmogorov inertial-range scaling:**")
+        st.latex(r"""
+        E(k) \propto k^{-5/3}
+        """)
 
-        st.markdown("**Pope model spectrum (HIT validation)**")
-        st.latex(r"E_{\text{pope}}(\kappa)=C\,\varepsilon^{2/3}\kappa^{-5/3}f_L(\kappa L)f_\eta(\kappa\eta)")
-        st.markdown("with $C=1.5$, $c_L=6.78$, $c_\eta=0.40$, $\\beta=5.2$.")
+        st.markdown("**Pope model spectrum (FHIT spectra validation):**")
+        st.latex(r"""
+        E_{\text{pope}}(k) = C \varepsilon^{2/3} k^{-5/3} f_L(kL) f_\eta(k\eta)
+        """)
+        st.markdown(r"""
+        with $C=1.5$, $c_L=6.78$, $c_\eta=0.40$, $\beta=5.2$. Here $f_L$ and $f_\eta$ are large-scale and dissipation-range corrections.
+        """)
+        
+        st.markdown("**Spectral dissipation:**")
+        st.latex(r"""
+        \varepsilon = 2\nu \sum_k k^2 E(k)
+        """)
+        
+        st.markdown("**Normalized spectrum:**")
+        st.latex(r"""
+        E_{\text{norm}}(k\eta) = \frac{E(k)}{\varepsilon^{2/3} \eta^{5/3}}, \quad k\eta = \frac{k}{\eta}
+        """)
+        st.markdown(r"""
+        where $\eta = (\nu^3/\varepsilon)^{1/4}$ is the Kolmogorov length scale. The normalized spectrum is plotted in the **Normalized Spectrum** tab.
+        """)
+        
+        st.divider()
+        st.markdown("**Reference:** [Pope (2001)](/Citation#pope2001) — Turbulent flows")
 
 
 if __name__ == "__main__":

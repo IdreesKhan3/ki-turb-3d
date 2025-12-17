@@ -2,13 +2,13 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata from this file."
 title: "KI-TURB 3D: Turbulence Analysis & Visualization Suite"
 version: 1.0.0
-date-released: 2024-01-01
+date-released: 2025-12-15
 authors:
-  - given-names: "[Your First Name]"
-    family-names: "[Your Last Name]"
+  - given-names: "Your First Name"
+    family-names: "Your Last Name"
     orcid: "https://orcid.org/0000-0000-0000-0000"
-    affiliation: "[Your Institution]"
-    email: "[your.email@example.com]"
+    affiliation: "Your Institution"
+    email: "your.email@example.com"
 keywords:
   - "turbulence"
   - "lattice boltzmann method"
@@ -16,7 +16,11 @@ keywords:
   - "large eddy simulation"
   - "data visualization"
   - "streamlit"
-license: "[MIT/Apache-2.0/GPL/etc - check your LICENSE file]"
-repository-code: "https://github.com/[username]/[repository]"
-abstract: "KI-TURB 3D is a comprehensive web-based application for analyzing and visualizing turbulence data from Lattice Boltzmann Method (LBM) Direct Numerical Simulation (DNS) and Large Eddy Simulation (LES) simulations."
+  - "turbulence analysis"
+  - "computational fluid dynamics"
+license: "MIT"
+repository-code: "https://github.com/username/repository"
+doi: "10.5281/zenodo.XXXXXXX"
+url: "https://github.com/username/repository"
+abstract: "KI-TURB 3D is a comprehensive web-based application for analyzing and visualizing turbulence data from Lattice Boltzmann Method (LBM) Direct Numerical Simulation (DNS) and Large Eddy Simulation (LES) simulations. The tool is designed for Homogeneous Isotropic Turbulence (HIT) analysis with primary focus on Multiple Relaxation Time (MRT) collision operators, and supports Single Relaxation Time (SRT), Bhatnagar-Gross-Krook (BGK), and Two Relaxation Time (TRT) data."
 

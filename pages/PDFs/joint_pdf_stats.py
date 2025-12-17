@@ -1043,6 +1043,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
         st.markdown("Illustrates connections between energy dissipation and vortical structures.")
         
         st.markdown("### R-Q Topological Space")
+        st.markdown("**Reference:** [Kareem & Asker (2022)](/Citation#kareem2022) — Simulations of isotropic turbulent flows using lattice Boltzmann method with different forcing functions")
         st.markdown("**Joint PDF of velocity gradient tensor invariants:**")
         st.markdown("**Second Invariant Q:**")
         st.latex(r"Q = \frac{1}{4}(\omega_i\omega_i - 2S_{ij}S_{ij})")

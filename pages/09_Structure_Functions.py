@@ -55,7 +55,7 @@ from utils.plot_style import (
     render_plot_title_ui, _get_palette, _normalize_plot_name,
     resolve_line_style, render_per_sim_style_ui, ensure_per_sim_defaults
 )
-from utils.ess_inset import add_ess_inset
+from pages.StructureFunctions.ess_inset import add_ess_inset
 
 # Binary/text readers (binary is required by plan, text is optional)
 from data_readers.binary_reader import read_structure_function_file
@@ -165,7 +165,8 @@ def _compute_time_avg_structure(files: tuple, kind: str):
     if Sp_list:
         Sp_arr = np.stack(Sp_list, axis=0)
         Sp_std = np.std(Sp_arr, axis=0)
-        Sp_std_dict = {p: Sp_std[p-1, :] for p in ps}
+        # Map p values to their index in ps (not p-1, which assumes consecutive 1,2,3,...)
+        Sp_std_dict = {p: Sp_std[idx, :] for idx, p in enumerate(ps)}
     else:
         Sp_std_dict = {p: np.zeros(max_dr) for p in ps}
 
@@ -650,7 +651,7 @@ def main():
         return
 
     # Use first directory for metadata storage
-    data_dir = Path(data_dirs[0])
+    data_dir = Path(data_dirs[0]).resolve()
 
     # Defaults
     st.session_state.setdefault("structure_legend_names", {})
@@ -1315,16 +1316,29 @@ def main():
     # Theory section
     # ============================================
     with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown("**Structure functions**")
-        st.latex(r"S_p(r)=\langle |\delta u_L(r)|^p\rangle")
+        st.markdown("**Structure functions:**")
+        st.latex(r"""
+        S_p(r) = \langle |\delta u_L(r)|^p \rangle
+        """)
+        st.markdown(r"""
+        where $\delta u_L(r) = u_L(\mathbf{x} + r\mathbf{e}_L) - u_L(\mathbf{x})$ is the longitudinal velocity increment.
+        """)
         
-        st.markdown("**Extended Self-Similarity (ESS)**")
-        st.latex(r"S_p(r)\propto S_3(r)^{\xi_p}")
-        st.markdown("So $\\xi_p$ is obtained from the slope of $\\log S_p$ vs $\\log S_3$.")
+        st.markdown("**Extended Self-Similarity (ESS):** ([Benzi et al., 1993](/Citation#benzi1993))")
+        st.latex(r"""
+        S_p(r) \propto S_3(r)^{\xi_p}
+        """)
+        st.markdown(r"""
+        The scaling exponent $\xi_p$ is obtained from the slope of $\log S_p$ vs $\log S_3$.
+        """)
         
-        st.markdown("**She–Leveque 1994 scaling**")
-        st.latex(r"\zeta_p=\frac{p}{9}+2\left(1-\left(\frac{2}{3}\right)^{p/3}\right)")
-        st.markdown("Anomalies are plotted as $\\xi_p - p/3$.")
+        st.markdown("**She–Leveque 1994 scaling (theoretical):** ([She & Leveque, 1994](/Citation#she1994))")
+        st.latex(r"""
+        \zeta_p = \frac{p}{9} + 2\left(1 - \left(\frac{2}{3}\right)^{p/3}\right)
+        """)
+        st.markdown(r"""
+        Anomalies are plotted as $\xi_p - p/3$ to compare with theoretical predictions.
+        """)
 
 
 if __name__ == "__main__":

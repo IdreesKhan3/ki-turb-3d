@@ -2,18 +2,18 @@
 Isotropy Validation (Spectral) Page — Streamlit
 
 Features:
-- Auto-detects isotropy coefficient files:
-    isotropy_coeff_*.dat
-- Groups into single spectral isotropy dataset (can extend to multi-sim later)
-- Time-averages IC(k) over user-selected snapshot window
-- Uses derivative-based IC from Fortran if present (col 7 / index 6)
-  else falls back to IC = E22/E11
+- Auto-detects isotropy coefficient files: isotropy_coeff_*.dat
+- Supports multiple simulations for comparison (groups files by simulation/directory)
+- Time-averages derivative-based spectral isotropy ratio IC(k) over user-selected snapshot window
+- Computes derivative-based IC from Fortran output (column 7 / index 6)
+- Computes and displays E11, E22, E33 component spectra
 - Optional plots:
-    (1) Time-averaged IC(k)
-    (2) Time-averaged E11,E22,E33
-    (3) Snapshot IC(k) lines + avg overlay (convergence)
+    (1) Time-averaged IC(k) with error bars/bands
+    (2) Time-averaged E11, E22, E33 component spectra
+    (3) Optional per-snapshot IC(k) lines for convergence visualization
+- Summary table with statistics (mean, std, min, max) for each simulation
 - Full user controls (in-memory session state): legend names, axis labels, plot style
-- Research-grade export (PNG/PDF/SVG/EPS/JPG/WEBP/TIFF/HTML)
+- Research-grade export (PNG/PDF/SVG/JPG/WEBP/HTML)
 
 Requires kaleido:
     pip install -U kaleido
@@ -35,14 +35,15 @@ import sys
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from utils.file_detector import detect_simulation_files, natural_sort_key
+from utils.file_detector import detect_simulation_files, natural_sort_key, group_files_by_simulation
 from utils.theme_config import inject_theme_css, apply_theme_to_plot_style
 from utils.report_builder import capture_button
 from utils.plot_style import (
     default_plot_style, apply_plot_style as apply_plot_style_base,
     render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
     render_axis_scale_ui, render_tick_format_ui, render_axis_borders_ui,
-    render_plot_title_ui, _get_palette, _normalize_plot_name
+    render_plot_title_ui, _get_palette, _normalize_plot_name, resolve_line_style,
+    render_per_sim_style_ui
 )
 from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
@@ -165,7 +166,7 @@ def get_plot_style(plot_name: str):
     
     return merged
 
-def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
+def plot_style_sidebar(data_dir: Path, curves, plot_names: list, sim_groups=None):
     # Plot selector
     selected_plot = st.sidebar.selectbox(
         "Select plot to configure",
@@ -370,6 +371,17 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                                            int(s["msize"] or ps["marker_size"]),
                                            key=f"{key_prefix}_over_msize_{c}",
                                            disabled=not s["enabled"])
+
+        # Per-simulation styling (for multi-simulation comparison)
+        if sim_groups and len(sim_groups) > 1:
+            st.markdown("---")
+            st.markdown("**Per-simulation styling**")
+            if selected_plot == "IC(k) Time-Avg":
+                render_per_sim_style_ui(ps, sim_groups, style_key="per_sim_style_ic", 
+                                        key_prefix=f"{key_prefix}_ic", include_marker=True, show_enable_checkbox=False)
+            elif selected_plot == "Component Spectra":
+                render_per_sim_style_ui(ps, sim_groups, style_key="per_sim_style_eii", 
+                                        key_prefix=f"{key_prefix}_eii", include_marker=True, show_enable_checkbox=False)
 
         st.markdown("---")
         reset_pressed = False
@@ -647,8 +659,11 @@ def main():
         if key not in st.session_state.axis_labels_spec_iso:
             st.session_state.axis_labels_spec_iso[key] = value
 
-    # Find isotropy files from ALL directories independently
-    all_ic_files = []
+    # Initialize legend names for simulations
+    st.session_state.setdefault("spec_iso_sim_legend_names", {})
+
+    # Find isotropy files from ALL directories and group by simulation
+    ic_groups = {}
     for data_dir_path in data_dirs:
         # Resolve path to ensure it works regardless of how it was stored
         try:
@@ -661,18 +676,57 @@ def main():
                 if not dir_ic_files:
                     # Fallback to direct glob search
                     dir_ic_files = glob.glob(str(dir_path / "isotropy_coeff_*.dat"))
-                all_ic_files.extend([str(f) for f in dir_ic_files])
+                
+                if dir_ic_files:
+                    # Group files by simulation pattern
+                    dir_name = dir_path.name
+                    dir_ic_str = [str(f) for f in dir_ic_files]
+                    
+                    # Try to group by pattern first
+                    grouped = group_files_by_simulation(
+                        dir_ic_str, r"(isotropy_coeff[_\w]*\d+)_\d+\.dat"
+                    )
+                    if not grouped:
+                        # Fallback: group by directory name if pattern doesn't match
+                        grouped = group_files_by_simulation(
+                            dir_ic_str, r"isotropy_coeff_(\d+)_\d+\.dat"
+                        )
+                    
+                    if grouped:
+                        # Add directory prefix to distinguish simulations from different directories
+                        for key, file_list in grouped.items():
+                            new_key = f"{dir_name}_{key}" if len(data_dirs) > 1 else key
+                            if new_key not in ic_groups:
+                                ic_groups[new_key] = []
+                            ic_groups[new_key].extend(file_list)
+                    else:
+                        # No pattern match: use directory name as group key
+                        group_key = dir_name if len(data_dirs) > 1 else "default"
+                        if group_key not in ic_groups:
+                            ic_groups[group_key] = []
+                        ic_groups[group_key].extend(dir_ic_str)
         except Exception:
             continue  # Skip invalid directories
     
-    ic_files = sorted(all_ic_files, key=natural_sort_key)
+    # Sort files within each group
+    for key in ic_groups:
+        ic_groups[key] = sorted(ic_groups[key], key=natural_sort_key)
 
-    if not ic_files:
+    if not ic_groups:
         st.info("No isotropy_coeff_*.dat files found in any of the selected directories.")
         return
 
     # Sidebar legends + axis labels persistence
     with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
+        st.markdown("### Simulation legend names")
+        for sim_prefix in sorted(ic_groups.keys()):
+            st.session_state.spec_iso_sim_legend_names.setdefault(sim_prefix, _default_labelify(sim_prefix))
+            st.session_state.spec_iso_sim_legend_names[sim_prefix] = st.text_input(
+                f"Name for `{sim_prefix}`",
+                value=st.session_state.spec_iso_sim_legend_names[sim_prefix],
+                key=f"speciso_sim_leg_{sim_prefix}"
+            )
+        st.markdown("---")
         st.markdown("### Curve names")
         for k in st.session_state.spec_iso_legends:
             st.session_state.spec_iso_legends[k] = st.text_input(
@@ -685,6 +739,7 @@ def main():
                 k, st.session_state.axis_labels_spec_iso[k], key=f"speciso_ax_{k}"
             )
         if st.button("♻️ Reset labels/legends"):
+            st.session_state.spec_iso_sim_legend_names = {k: _default_labelify(k) for k in ic_groups.keys()}
             st.session_state.spec_iso_legends = {
                 "IC": "IC(k) (time-avg)",
                 "IC_snap": "IC(k) snapshots",
@@ -700,32 +755,27 @@ def main():
             st.toast("Reset.", icon="♻️")
             st.rerun()
 
-    # Sidebar time window
-    st.sidebar.subheader("Time Window")
-    min_len = len(ic_files)
+    # Sidebar time window (use minimum length across all groups)
+    min_len = min(len(files) for files in ic_groups.values()) if ic_groups else 1
     start_idx = st.sidebar.slider("Start file index", 1, min_len, 1)
     end_idx = st.sidebar.slider("End file index", start_idx, min_len, min_len)
-    selected_files = ic_files[start_idx-1:end_idx]
 
     st.sidebar.subheader("Options")
     show_snapshot_lines = st.sidebar.checkbox("Show per-snapshot IC(k)", value=False)
-    show_std_band = st.sidebar.checkbox("Show ±1σ band", value=True)
+    error_display = st.sidebar.radio(
+        "Error display",
+        ["Shaded band", "Error bars", "Both", "None"],
+        index=3,
+        help="Choose how to display ±1σ uncertainty"
+    )
+    show_std_band = error_display in ["Shaded band", "Both"]
+    show_error_bars = error_display in ["Error bars", "Both"]
     show_component_spectra = st.sidebar.checkbox("Show E11/E22/E33 plot", value=True)
 
     # Curves used for per-curve overrides
     curves = ["IC","IC_snap","E11","E22","E33"]
     plot_names = ["IC(k) Time-Avg", "Component Spectra"]
-    plot_style_sidebar(data_dir, curves, plot_names)
-
-    # Compute averaging
-    avg = _avg_isotropy_coeff(selected_files)
-    if avg is None:
-        st.error("No valid data in selected isotropy files.")
-        return
-
-    k = avg["k"]
-    IC_mean = avg["IC_mean"]
-    IC_std = avg["IC_std"]
+    plot_style_sidebar(data_dir, curves, plot_names, sim_groups=ic_groups)
 
     tabs = st.tabs(["IC(k) Time-Avg", "Component Spectra", "Summary"])
 
@@ -744,40 +794,83 @@ def main():
 
         # optional snapshot lines
         if show_snapshot_lines:
-            for i, f in enumerate(selected_files):
-                d = _read_isotropy_coeff_file(str(f))
-                if d.size == 0:
-                    continue
-                k0 = d[:,0]
-                if d.shape[1] >= 7:
-                    IC0 = d[:,6]
-                else:
-                    # Compute spectral isotropy ratio = E11/E22
-                    IC0 = np.divide(d[:,1], d[:,2], out=np.zeros_like(d[:,1]), where=d[:,2]!=0)
+            for sim_prefix, files in sorted(ic_groups.items()):
+                selected_files = tuple(files[start_idx-1:end_idx])
+                for i, f in enumerate(selected_files):
+                    d = _read_isotropy_coeff_file(str(f))
+                    if d.size == 0:
+                        continue
+                    k0 = d[:,0]
+                    if d.shape[1] >= 7:
+                        IC0 = d[:,6]
+                    else:
+                        # Compute spectral isotropy ratio = E11/E22
+                        IC0 = np.divide(d[:,1], d[:,2], out=np.zeros_like(d[:,1]), where=d[:,2]!=0)
 
+                    fig_ic.add_trace(go.Scatter(
+                        x=k0, y=IC0, mode="lines",
+                        name=st.session_state.spec_iso_legends["IC_snap"],
+                        line=dict(color="rgba(0,0,0,0.15)", width=1),
+                        showlegend=(sim_prefix == sorted(ic_groups.keys())[0] and i==0)
+                    ))
+
+        # Plot each simulation group as a separate curve
+        plotted_any = False
+        for idx, (sim_prefix, files) in enumerate(sorted(ic_groups.items())):
+            selected_files = tuple(files[start_idx-1:end_idx])
+            if not selected_files:
+                continue
+
+            avg = _avg_isotropy_coeff(selected_files)
+            if avg is None:
+                continue
+
+            k = avg["k"]
+            IC_mean = avg["IC_mean"]
+            IC_std = avg["IC_std"]
+
+            color, lw, dash, marker, msize, override_on = resolve_line_style(
+                sim_prefix, idx, colors_ic, ps_ic,
+                style_key="per_sim_style_ic",
+                include_marker=True,
+                default_marker="circle"
+            )
+            legend_name = st.session_state.spec_iso_sim_legend_names.get(
+                sim_prefix, _default_labelify(sim_prefix)
+            )
+            plotted_any = True
+
+            mode = "lines+markers" if (override_on and marker and msize > 0) else "lines"
+            trace_kwargs = dict(
+                x=k, y=IC_mean, mode=mode,
+                name=legend_name,
+                line=dict(color=color, width=lw, dash=dash),
+            )
+            if override_on and marker and msize > 0:
+                trace_kwargs["marker"] = dict(symbol=marker, size=msize)
+            if show_error_bars and IC_std is not None:
+                trace_kwargs["error_y"] = dict(
+                    type="data",
+                    array=IC_std,
+                    visible=True,
+                    thickness=1,
+                    color=color
+                )
+            fig_ic.add_trace(go.Scatter(**trace_kwargs))
+
+            if show_std_band and IC_std is not None:
+                rgb = hex_to_rgb(color)
+                fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},0.18)"
                 fig_ic.add_trace(go.Scatter(
-                    x=k0, y=IC0, mode="lines",
-                    name=st.session_state.spec_iso_legends["IC_snap"],
-                    line=dict(color="rgba(0,0,0,0.15)", width=1),
-                    showlegend=(i==0)
+                    x=np.concatenate([k, k[::-1]]),
+                    y=np.concatenate([IC_mean-IC_std, (IC_mean+IC_std)[::-1]]),
+                    fill="toself", fillcolor=fill_rgba,
+                    line=dict(width=0), showlegend=False, hoverinfo="skip"
                 ))
 
-        c, lw, dash, mk, ms = _resolve_curve_style("IC", 0, colors_ic, ps_ic, plot_name_ic)
-        fig_ic.add_trace(go.Scatter(
-            x=k, y=IC_mean, mode="lines",
-            name=st.session_state.spec_iso_legends["IC"],
-            line=dict(color=c, width=lw, dash=dash),
-        ))
-
-        if show_std_band:
-            rgb = hex_to_rgb(c)
-            fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},0.18)"
-            fig_ic.add_trace(go.Scatter(
-                x=np.concatenate([k, k[::-1]]),
-                y=np.concatenate([IC_mean-IC_std, (IC_mean+IC_std)[::-1]]),
-                fill="toself", fillcolor=fill_rgba,
-                line=dict(width=0), showlegend=False, hoverinfo="skip"
-            ))
+        if not plotted_any:
+            st.error("No valid data in selected isotropy files.")
+            return
 
         fig_ic.add_hline(y=1.0, line_dash="dash", line_color="red", line_width=1.2)
 
@@ -800,8 +893,8 @@ def main():
     with tabs[1]:
         st.subheader("Component Spectra (time-avg)")
 
-        if not show_component_spectra or avg["E11_mean"] is None:
-            st.info("Component spectra not available (missing columns or disabled).")
+        if not show_component_spectra:
+            st.info("Component spectra not available (disabled).")
         else:
             # Get plot-specific style
             plot_name_eii = "Component Spectra"
@@ -809,14 +902,53 @@ def main():
             colors_eii = _get_palette(ps_eii)
             
             fig_eii = go.Figure()
-            for i, curve in enumerate(["E11","E22","E33"]):
-                arr = avg[f"{curve}_mean"]
-                c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_eii, ps_eii, plot_name_eii)
-                fig_eii.add_trace(go.Scatter(
-                    x=k, y=arr, mode="lines",
-                    name=st.session_state.spec_iso_legends[curve],
-                    line=dict(color=c, width=lw, dash=dash),
-                ))
+            plotted_any_eii = False
+            
+            # Plot each simulation group
+            for idx, (sim_prefix, files) in enumerate(sorted(ic_groups.items())):
+                selected_files = tuple(files[start_idx-1:end_idx])
+                if not selected_files:
+                    continue
+
+                avg = _avg_isotropy_coeff(selected_files)
+                if avg is None or avg["E11_mean"] is None:
+                    continue
+
+                k = avg["k"]
+                legend_name = st.session_state.spec_iso_sim_legend_names.get(
+                    sim_prefix, _default_labelify(sim_prefix)
+                )
+                
+                # Get base color for this simulation
+                color_base, lw_base, dash_base, marker_base, msize_base, override_on_base = resolve_line_style(
+                    sim_prefix, idx, colors_eii, ps_eii,
+                    style_key="per_sim_style_eii",
+                    include_marker=True,
+                    default_marker="circle"
+                )
+                
+                # Plot E11, E22, E33 for this simulation
+                for i, curve in enumerate(["E11","E22","E33"]):
+                    arr = avg[f"{curve}_mean"]
+                    # Use same base color for all components of same simulation, with slight variation
+                    # or use per-curve style if available
+                    c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_eii, ps_eii, plot_name_eii)
+                    # Override with simulation color if per-sim style is enabled
+                    if override_on_base:
+                        c = color_base
+                        lw = lw_base
+                        dash = dash_base
+                    
+                    fig_eii.add_trace(go.Scatter(
+                        x=k, y=arr, mode="lines",
+                        name=f"{legend_name} - {st.session_state.spec_iso_legends[curve]}",
+                        line=dict(color=c, width=lw, dash=dash),
+                    ))
+                    plotted_any_eii = True
+            
+            if not plotted_any_eii:
+                st.info("Component spectra not available (missing columns in data).")
+                return
 
             layout_kwargs_eii = dict(
                 xaxis_title=st.session_state.axis_labels_spec_iso["k"],
@@ -837,33 +969,63 @@ def main():
     # ======================================================
     with tabs[2]:
         st.subheader("Summary")
-        df = pd.DataFrame([{
-            "Snapshots used": len(selected_files),
-            "Mean IC": float(np.nanmean(IC_mean)),
-            "Std(IC)": float(np.nanmean(IC_std)),
-            "Min IC": float(np.nanmin(IC_mean)),
-            "Max IC": float(np.nanmax(IC_mean)),
-        }])
-        st.dataframe(df, width='stretch')
-        st.download_button(
-            "Download summary CSV",
-            df.to_csv(index=False).encode("utf-8"),
-            file_name="spectral_isotropy_summary.csv",
-            mime="text/csv"
-        )
+        summary_rows = []
+        for sim_prefix, files in sorted(ic_groups.items()):
+            selected_files = tuple(files[start_idx-1:end_idx])
+            if not selected_files:
+                continue
+            
+            avg = _avg_isotropy_coeff(selected_files)
+            if avg is None:
+                continue
+            
+            IC_mean = avg["IC_mean"]
+            IC_std = avg["IC_std"]
+            legend_name = st.session_state.spec_iso_sim_legend_names.get(
+                sim_prefix, _default_labelify(sim_prefix)
+            )
+            
+            summary_rows.append({
+                "Simulation": legend_name,
+                "Snapshots used": len(selected_files),
+                "Mean IC": float(np.nanmean(IC_mean)),
+                "Std(IC)": float(np.nanmean(IC_std)),
+                "Min IC": float(np.nanmin(IC_mean)),
+                "Max IC": float(np.nanmax(IC_mean)),
+            })
+        
+        if summary_rows:
+            df = pd.DataFrame(summary_rows)
+            st.dataframe(df, width='stretch')
+            st.download_button(
+                "Download summary CSV",
+                df.to_csv(index=False).encode("utf-8"),
+                file_name="spectral_isotropy_summary.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("No data available for summary.")
 
     with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown("**Spectral Isotropy Ratio:**")
-        st.latex(r"IC(k) = \frac{E_{11}(k)}{E_{22}(k)}")
+        st.markdown("**One-dimensional energy spectra:**")
+        st.latex(r"""
+        E_{11}(k) = |\hat{u}(k)|^2, \quad E_{22}(k) = |\hat{v}(k)|^2, \quad E_{33}(k) = |\hat{w}(k)|^2
+        """)
+        st.markdown(r"""
+        where $\hat{u}(k)$, $\hat{v}(k)$, and $\hat{w}(k)$ are the Fourier transforms of velocity components $u$, $v$, and $w$ in the $x$, $y$, and $z$ directions, respectively. These are plotted in the **Component Spectra** tab.
+        """)
         
-        st.markdown("**Derivative-based Spectral Isotropy Ratio (more robust):**")
-        st.latex(r"IC_{deriv}(k) = \frac{2E_{11}(k)}{2E_{22}(k) - k \frac{dE_{11}}{dk}}")
-        st.markdown("The derivative-based formula includes the spectral derivative term, making it less sensitive to numerical noise when $E_{22}(k)$ is small.")
+        st.markdown("**Derivative-based Spectral Isotropy Ratio:**")
+        st.latex(r"\text{IC}_{\text{deriv}}(k) = \frac{2E_{11}(k)}{2E_{22}(k) - k \frac{dE_{11}}{dk}}")
+        st.markdown(r"""
+        The derivative-based formula includes the spectral derivative term, making it less sensitive to numerical noise when $E_{22}(k)$ is small. The ratio $\text{IC}_{\text{deriv}}(k)$ is plotted as a function of wavenumber $k$ in the **IC(k) Time-Avg** tab, and summary statistics (mean, std, min, max) are shown in the **Summary** tab.
+        """)
         
         st.markdown("**For isotropic turbulence:**")
-        st.latex(r"E_{11}(k) = E_{22}(k) = E_{33}(k) \quad \Rightarrow \quad IC(k) \approx 1")
+        st.latex(r"E_{11}(k) = E_{22}(k) = E_{33}(k) \quad \Rightarrow \quad \text{IC}_{\text{deriv}}(k) \approx 1")
         
-        st.markdown("**Note:** The code automatically uses the derivative-based ratio from Fortran (column 7) when available, otherwise falls back to spectral isotropy ratio.")
+        st.divider()
+        st.markdown("**References:** [Batchelor (1953)](/Citation#batchelor1953) — The theory of homogeneous turbulence; [Singh & Komrakova (2024)](/Citation#singh2024) — Comparison of forcing schemes to sustain homogeneous isotropic turbulence")
 
 
 if __name__ == "__main__":

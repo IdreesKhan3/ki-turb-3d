@@ -586,7 +586,7 @@ def main():
             st.markdown(f"""
             <div style='padding: 0.5rem; border-radius: 4px; background: {card_bg}; border-left: 3px solid {accent_color}; margin-bottom: 0.4rem;'>
                 <strong style='color: {text_color}; font-size: 0.9rem; display: block; margin-bottom: 0.2rem;'>3D Visualization</strong>
-                <span style='color: {secondary_text}; font-size: 0.75rem; line-height: 1.3;'>Interactive 3D slice viewer</span>
+                <span style='color: {secondary_text}; font-size: 0.75rem; line-height: 1.3;'>Interactive 3D volume viewer</span>
             </div>
             """, unsafe_allow_html=True)
             st.markdown(f"""

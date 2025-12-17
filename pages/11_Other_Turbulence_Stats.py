@@ -199,17 +199,14 @@ def main():
                 dir_name = None
                 for data_dir_path in data_dirs:
                     data_dir_obj = Path(data_dir_path).resolve()  # Make absolute
+                    # Check if csv_path is within data_dir_obj (Python 3.8+ compatible)
                     try:
-                        if csv_path.is_relative_to(data_dir_obj):
-                            dir_name = Path(data_dir_path).name
-                            break
-                    except (ValueError, AttributeError):
-                        # Try string comparison as fallback
-                        csv_str = str(csv_path)
-                        dir_str = str(data_dir_obj)
-                        if csv_str.startswith(dir_str):
-                            dir_name = Path(data_dir_path).name
-                            break
+                        csv_path.relative_to(data_dir_obj)
+                        dir_name = Path(data_dir_path).name
+                        break
+                    except ValueError:
+                        # Path is not relative to this directory, try next
+                        continue
                 
                 if not dir_name:
                     dir_name = csv_path.parent.name
@@ -248,17 +245,14 @@ def main():
                 dir_name = None
                 for data_dir_path in data_dirs:
                     data_dir_obj = Path(data_dir_path).resolve()  # Make absolute
+                    # Check if eps_path is within data_dir_obj (Python 3.8+ compatible)
                     try:
-                        if eps_path.is_relative_to(data_dir_obj):
-                            dir_name = Path(data_dir_path).name
-                            break
-                    except (ValueError, AttributeError):
-                        # Try string comparison as fallback
-                        eps_str = str(eps_path)
-                        dir_str = str(data_dir_obj)
-                        if eps_str.startswith(dir_str):
-                            dir_name = Path(data_dir_path).name
-                            break
+                        eps_path.relative_to(data_dir_obj)
+                        dir_name = Path(data_dir_path).name
+                        break
+                    except ValueError:
+                        # Path is not relative to this directory, try next
+                        continue
                 
                 if not dir_name:
                     dir_name = eps_path.parent.name
@@ -512,7 +506,7 @@ def main():
             # Get per-simulation style (color, width, dash, marker, marker_size)
             color, width, dash, marker, marker_size, override_on = resolve_line_style(
                 sim_prefix, idx, colors, ps, 
-                style_key="per_sim_style_energy", 
+                style_key="per_sim_style_turb_stats", 
                 include_marker=True
             )
             

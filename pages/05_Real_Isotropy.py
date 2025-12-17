@@ -169,9 +169,46 @@ def get_plot_style(plot_name: str):
         else:
             merged[key] = value
     
+    # Store user-set values before theme application (to preserve them)
+    user_font_family = merged.get("font_family")
+    user_font_size = merged.get("font_size")
+    user_title_size = merged.get("title_size")
+    user_legend_size = merged.get("legend_size")
+    user_tick_font_size = merged.get("tick_font_size")
+    user_axis_title_size = merged.get("axis_title_size")
+    user_plot_bgcolor = merged.get("plot_bgcolor")
+    user_paper_bgcolor = merged.get("paper_bgcolor")
+    user_axis_line_color = merged.get("axis_line_color")
+    user_palette = merged.get("palette")
+    user_custom_colors = merged.get("custom_colors")
+    
     # Apply theme to ensure font_color is set correctly
     current_theme = st.session_state.get("theme", "Light Scientific")
     merged = apply_theme_to_plot_style(merged, current_theme)
+    
+    # Restore user-set values (preserve user customizations)
+    if user_font_family is not None:
+        merged["font_family"] = user_font_family
+    if user_font_size is not None:
+        merged["font_size"] = user_font_size
+    if user_title_size is not None:
+        merged["title_size"] = user_title_size
+    if user_legend_size is not None:
+        merged["legend_size"] = user_legend_size
+    if user_tick_font_size is not None:
+        merged["tick_font_size"] = user_tick_font_size
+    if user_axis_title_size is not None:
+        merged["axis_title_size"] = user_axis_title_size
+    if user_plot_bgcolor is not None:
+        merged["plot_bgcolor"] = user_plot_bgcolor
+    if user_paper_bgcolor is not None:
+        merged["paper_bgcolor"] = user_paper_bgcolor
+    if user_axis_line_color is not None:
+        merged["axis_line_color"] = user_axis_line_color
+    if user_palette is not None:
+        merged["palette"] = user_palette
+    if user_custom_colors is not None:
+        merged["custom_colors"] = user_custom_colors
     
     # Update reference line colors for dark theme if they're still at light theme defaults
     if "Dark" in current_theme:
@@ -1451,21 +1488,42 @@ def main():
     )
 
     with st.expander("📚 Theory & Equations", expanded=False):
+        st.markdown("**Reynolds stress tensor:**")
+        st.latex(r"R_{ij} = \langle u'_i u'_j \rangle")
+        st.markdown(r"""
+        where $u'_i = u_i - \langle u_i \rangle$ are velocity fluctuations and $\langle \cdot \rangle$ denotes ensemble or spatial average.
+        """)
+        
+        st.markdown("**Turbulent kinetic energy:**")
+        st.latex(r"k = \frac{1}{2}\langle u'_i u'_i \rangle = \frac{1}{2}(R_{11} + R_{22} + R_{33})")
+        
         st.markdown("**Energy fractions:**")
-        st.latex(r"E_x/E_{tot}, \quad E_y/E_{tot}, \quad E_z/E_{tot}")
+        st.latex(r"\frac{E_x}{E_{\text{tot}}} = \frac{R_{11}}{2k}, \quad \frac{E_y}{E_{\text{tot}}} = \frac{R_{22}}{2k}, \quad \frac{E_z}{E_{\text{tot}}} = \frac{R_{33}}{2k}")
         st.markdown("Isotropy implies each approaches $1/3$.")
         
         st.markdown("**Reynolds stress anisotropy tensor:**")
         st.latex(r"b_{ij} = \frac{R_{ij}}{2k} - \frac{1}{3}\delta_{ij}")
+        st.markdown("**Component form:**")
+        st.latex(r"""
+        \begin{aligned}
+        b_{ii} &= \frac{R_{ii}}{2k} - \frac{1}{3}, \quad i = 1,2,3 \\
+        b_{ij} &= \frac{R_{ij}}{2k}, \quad i \neq j
+        \end{aligned}
+        """)
         
-        st.markdown("**Invariants (Pope 2000):**")
-        st.latex(r"II_b = -\frac{1}{2}\mathrm{tr}(b^2), \qquad III_b = \frac{1}{3}\mathrm{tr}(b^3)")
+        st.markdown("**Invariants:**")
+        st.latex(r"""
+        \text{II}_b = -\frac{1}{2}\mathrm{tr}(b^2), \qquad \text{III}_b = \frac{1}{3}\mathrm{tr}(b^3)
+        """)
         
         st.markdown("**Lumley coordinates:**")
-        st.latex(r"\eta = \left(-\frac{II_b}{3}\right)^{1/2}, \quad \xi = \left(\frac{III_b}{2}\right)^{1/3}")
+        st.latex(r"\eta = \left(-\frac{\text{II}_b}{3}\right)^{1/2}, \quad \xi = \left(\frac{\text{III}_b}{2}\right)^{1/3}")
         
         st.markdown("**Anisotropy index:**")
-        st.latex(r"A = \sqrt{-2 II_b}")
+        st.latex(r"A = \sqrt{-2 \text{II}_b}")
+        
+        st.divider()
+        st.markdown("**Reference:** [Pope (2001)](/Citation#pope2001) — Turbulent flows")
 
 
 if __name__ == "__main__":

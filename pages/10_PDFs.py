@@ -12,12 +12,12 @@ sys.path.insert(0, str(project_root))
 from utils.theme_config import inject_theme_css
 from data_readers.vti_reader import read_vti_file
 from data_readers.hdf5_reader import read_hdf5_file
-from utils.vorticity_stats import render_vorticity_stats_tab
-from utils.velocity_magnitude_stats import render_velocity_magnitude_tab
-from utils.dissipation_stats import render_dissipation_tab
-from utils.joint_pdf_stats import render_joint_pdf_tab
+from pages.PDFs.vorticity_stats import render_vorticity_stats_tab
+from pages.PDFs.velocity_magnitude_stats import render_velocity_magnitude_tab
+from pages.PDFs.dissipation_stats import render_dissipation_tab
+from pages.PDFs.joint_pdf_stats import render_joint_pdf_tab
 from utils.plot_style import resolve_line_style, apply_axis_limits, apply_figure_size
-from utils.pdfs_plot_style import (
+from pages.PDFs.pdfs_plot_style import (
     get_plot_style, apply_plot_style,
     _get_palette, plot_style_sidebar, export_panel
 )

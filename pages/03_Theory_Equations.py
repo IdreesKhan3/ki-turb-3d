@@ -4,12 +4,7 @@ D3Q19 lattice visualization, MRT matrix generator, all mathematical equations
 """
 
 import streamlit as st
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import sys
-import json
 from pathlib import Path
 
 project_root = Path(__file__).parent.parent
@@ -20,7 +15,7 @@ from utils.export_figs import export_panel
 from utils.report_builder import capture_button
 from utils.mrt_matrix import render_mrt_matrix_generator
 from visualizations.d3q19_lattice import plot_d3q19_lattice, DEFAULT_LATTICE_COLORS
-st.set_page_config(page_icon="⚫")
+st.set_page_config(page_icon="⚫", layout="wide")
 
 def main():
     # Apply theme CSS (persists across pages)
@@ -28,7 +23,7 @@ def main():
     st.title("📚 Theory & Equations")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📐 NS-Equations", "🔬 LBM Formulation", "📊 Analysis Equations", "⚛️ D3Q19 Lattice Visualization", "🔧 MRT Matrix Generator"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📐 NS-Equations", "🔬 LBM Formulation", "⚛️ D3Q19 Lattice Visualization", "🔧 MRT Matrix Generator"])
     
     with tab1:
         st.header("From Navier-Stokes to LBM")
@@ -154,6 +149,18 @@ def main():
             \Phi_\alpha = w_\alpha \left[ \frac{\mathbf{c}_\alpha - \mathbf{u}}{c_s^2} + \frac{(\mathbf{c}_\alpha \cdot \mathbf{u})\mathbf{c}_\alpha}{c_s^4} \right] \cdot \mathbf{F}^{\text{ext}}
             """)
             
+            st.markdown(r"**External forcing components** $\mathbf{F}^{\mathrm{ext}}$:")
+            st.latex(r"""
+            \begin{aligned}
+            F_x &= \rho \left[ A \sin(\kappa z) + C \cos(\kappa y) \right] \\
+            F_y &= \rho \left[ B \sin(\kappa x) + A \cos(\kappa z) \right] \\
+            F_z &= \rho \left[ C \sin(\kappa y) + B \cos(\kappa x) \right]
+            \end{aligned}
+            """)
+            st.markdown(r"""
+            where $A$, $B$, and $C$ are forcing amplitudes and $\kappa$ is the wavenumber.
+            """)
+            
             st.markdown("**Macroscopic quantities:**")
             st.latex(r"""
             \rho = \sum_\alpha f_\alpha, \quad \rho \mathbf{u} = \sum_\alpha f_\alpha \mathbf{c}_\alpha
@@ -234,127 +241,23 @@ def main():
             st.caption("Foundation: continuous kinetic equation")
         
         st.divider()
-        st.markdown("**References:**")
-        st.markdown("""
-        - **MRT formulation:** [d'Humières (2002)](/Citation#dhumieres2002) — Multiple-relaxation-time lattice Boltzmann models
-        - **LES with MRT:** [Yu et al. (2006)](/Citation#yu2006) — LES of turbulent flows using MRT-LBM
-        - **General LBM method:** [Krüger et al. (2017)](/Citation#kruger2017) — The lattice Boltzmann method
-        """)
-    
-    with tab3:
-        st.header("Turbulence Analysis Equations")
+        st.markdown("### Validation and Flow Characterization")
         
-        # Energy Spectrum
-        with st.expander("**Energy Spectrum**", expanded=True):
-            st.markdown("**3D kinetic energy spectrum (Fourier space):**")
+        # Compressibility and Divergence
+        with st.expander("**Compressibility and Incompressibility**", expanded=False):
+            st.markdown("**Velocity divergence (incompressibility condition):**")
             st.latex(r"""
-            E(k) = \sum_{k \le |\mathbf{k}| < k + \Delta k} \frac{1}{2} \left( |\hat{u}(\mathbf{k})|^2 + |\hat{v}(\mathbf{k})|^2 + |\hat{w}(\mathbf{k})|^2 \right)
+            \nabla \cdot \mathbf{u} = \frac{\partial u_x}{\partial x} + \frac{\partial u_y}{\partial y} + \frac{\partial u_z}{\partial z} = 0
             """)
-            st.markdown("**Total kinetic energy and RMS velocity:**")
+            st.markdown("**Compressibility metrics:**")
             st.latex(r"""
-            \mathrm{TKE} = \sum_k E(k), \qquad u_{\mathrm{rms}} = \sqrt{\frac{2}{3} \mathrm{TKE}}
-            """)
-            st.markdown("**Kolmogorov inertial-range scaling:**")
-            st.latex(r"""
-            E(k) \propto k^{-5/3}
-            """)
-            st.markdown("**Pope model spectrum (HIT validation):**")
-            st.latex(r"""
-            E_{\text{pope}}(k) = C \varepsilon^{2/3} k^{-5/3} f_L(kL) f_\eta(k\eta)
+            |\nabla \cdot \mathbf{u}|_{\max} = \max_{x,y,z} |\nabla \cdot \mathbf{u}|, \quad 
+            \text{RMS}(\nabla \cdot \mathbf{u}) = \sqrt{\frac{1}{V} \int_V (\nabla \cdot \mathbf{u})^2 \, dV}
             """)
             st.markdown(r"""
-            with $C=1.5$, $c_L=6.78$, $c_\eta=0.40$, $\beta=5.2$. Here $f_L$ and $f_\eta$ are large-scale and dissipation-range corrections.
-            """)
-            st.markdown("**Spectral dissipation:**")
-            st.latex(r"""
-            \varepsilon = 2\nu \sum_k k^2 E(k)
-            """)
-            st.markdown("**Energy balance equation:**")
-            st.latex(r"""
-            \frac{d\mathrm{TKE}}{dt} = \langle \mathbf{f} \cdot \mathbf{u} \rangle - \varepsilon
-            """)
-            st.markdown(r"""
-            where $\mathbf{f}$ is the forcing term and $\varepsilon$ is the dissipation rate.
-            """)
-        
-        # Structure Functions
-        with st.expander("**Structure Functions**", expanded=False):
-            st.markdown("**Structure functions:**")
-            st.latex(r"""
-            S_p(r) = \langle |\delta u_L(r)|^p \rangle
-            """)
-            st.markdown(r"""
-            where $\delta u_L(r) = u_L(\mathbf{x} + r\mathbf{e}_L) - u_L(\mathbf{x})$ is the longitudinal velocity increment.
-            """)
-            st.markdown("**Extended Self-Similarity (ESS):** ([Benzi et al., 1993](/Citation#benzi1993))")
-            st.latex(r"""
-            S_p(r) \propto S_3(r)^{\xi_p}
-            """)
-            st.markdown(r"""
-            The scaling exponent $\xi_p$ is obtained from the slope of $\log S_p$ vs $\log S_3$.
-            """)
-            st.markdown("**She–Leveque 1994 scaling (theoretical):** ([She & Leveque, 1994](/Citation#she1994))")
-            st.latex(r"""
-            \zeta_p = \frac{p}{9} + 2\left(1 - \left(\frac{2}{3}\right)^{p/3}\right)
-            """)
-            st.markdown(r"""
-            Anomalies are plotted as $\xi_p - p/3$ to compare with theoretical predictions.
-            """)
-        
-        # Flatness
-        with st.expander("**Flatness Factor**", expanded=False):
-            st.markdown("**Longitudinal flatness factor:**")
-            st.latex(r"""
-            F_L(r) = \frac{\langle [\delta u_L(r)]^4 \rangle}{\langle [\delta u_L(r)]^2 \rangle^2}
-            """)
-            st.markdown(r"""
-            where $\delta u_L(r) = u_L(\mathbf{x} + r\mathbf{e}_L) - u_L(\mathbf{x})$ is the longitudinal velocity increment.
-            """)
-            st.markdown("**Interpretation:**")
-            st.markdown(r"""
-            - $F_L(r) = 3$: Gaussian increments (no intermittency)
-            - $F_L(r) > 3$: Intermittent, fat-tailed PDFs
-            - $F_L(r) < 3$: Sub-Gaussian
-            """)
-        
-        # Isotropy
-        with st.expander("**Isotropy Analysis**", expanded=False):
-            st.markdown("**Spectral Isotropy Ratio:**")
-            st.latex(r"""
-            \text{IC}(k) = \frac{E_{22}(k)}{E_{11}(k)} = \frac{|\hat{v}(k)|^2}{|\hat{u}(k)|^2}
-            """)
-            st.markdown("**Derivative-based Spectral Isotropy Ratio (more robust):**")
-            st.latex(r"""
-            \text{IC}_{\text{deriv}}(k) = \frac{2E_{11}(k)}{2E_{22}(k) - k \frac{dE_{11}}{dk}}
-            """)
-            st.markdown(r"""
-            The derivative-based formula includes the spectral derivative term, making it less sensitive to numerical noise when $E_{22}(k)$ is small.
-            """)
-            st.markdown("**For isotropic turbulence:**")
-            st.latex(r"""
-            E_{11}(k) = E_{22}(k) = E_{33}(k) \quad \Rightarrow \quad \text{IC}(k) \approx 1
-            """)
-            st.markdown("---")
-            st.markdown("**Real-Space Isotropy - Energy Fractions:**")
-            st.latex(r"""
-            \frac{E_x}{E_{\text{tot}}}, \quad \frac{E_y}{E_{\text{tot}}}, \quad \frac{E_z}{E_{\text{tot}}}
-            """)
-            st.markdown("Isotropy implies each approaches $1/3$.")
-            st.markdown("**Reynolds stress anisotropy tensor:**")
-            st.latex(r"""
-            b_{ij} = \frac{R_{ij}}{2k} - \frac{1}{3}\delta_{ij}
-            """)
-            st.markdown("**Invariants (Pope 2000):**")
-            st.latex(r"""
-            \text{II}_b = -\frac{1}{2}\mathrm{tr}(b^2), \qquad \text{III}_b = \frac{1}{3}\mathrm{tr}(b^3)
-            """)
-            st.markdown("**Lumley coordinates:**")
-            st.latex(r"""
-            \eta = \left(-\frac{\text{II}_b}{3}\right)^{1/2}, \quad \xi = \left(\frac{\text{III}_b}{2}\right)^{1/3}
-            """)
-            st.markdown("**Anisotropy index:**")
-            st.latex(r"""
-            A = \sqrt{-2 \text{II}_b}
+            For incompressible flow: $|\nabla \cdot \mathbf{u}|_{\max} < 10^{-5}$ (valid), 
+            $10^{-5} < |\nabla \cdot \mathbf{u}|_{\max} < 10^{-3}$ (warning), 
+            $|\nabla \cdot \mathbf{u}|_{\max} > 10^{-3}$ (invalid).
             """)
         
         # Physics Validation
@@ -383,39 +286,6 @@ def main():
             where $\tau_e = 3(\nu_0 + \nu_t) + 1/2$ is the effective relaxation time. Continuum regime: $\text{Kn}_t < 0.01$
             """)
         
-        # 3D Visualization
-        with st.expander("**3D Visualization Quantities**", expanded=False):
-            st.markdown("**Velocity magnitude:**")
-            st.latex(r"""
-            |\mathbf{u}| = \sqrt{u_x^2 + u_y^2 + u_z^2}
-            """)
-            st.markdown("**Vorticity:**")
-            st.latex(r"""
-            \boldsymbol{\omega} = \nabla \times \mathbf{u}
-            """)
-            st.markdown("**Vorticity components:**")
-            st.latex(r"""
-            \omega_x = \frac{\partial u_z}{\partial y} - \frac{\partial u_y}{\partial z}, \quad 
-            \omega_y = \frac{\partial u_x}{\partial z} - \frac{\partial u_z}{\partial x}, \quad 
-            \omega_z = \frac{\partial u_y}{\partial x} - \frac{\partial u_x}{\partial y}
-            """)
-            st.markdown("**Vorticity magnitude:**")
-            st.latex(r"""
-            |\boldsymbol{\omega}| = \sqrt{\omega_x^2 + \omega_y^2 + \omega_z^2}
-            """)
-            st.markdown("**Q-criterion (vortex identification):** ([Kareem & Asker, 2022](/Citation#kareem2022))")
-            st.latex(r"""
-            Q = -\frac{1}{2}A_{ij}A_{ij} = \frac{1}{4}(\omega_i\omega_i - 2S_{ij}S_{ij})
-            """)
-            st.markdown("**R-criterion:** ([Kareem & Asker, 2022](/Citation#kareem2022))")
-            st.latex(r"""
-            R = -\frac{1}{3}A_{ij}A_{jk}A_{ki} = -\frac{1}{3}\left(S_{ij}S_{jk}S_{ki} + \frac{3}{4}\omega_i\omega_j S_{ij}\right)
-            """)
-            st.markdown(r"""
-            where $A_{ij} = \frac{1}{2}(\partial_i u_j + \partial_j u_i)$ is the velocity gradient tensor, 
-            $S_{ij}$ is the strain rate tensor, and $\omega_i$ are vorticity components.
-            """)
-        
         # Reynolds Numbers
         with st.expander("**Reynolds Numbers**", expanded=False):
             st.markdown("**Bulk Reynolds number:**")
@@ -437,125 +307,16 @@ def main():
             where $L_I$ is the integral length scale.
             """)
         
-        # Probability Density Functions
-        with st.expander("**Probability Density Functions (PDFs)**", expanded=False):
-            st.markdown("**General PDF definition:**")
-            st.latex(r"""
-            P(X) = \frac{1}{N \Delta X} \sum_{i=1}^{N} \delta(X - X_i)
-            """)
-            st.markdown(r"""
-            where $N$ is the total number of grid points and $\Delta X$ is the bin width.
-            """)
-            st.markdown("**Velocity component PDF:**")
-            st.latex(r"""
-            P(u) = \frac{1}{N \Delta u} \sum_{i=1}^{N} \delta(u - u_i)
-            """)
-            st.markdown("**Velocity magnitude PDF:**")
-            st.latex(r"""
-            P(|\mathbf{u}|) = \frac{1}{N \Delta |\mathbf{u}|} \sum_{i=1}^{N} \delta(|\mathbf{u}| - |\mathbf{u}_i|)
-            """)
-            st.markdown(r"""
-            where $|\mathbf{u}| = \sqrt{u_x^2 + u_y^2 + u_z^2}$ is the velocity magnitude.
-            """)
-            st.markdown("**Vorticity magnitude PDF:**")
-            st.latex(r"""
-            P(|\boldsymbol{\omega}|) = \frac{1}{N \Delta |\boldsymbol{\omega}|} \sum_{i=1}^{N} \delta(|\boldsymbol{\omega}| - |\boldsymbol{\omega}_i|)
-            """)
-            st.markdown("**Enstrophy PDF:**")
-            st.latex(r"""
-            P(\Omega) = \frac{1}{N \Delta \Omega} \sum_{i=1}^{N} \delta(\Omega - \Omega_i)
-            """)
-            st.markdown(r"""
-            where $\Omega = |\boldsymbol{\omega}|^2 = \omega_x^2 + \omega_y^2 + \omega_z^2$ is the enstrophy.
-            """)
-            st.markdown("**Dissipation rate PDF:**")
-            st.latex(r"""
-            P(\varepsilon) = \frac{1}{N \Delta \varepsilon} \sum_{i=1}^{N} \delta(\varepsilon - \varepsilon_i)
-            """)
-            st.markdown("**Joint PDF of two quantities:**")
-            st.latex(r"""
-            P(X, Y) = \frac{1}{N \Delta X \Delta Y} \sum_{i=1}^{N} \delta(X - X_i) \delta(Y - Y_i)
-            """)
-            st.markdown("**R-Q Topological Space:** ([Kareem & Asker, 2022](/Citation#kareem2022))")
-            st.latex(r"""
-            Q = \frac{1}{4}(\omega_i\omega_i - 2S_{ij}S_{ij}), \quad 
-            R = -\frac{1}{3}\left(S_{ij}S_{jk}S_{ki} + \frac{3}{4}\omega_i\omega_j S_{ij}\right)
-            """)
-            st.markdown("**Zero discriminant line:**")
-            st.latex(r"""
-            D = \left(\frac{Q}{3}\right)^3 + \left(\frac{R}{2}\right)^2 = 0, \quad 
-            Q = -3\left(\frac{R}{2}\right)^{2/3}
-            """)
-            st.markdown(r"""
-            This line separates regions with real eigenvalues (above) from complex eigenvalues (below) of the velocity gradient tensor.
-            """)
-        
-        # Compressibility and Divergence
-        with st.expander("**Compressibility and Incompressibility**", expanded=False):
-            st.markdown("**Velocity divergence (incompressibility condition):**")
-            st.latex(r"""
-            \nabla \cdot \mathbf{u} = \frac{\partial u_x}{\partial x} + \frac{\partial u_y}{\partial y} + \frac{\partial u_z}{\partial z} = 0
-            """)
-            st.markdown("**Compressibility metrics:**")
-            st.latex(r"""
-            |\nabla \cdot \mathbf{u}|_{\max} = \max_{x,y,z} |\nabla \cdot \mathbf{u}|, \quad 
-            \text{RMS}(\nabla \cdot \mathbf{u}) = \sqrt{\frac{1}{V} \int_V (\nabla \cdot \mathbf{u})^2 \, dV}
-            """)
-            st.markdown(r"""
-            For incompressible flow: $|\nabla \cdot \mathbf{u}|_{\max} < 10^{-5}$ (valid), 
-            $10^{-5} < |\nabla \cdot \mathbf{u}|_{\max} < 10^{-3}$ (warning), 
-            $|\nabla \cdot \mathbf{u}|_{\max} > 10^{-3}$ (invalid).
-            """)
-        
-        # Dissipation Rate (Real-Space)
-        with st.expander("**Dissipation Rate (Real-Space Definition)**", expanded=False):
-            st.markdown("**Dissipation rate from strain rate tensor:**")
-            st.latex(r"""
-            \varepsilon = 2\nu S_{ij} S_{ij}
-            """)
-            st.markdown("**Strain rate tensor:**")
-            st.latex(r"""
-            S_{ij} = \frac{1}{2}\left(\frac{\partial u_i}{\partial x_j} + \frac{\partial u_j}{\partial x_i}\right)
-            """)
-            st.markdown(r"""
-            where $\nu$ is the kinematic viscosity and $S_{ij} S_{ij}$ is the double contraction (sum over $i$ and $j$).
-            """)
-            st.markdown("**Enstrophy (rotational intensity):**")
-            st.latex(r"""
-            \Omega = |\boldsymbol{\omega}|^2 = \omega_x^2 + \omega_y^2 + \omega_z^2
-            """)
-            st.markdown(r"""
-            Enstrophy represents the local rotational intensity of the flow and is related to energy dissipation and vortex dynamics.
-            """)
-        
-        # Q_S^S Method (Additional 3D Visualization)
-        with st.expander("**Q_S^S Method for Vortex Visualization**", expanded=False):
-            st.markdown("**Main equation:** ([Kareem & Asker, 2022](/Citation#kareem2022))")
-            st.latex(r"""
-            Q_S^S = \left[(Q_W^3 + Q_S^3) + (\Sigma^2 - R_s^2)\right]^{1/3}
-            """)
-            st.markdown("**Component equations:**")
-            st.latex(r"""
-            Q_W = \frac{1}{2}\Omega_{ij}\Omega_{ij}, \quad 
-            Q_S = -\frac{1}{2}S_{ij}S_{ij}, \quad 
-            \Sigma = \omega_i S_{ij} \omega_j, \quad 
-            R_s = -\frac{1}{3}S_{ij}S_{jk}S_{ki}
-            """)
-            st.markdown(r"""
-            where $\Omega_{ij}$ is the rotation tensor (antisymmetric part), $S_{ij}$ is the deformation tensor (symmetric part), and $\omega_i$ is the vorticity vector.
-            """)
-        
         st.divider()
         st.markdown("**References:**")
         st.markdown("""
-        - **Most equations:** [Pope (2001)](/Citation#pope2001) — Turbulent flows
-        - **Extended Self-Similarity (ESS):** [Benzi et al. (1993)](/Citation#benzi1993) — Extended self-similarity in turbulent flows
-        - **She–Leveque theoretical scaling:** [She & Leveque (1994)](/Citation#she1994) — Universal scaling laws in fully developed turbulence
-        - **Q-criterion, R-criterion, R-Q topological space, Q_S^S method:** [Kareem & Asker (2022)](/Citation#kareem2022) — Simulations of isotropic turbulent flows using LBM
+        - **MRT formulation:** [d'Humières (2002)](/Citation#dhumieres2002) — Multiple-relaxation-time lattice Boltzmann models
+        - **LES with MRT:** [Yu et al. (2006)](/Citation#yu2006) — LES of turbulent flows using MRT-LBM
+        - **General LBM method:** [Krüger et al. (2017)](/Citation#kruger2017) — The lattice Boltzmann method
         """)
     
     # D3Q19 Lattice Visualization Tab
-    with tab4:
+    with tab3:
         st.header("⚛️ D3Q19 Lattice Stencil Visualization")
         st.markdown("Interactive 3D visualization of the D3Q19 lattice stencil with full customization controls.")
         
@@ -886,7 +647,7 @@ def main():
         export_panel(fig, project_root, "d3q19_lattice")
     
     # MRT Matrix Generator Tab
-    with tab5:
+    with tab4:
         render_mrt_matrix_generator()
     
 

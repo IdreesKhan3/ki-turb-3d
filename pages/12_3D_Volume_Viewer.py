@@ -1,5 +1,5 @@
 """
-3D Slice Viewer Page (Streamlit)
+3D Volume Viewer Page (Streamlit)
 Interactive 3D volume visualization with ParaView-like features
 
 Features:
@@ -37,6 +37,7 @@ from utils.file_detector import natural_sort_key
 from utils.iso_surfaces import compute_qs_s, compute_q_invariant, compute_r_invariant
 from utils.export_figs import export_panel
 from utils.plot_style import default_plot_style, render_figure_size_ui, apply_figure_size, render_plot_title_ui
+from utils.report_builder import capture_button
 st.set_page_config(page_icon="⚫")
 
 
@@ -145,7 +146,7 @@ def _create_slice_surface(x_coords, y_coords, z_coords, field_slice, vmin, vmax,
 def main():
     inject_theme_css()
     
-    st.title("🔬 3D Slice Viewer / ISO-Surfaces")
+    st.title("🔬 3D Volume Viewer")
     st.markdown("**Interactive 3D Volume Visualization with ParaView-like Controls**")
 
     # Get data directories
@@ -849,6 +850,14 @@ def main():
                 'scale': 2
             }
         })
+
+        # Capture button for report
+        capture_title = f"3D Volume Viewer - {field_type}"
+        if iteration is not None:
+            capture_title += f" (Iteration {iteration})"
+        else:
+            capture_title += f" (Time Step {file_index})"
+        capture_button(fig, title=capture_title, source_page="3D Volume Viewer")
 
         # Instructions
         with st.expander("ℹ️ Interactive Controls", expanded=False):

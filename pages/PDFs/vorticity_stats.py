@@ -88,7 +88,7 @@ def compute_vorticity_statistics(velocity, dx=1.0, dy=1.0, dz=1.0):
         mean, rms, skewness, kurtosis (floats)
     """
     from utils.iso_surfaces import compute_vorticity_vector
-    from utils.velocity_magnitude_stats import compute_skewness_kurtosis
+    from .velocity_magnitude_stats import compute_skewness_kurtosis
     
     # Compute vorticity vector
     vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
@@ -185,7 +185,7 @@ def compute_enstrophy_statistics(velocity, dx=1.0, dy=1.0, dz=1.0):
         mean, rms, skewness, kurtosis (floats)
     """
     from utils.iso_surfaces import compute_vorticity_vector
-    from utils.velocity_magnitude_stats import compute_skewness_kurtosis
+    from .velocity_magnitude_stats import compute_skewness_kurtosis
     
     # Compute vorticity vector
     vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
@@ -365,7 +365,7 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
     # Statistics Section
     # ============================================
     with st.expander("📈 Statistical Moments (Skewness & Kurtosis)", expanded=False):
-        from utils.velocity_magnitude_stats import display_statistics_table
+        from .velocity_magnitude_stats import display_statistics_table
         
         # Compute statistics from first available file
         stats_dict = {}

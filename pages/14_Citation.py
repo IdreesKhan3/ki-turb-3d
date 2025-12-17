@@ -19,7 +19,7 @@ from utils.theme_config import inject_theme_css  # noqa: E402
 
 
 # IMPORTANT: set_page_config must be called before any other Streamlit calls
-st.set_page_config(page_title="Citation & References", page_icon="⚫", layout="wide")
+st.set_page_config(page_icon="⚫", layout="wide")
 
 
 # -----------------------------
@@ -102,6 +102,23 @@ BIBTEX = dedent(
       year      = {2022},
       publisher = {World Scientific}
     }
+
+    @book{batchelor1953theory,
+      title     = {The theory of homogeneous turbulence},
+      author    = {Batchelor, George Keith},
+      year      = {1953},
+      publisher = {Cambridge university press}
+    }
+
+    @article{singh2024comparison,
+      title     = {Comparison of forcing schemes to sustain homogeneous isotropic turbulence},
+      author    = {Singh, Kamaljit and Komrakova, Alexandra},
+      journal   = {Physics of Fluids},
+      volume    = {36},
+      number    = {1},
+      year      = {2024},
+      publisher = {AIP Publishing}
+    }
     """
 ).strip()
 
@@ -173,6 +190,23 @@ REFERENCES = [
             "method with different forcing functions. International Journal of Modern Physics C, 33(11), 2250145."
         ),
     },
+    {
+        "id": "batchelor1953",
+        "key": "batchelor1953theory",
+        "short": "Batchelor (1953)",
+        "full": (
+            "Batchelor, G. K. (1953). The theory of homogeneous turbulence. Cambridge University Press."
+        ),
+    },
+    {
+        "id": "singh2024",
+        "key": "singh2024comparison",
+        "short": "Singh & Komrakova (2024)",
+        "full": (
+            "Singh, K., & Komrakova, A. (2024). Comparison of forcing schemes to sustain homogeneous isotropic "
+            "turbulence. Physics of Fluids, 36(1)."
+        ),
+    },
 ]
 
 
@@ -187,12 +221,39 @@ def main() -> None:
     st.title("Citation & References")
 
     st.subheader("How to cite this software")
+    st.markdown("If you use KI-TURB 3D in your research, please cite it using one of the formats below.")
     
+    # BibTeX format
+    st.markdown("**BibTeX format:**")
+    bibtex_citation = dedent(
+        r"""
+        @software{ki_turb_3d,
+          title = {KI-TURB 3D: Turbulence Analysis & Visualization Suite},
+          author = {Your Last Name, Your First Name},
+          year = {2025},
+          url = {https://github.com/username/repository},
+          version = {1.0.0},
+          doi = {10.5281/zenodo.XXXXXXX},
+          license = {MIT}
+        }
+        """
+    ).strip()
+    st.code(bibtex_citation, language="bibtex")
+    
+    # APA format
+    st.markdown("**APA format:**")
+    apa_citation = "Your Last Name, Y. F. (2025). KI-TURB 3D: Turbulence Analysis & Visualization Suite (Version 1.0.0) [Computer software]. https://github.com/username/repository"
+    st.code(apa_citation, language="text")
+    
+    st.info("**Note:** Replace the placeholder information (author name, repository URL, DOI) with your actual details. The DOI will be available after publication through Zenodo or the journal.")
+    
+    # CITATION.cff file
+    st.markdown("**CITATION.cff file (Citation File Format):**")
     citation_cff_path = project_root / "CITATION.cff"
     if citation_cff_path.exists():
         with open(citation_cff_path, "r", encoding="utf-8") as f:
             citation_cff_content = f.read()
-        st.caption("GitHub and many archives recognize CITATION.cff for software citation.")
+
         st.code(citation_cff_content, language="yaml")
         st.download_button(
             label="Download CITATION.cff",

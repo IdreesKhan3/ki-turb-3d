@@ -95,7 +95,7 @@ def compute_dissipation_statistics(velocity, nu=1.0, dx=1.0, dy=1.0, dz=1.0):
         mean, rms, skewness, kurtosis (floats)
     """
     from utils.iso_surfaces import compute_rotation_deformation_tensors
-    from utils.velocity_magnitude_stats import compute_skewness_kurtosis
+    from .velocity_magnitude_stats import compute_skewness_kurtosis
     
     # Compute strain rate tensor S_ij
     _, S = compute_rotation_deformation_tensors(velocity, dx, dy, dz)
@@ -299,7 +299,7 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
     # Statistics Section
     # ============================================
     with st.expander("📈 Statistical Moments (Skewness & Kurtosis)", expanded=False):
-        from utils.velocity_magnitude_stats import display_statistics_table
+        from .velocity_magnitude_stats import display_statistics_table
         
         # Compute statistics from first available file
         stats_dict = {}

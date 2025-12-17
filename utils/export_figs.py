@@ -13,11 +13,20 @@ _EXPORT_FORMATS = {
     "PNG (raster)": "png",
     "PDF (vector)": "pdf",
     "SVG (vector)": "svg",
-    "EPS (vector)": "eps",
     "JPG/JPEG (raster)": "jpg",
     "WEBP (raster)": "webp",
-    "TIFF (raster)": "tiff",
     "HTML (interactive)": "html",
+}
+
+# MIME type mapping for download buttons
+_MIME_TYPES = {
+    "png": "image/png",
+    "pdf": "application/pdf",
+    "svg": "image/svg+xml",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "webp": "image/webp",
+    "html": "text/html",
 }
 
 
@@ -79,9 +88,36 @@ def export_panel(fig: Figure, out_dir: Path, base_name: str):
             
             if errors:
                 st.error(
-                    "Some exports failed. Ensure kaleido is installed:\n"
-                    "pip install -U kaleido\n\n"
+                    "Some exports failed:\n\n"
                     + "\n".join([f"- {n}: {msg}" for n, msg in errors])
+                    + "\n\nEnsure kaleido is installed: pip install -U kaleido"
                 )
             else:
                 st.success("All selected exports saved to dataset folder.")
+        
+        # Download buttons for each exported file
+        if fmts:
+            existing_files = []
+            for f_label in fmts:
+                ext = _EXPORT_FORMATS[f_label]
+                file_path = out_dir / f"{base_name}.{ext}"
+                if file_path.exists():
+                    existing_files.append((ext, file_path))
+            
+            if existing_files:
+                st.markdown("**Download exported files:**")
+                cols = st.columns(min(len(existing_files), 4))
+                for idx, (ext, file_path) in enumerate(existing_files):
+                    with cols[idx % len(cols)]:
+                        try:
+                            mime_type = _MIME_TYPES.get(ext, "application/octet-stream")
+                            st.download_button(
+                                "Download",
+                                data=file_path.read_bytes(),
+                                file_name=f"{base_name}.{ext}",
+                                mime=mime_type,
+                                key=f"{base_name}_download_{ext}_{idx}"
+                            )
+                            st.caption(f".{ext}")
+                        except Exception as e:
+                            st.warning(f"Could not read {ext} file: {e}")
