@@ -160,55 +160,19 @@ def get_plot_style(plot_name: str):
     
     plot_styles = st.session_state.get("plot_styles", {})
     plot_style = plot_styles.get(plot_name, {})
-    # Deep merge: start with defaults, then update with plot-specific overrides
+    
+    # Apply theme first to get theme defaults
+    current_theme = st.session_state.get("theme", "Light Scientific")
     merged = default.copy()
+    merged = apply_theme_to_plot_style(merged, current_theme)
+    
+    # Then apply user overrides (from plot_style) - this ensures user settings override theme
     for key, value in plot_style.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
             merged[key] = merged[key].copy()
             merged[key].update(value)
         else:
             merged[key] = value
-    
-    # Store user-set values before theme application (to preserve them)
-    user_font_family = merged.get("font_family")
-    user_font_size = merged.get("font_size")
-    user_title_size = merged.get("title_size")
-    user_legend_size = merged.get("legend_size")
-    user_tick_font_size = merged.get("tick_font_size")
-    user_axis_title_size = merged.get("axis_title_size")
-    user_plot_bgcolor = merged.get("plot_bgcolor")
-    user_paper_bgcolor = merged.get("paper_bgcolor")
-    user_axis_line_color = merged.get("axis_line_color")
-    user_palette = merged.get("palette")
-    user_custom_colors = merged.get("custom_colors")
-    
-    # Apply theme to ensure font_color is set correctly
-    current_theme = st.session_state.get("theme", "Light Scientific")
-    merged = apply_theme_to_plot_style(merged, current_theme)
-    
-    # Restore user-set values (preserve user customizations)
-    if user_font_family is not None:
-        merged["font_family"] = user_font_family
-    if user_font_size is not None:
-        merged["font_size"] = user_font_size
-    if user_title_size is not None:
-        merged["title_size"] = user_title_size
-    if user_legend_size is not None:
-        merged["legend_size"] = user_legend_size
-    if user_tick_font_size is not None:
-        merged["tick_font_size"] = user_tick_font_size
-    if user_axis_title_size is not None:
-        merged["axis_title_size"] = user_axis_title_size
-    if user_plot_bgcolor is not None:
-        merged["plot_bgcolor"] = user_plot_bgcolor
-    if user_paper_bgcolor is not None:
-        merged["paper_bgcolor"] = user_paper_bgcolor
-    if user_axis_line_color is not None:
-        merged["axis_line_color"] = user_axis_line_color
-    if user_palette is not None:
-        merged["palette"] = user_palette
-    if user_custom_colors is not None:
-        merged["custom_colors"] = user_custom_colors
     
     # Update reference line colors for dark theme if they're still at light theme defaults
     if "Dark" in current_theme:

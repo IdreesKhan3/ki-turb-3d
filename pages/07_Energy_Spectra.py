@@ -241,17 +241,19 @@ def get_plot_style(plot_name: str):
     
     plot_styles = st.session_state.get("plot_styles", {})
     plot_style = plot_styles.get(plot_name, {})
+    
+    # Apply theme first to get theme defaults
+    current_theme = st.session_state.get("theme", "Light Scientific")
     merged = default.copy()
+    merged = apply_theme_to_plot_style(merged, current_theme)
+    
+    # Then apply user overrides (from plot_style) - this ensures user settings override theme
     for key, value in plot_style.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
             merged[key] = merged[key].copy()
             merged[key].update(value)
         else:
             merged[key] = value
-    
-    # Apply theme to ensure font_color is set correctly
-    current_theme = st.session_state.get("theme", "Light Scientific")
-    merged = apply_theme_to_plot_style(merged, current_theme)
     
     # Update colors for dark theme if they're still at light theme defaults
     # This ensures unique, visible colors in dark theme while preserving user customizations
@@ -289,9 +291,11 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
+        saved_font = ps.get("font_family", "Arial")
+        font_idx = fonts.index(saved_font) if saved_font in fonts else 0
         ps["font_family"] = st.selectbox(
             "Font family", fonts,
-            index=fonts.index(ps.get("font_family", "Arial")),
+            index=font_idx,
             key=f"{key_prefix}_font_family"
         )
         ps["font_size"] = st.slider("Base/global font size", 8, 26, int(ps.get("font_size", 14)),
@@ -416,12 +420,10 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list
 
         st.markdown("---")
         st.markdown("**Theme**")
-        old_template = ps.get("template", "plotly_white")
         templates = ["plotly_white", "simple_white", "plotly_dark"]
-        ps["template"] = st.selectbox("Template", templates,
-                                      index=templates.index(old_template),
-                                      key=f"{key_prefix}_template")
-        # Auto-update backgrounds when template changes
+        old_template = ps.get("template", "plotly_white")
+        template_idx = templates.index(old_template) if old_template in templates else 0
+        ps["template"] = st.selectbox("Template", templates, index=template_idx, key=f"{key_prefix}_template")
         if ps["template"] != old_template:
             if ps["template"] == "plotly_dark":
                 ps["plot_bgcolor"] = "#1e1e1e"

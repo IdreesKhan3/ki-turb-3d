@@ -184,17 +184,19 @@ def get_plot_style(plot_name: str):
     
     plot_styles = st.session_state.get("plot_styles", {})
     plot_style = plot_styles.get(plot_name, {})
+    
+    # Apply theme first to get theme defaults
+    current_theme = st.session_state.get("theme", "Light Scientific")
     merged = default.copy()
+    merged = apply_theme_to_plot_style(merged, current_theme)
+    
+    # Then apply user overrides (from plot_style) - this ensures user settings override theme
     for key, value in plot_style.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
             merged[key] = merged[key].copy()
             merged[key].update(value)
         else:
             merged[key] = value
-    
-    # Apply theme to ensure font_color is set correctly
-    current_theme = st.session_state.get("theme", "Light Scientific")
-    merged = apply_theme_to_plot_style(merged, current_theme)
     
     # Update reference line color for dark theme if it's still at light theme default
     if "Dark" in current_theme:

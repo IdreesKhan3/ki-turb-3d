@@ -559,22 +559,21 @@ def main():
         with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
             # Initialize plot style
             if "plot_style_3d" not in st.session_state:
-                st.session_state.plot_style_3d = default_plot_style()
+                st.session_state.plot_style_3d = {}
             
-            ps = dict(st.session_state.plot_style_3d)
-            
-            # Apply theme
+            # Start with defaults, apply theme first, then merge user overrides
             current_theme = st.session_state.get("theme", "Light Scientific")
+            ps = default_plot_style()
             ps = apply_theme_to_plot_style(ps, current_theme)
             
-            # Theme selector
-            st.markdown("**Theme**")
-            themes = ["Light Scientific", "Dark Scientific"]
-            theme_idx = themes.index(current_theme) if current_theme in themes else 0
-            selected_theme = st.selectbox("Theme", themes, index=theme_idx, key="3d_theme_selector")
-            if selected_theme != current_theme:
-                st.session_state.theme = selected_theme
-                ps = apply_theme_to_plot_style(ps, selected_theme)
+            # Merge user's saved settings (override theme defaults)
+            user_settings = st.session_state.plot_style_3d
+            for key, value in user_settings.items():
+                if isinstance(value, dict) and isinstance(ps.get(key), dict):
+                    ps[key] = ps[key].copy()
+                    ps[key].update(value)
+                else:
+                    ps[key] = value
             
             # Background colors
             st.markdown("---")
@@ -755,10 +754,19 @@ def main():
             "Custom": dict(eye=dict(x=1.4, y=1.4, z=1.2))
         }
 
-        # Get plot style
-        ps = st.session_state.get("plot_style_3d", default_plot_style())
+        # Get plot style: apply theme first, then merge user overrides
         current_theme = st.session_state.get("theme", "Light Scientific")
+        ps = default_plot_style()
         ps = apply_theme_to_plot_style(ps, current_theme)
+        
+        # Merge user's saved settings (override theme defaults)
+        user_settings = st.session_state.get("plot_style_3d", {})
+        for key, value in user_settings.items():
+            if isinstance(value, dict) and isinstance(ps.get(key), dict):
+                ps[key] = ps[key].copy()
+                ps[key].update(value)
+            else:
+                ps[key] = value
         
         # Apply figure size
         layout_kwargs = {}
@@ -859,19 +867,6 @@ def main():
             capture_title += f" (Time Step {file_index})"
         capture_button(fig, title=capture_title, source_page="3D Volume Viewer")
 
-        # Instructions
-        with st.expander("ℹ️ Interactive Controls", expanded=False):
-            st.markdown("""
-            **Mouse Controls (like ParaView):**
-            - **Rotate**: Left-click and drag
-            - **Pan**: Right-click and drag (or middle-click)
-            - **Zoom**: Scroll wheel (or pinch on trackpad)
-            - **Reset view**: Double-click on plot
-            
-            **Keyboard Shortcuts:**
-            - Use the camera preset dropdown for quick view changes
-            - Adjust all parameters in the sidebar for real-time updates
-            """)
 
         # Theory & Equations
         with st.expander("📚 Theory & Equations", expanded=False):

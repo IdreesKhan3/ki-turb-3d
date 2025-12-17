@@ -151,18 +151,19 @@ def get_plot_style(plot_name: str):
     
     plot_styles = st.session_state.get("plot_styles", {})
     plot_style = plot_styles.get(plot_name, {})
-    # Deep merge: start with defaults, then update with plot-specific overrides
+    
+    # Apply theme first to get theme defaults
+    current_theme = st.session_state.get("theme", "Light Scientific")
     merged = default.copy()
+    merged = apply_theme_to_plot_style(merged, current_theme)
+    
+    # Then apply user overrides (from plot_style) - this ensures user settings override theme
     for key, value in plot_style.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
             merged[key] = merged[key].copy()
             merged[key].update(value)
         else:
             merged[key] = value
-    
-    # Apply theme to ensure font_color is set correctly
-    current_theme = st.session_state.get("theme", "Light Scientific")
-    merged = apply_theme_to_plot_style(merged, current_theme)
     
     return merged
 
@@ -192,17 +193,19 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list, sim_groups=None
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
-        ps["font_family"] = st.selectbox("Font family", fonts, index=fonts.index(ps.get("font_family", "Arial")),
+        saved_font = ps.get("font_family", "Arial")
+        font_idx = fonts.index(saved_font) if saved_font in fonts else 0
+        ps["font_family"] = st.selectbox("Font family", fonts, index=font_idx,
                                          key=f"{key_prefix}_font_family")
-        ps["font_size"] = st.slider("Base font size", 8, 26, int(ps.get("font_size", 14)),
+        ps["font_size"] = st.slider("Base/global font size", 8, 26, int(ps.get("font_size", 14)),
                                      key=f"{key_prefix}_font_size")
-        ps["title_size"] = st.slider("Title size", 10, 32, int(ps.get("title_size", 16)),
+        ps["title_size"] = st.slider("Plot title size", 10, 32, int(ps.get("title_size", 16)),
                                       key=f"{key_prefix}_title_size")
-        ps["legend_size"] = st.slider("Legend size", 8, 24, int(ps.get("legend_size", 12)),
+        ps["legend_size"] = st.slider("Legend font size", 8, 24, int(ps.get("legend_size", 12)),
                                        key=f"{key_prefix}_legend_size")
-        ps["tick_font_size"] = st.slider("Tick label size", 6, 24, int(ps.get("tick_font_size", 12)),
+        ps["tick_font_size"] = st.slider("Tick label font size", 6, 24, int(ps.get("tick_font_size", 12)),
                                           key=f"{key_prefix}_tick_font_size")
-        ps["axis_title_size"] = st.slider("Axis title size", 8, 28, int(ps.get("axis_title_size", 14)),
+        ps["axis_title_size"] = st.slider("Axis title font size", 8, 28, int(ps.get("axis_title_size", 14)),
                                            key=f"{key_prefix}_axis_title_size")
 
         st.markdown("---")
@@ -333,6 +336,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list, sim_groups=None
                                                    step=5, key=f"{key_prefix}_margin_bottom")
         st.markdown("---")
         st.markdown("**Per-curve overrides (optional)**")
+        st.caption("**Curve meanings:** IC = time-averaged IC(k) main curves | IC_snap = per-snapshot IC(k) lines | E11/E22/E33 = component energy spectra")
         ps["enable_per_curve_style"] = st.checkbox("Enable per-curve overrides",
                                                    bool(ps.get("enable_per_curve_style", False)),
                                                    key=f"{key_prefix}_enable_per_curve")
@@ -358,17 +362,21 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list, sim_groups=None
                                                key=f"{key_prefix}_over_width_{c}",
                                                disabled=not s["enabled"])
                     with o4:
+                        saved_dash = s.get("dash") or "solid"
+                        dash_idx = dash_opts.index(saved_dash) if saved_dash in dash_opts else 0
                         s["dash"] = st.selectbox("Dash", dash_opts,
-                                                 index=dash_opts.index(s["dash"] or "solid"),
+                                                 index=dash_idx,
                                                  key=f"{key_prefix}_over_dash_{c}",
                                                  disabled=not s["enabled"])
                     with o5:
+                        saved_marker = s.get("marker") or "circle"
+                        marker_idx = marker_opts.index(saved_marker) if saved_marker in marker_opts else 0
                         s["marker"] = st.selectbox("Marker", marker_opts,
-                                                   index=marker_opts.index(s["marker"] or "circle"),
+                                                   index=marker_idx,
                                                    key=f"{key_prefix}_over_marker_{c}",
                                                    disabled=not s["enabled"])
                     s["msize"] = st.slider("Marker size", 0, 18,
-                                           int(s["msize"] or ps["marker_size"]),
+                                           int(s.get("msize") or ps.get("marker_size", 6)),
                                            key=f"{key_prefix}_over_msize_{c}",
                                            disabled=not s["enabled"])
 
@@ -479,10 +487,10 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list, sim_groups=None
 
 def _resolve_curve_style(curve, idx, colors, ps, plot_name: str):
     default_color = colors[idx % len(colors)]
-    default_width = ps["line_width"]
+    default_width = ps.get("line_width", 2.2)
     default_dash = "solid"
     default_marker = "circle"
-    default_msize = ps["marker_size"]
+    default_msize = ps.get("marker_size", 6)
 
     if not ps.get("enable_per_curve_style", False):
         return default_color, default_width, default_dash, default_marker, default_msize
@@ -807,10 +815,14 @@ def main():
                         # Compute spectral isotropy ratio = E11/E22
                         IC0 = np.divide(d[:,1], d[:,2], out=np.zeros_like(d[:,1]), where=d[:,2]!=0)
 
+                    # Use per-curve style for IC_snap if enabled
+                    c_snap, lw_snap, dash_snap, mk_snap, ms_snap = _resolve_curve_style(
+                        "IC_snap", 0, colors_ic, ps_ic, plot_name_ic
+                    )
                     fig_ic.add_trace(go.Scatter(
                         x=k0, y=IC0, mode="lines",
                         name=st.session_state.spec_iso_legends["IC_snap"],
-                        line=dict(color="rgba(0,0,0,0.15)", width=1),
+                        line=dict(color=c_snap, width=lw_snap, dash=dash_snap),
                         showlegend=(sim_prefix == sorted(ic_groups.keys())[0] and i==0)
                     ))
 
@@ -829,12 +841,29 @@ def main():
             IC_mean = avg["IC_mean"]
             IC_std = avg["IC_std"]
 
-            color, lw, dash, marker, msize, override_on = resolve_line_style(
+            # Check if per-curve style is enabled for IC
+            c_ic, lw_ic, dash_ic, mk_ic, ms_ic = _resolve_curve_style(
+                "IC", idx, colors_ic, ps_ic, plot_name_ic
+            )
+            
+            # Get per-simulation style (for when per-curve is not enabled)
+            color_sim, lw_sim, dash_sim, marker_sim, msize_sim, override_on_sim = resolve_line_style(
                 sim_prefix, idx, colors_ic, ps_ic,
                 style_key="per_sim_style_ic",
                 include_marker=True,
                 default_marker="circle"
             )
+            
+            # Use per-curve style if enabled, otherwise use per-simulation style
+            if ps_ic.get("enable_per_curve_style", False):
+                color, lw, dash = c_ic, lw_ic, dash_ic
+                marker, msize = mk_ic, ms_ic
+                override_on = (mk_ic != "circle" or ms_ic > 0)
+            else:
+                color, lw, dash = color_sim, lw_sim, dash_sim
+                marker, msize = marker_sim, msize_sim
+                override_on = override_on_sim
+            
             legend_name = st.session_state.spec_iso_sim_legend_names.get(
                 sim_prefix, _default_labelify(sim_prefix)
             )
@@ -930,11 +959,10 @@ def main():
                 # Plot E11, E22, E33 for this simulation
                 for i, curve in enumerate(["E11","E22","E33"]):
                     arr = avg[f"{curve}_mean"]
-                    # Use same base color for all components of same simulation, with slight variation
-                    # or use per-curve style if available
+                    # Use per-curve style if enabled, otherwise use per-simulation style
                     c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_eii, ps_eii, plot_name_eii)
-                    # Override with simulation color if per-sim style is enabled
-                    if override_on_base:
+                    # Only override with simulation color if per-curve style is NOT enabled
+                    if not ps_eii.get("enable_per_curve_style", False) and override_on_base:
                         c = color_base
                         lw = lw_base
                         dash = dash_base
