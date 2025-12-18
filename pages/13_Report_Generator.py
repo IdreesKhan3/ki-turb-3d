@@ -17,6 +17,9 @@ from utils.theme_config import inject_theme_css
 from utils.report_builder import generate_html_report, generate_pdf_report
 st.set_page_config(page_icon="📄", layout="wide")
 
+# ==========================================================
+# Helper Functions
+# ==========================================================
 def move_section(index, direction):
     """Moves a section up (-1) or down (+1) in the list."""
     sections = st.session_state.report_sections
@@ -79,6 +82,9 @@ def load_config(data_dir):
     else:
         st.error("No saved configuration found.")
 
+# ==========================================================
+# Main
+# ==========================================================
 def main():
     inject_theme_css()
     
@@ -144,6 +150,9 @@ def main():
     
     include_toc = st.sidebar.checkbox("Include Table of Contents", value=True)
     
+    # =========================
+    # Report Section Management
+    # =========================
     if not st.session_state.report_sections:
         st.markdown("### Start your report")
         c1, c2 = st.columns(2)
@@ -255,6 +264,9 @@ def main():
     
     st.markdown("---")
     
+    # =========================
+    # Export Report
+    # =========================
     col1, col2 = st.columns([3, 1])
     
     with col1:

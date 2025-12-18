@@ -13,7 +13,7 @@ Features:
     * palette / custom colors
     * per-simulation line style overrides (color/width/dash/marker)
 - Research-grade export:
-    * Multi-format PNG/PDF/SVG/EPS/JPG/WEBP/TIFF + HTML
+    * User can export to: PNG, PDF, SVG, JPG/JPEG, WEBP
     * Scale (DPI-like), optional width/height override
 
 Requires kaleido for static exports:

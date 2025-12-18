@@ -22,9 +22,9 @@ from utils.theme_config import inject_theme_css  # noqa: E402
 st.set_page_config(page_icon="⚫", layout="wide")
 
 
-# -----------------------------
-# BibTeX provided by the user
-# -----------------------------
+# ==========================================================
+# BibTeX Data
+# ==========================================================
 BIBTEX = dedent(
     r"""
     @article{d2002multiple,
@@ -123,9 +123,9 @@ BIBTEX = dedent(
 ).strip()
 
 
-# -----------------------------
-# Human-readable reference list
-# -----------------------------
+# ==========================================================
+# Human-readable Reference List
+# ==========================================================
 REFERENCES = [
     {
         "id": "dhumieres2002",
@@ -209,17 +209,24 @@ REFERENCES = [
     },
 ]
 
-
+# ==========================================================
+# Helper Functions
+# ==========================================================
 def _anchor(anchor_id: str) -> None:
     """Create a stable HTML anchor for deep-linking to a reference."""
     st.markdown(f"<div id='{anchor_id}'></div>", unsafe_allow_html=True)
 
-
+# ==========================================================
+# Main
+# ==========================================================
 def main() -> None:
     inject_theme_css()
 
     st.title("Citation & References")
 
+    # =========================
+    # Software Citation Section
+    # =========================
     st.subheader("How to cite this software")
     st.markdown("If you use KI-TURB 3D in your research, please cite it using one of the formats below.")
     
@@ -266,6 +273,9 @@ def main() -> None:
 
     st.divider()
 
+    # =========================
+    # Scientific References Section
+    # =========================
     st.subheader("Key scientific references")
     st.caption("These are the core methodological and turbulence references used in this project.")
 
@@ -276,6 +286,9 @@ def main() -> None:
 
     st.divider()
 
+    # =========================
+    # BibTeX Export Section
+    # =========================
     st.subheader("BibTeX (all references)")
     st.code(BIBTEX, language="bibtex")
 

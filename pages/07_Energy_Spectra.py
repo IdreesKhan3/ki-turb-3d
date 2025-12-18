@@ -3,7 +3,7 @@ Energy Spectra Page (Streamlit) — High Standard + Full Styling
 
 NEW in this version:
 - Research-grade export panel:
-    * User can export to: PNG, PDF, SVG, EPS, JPG/JPEG, WEBP, TIFF*
+    * User can export to: PNG, PDF, SVG, JPG/JPEG, WEBP
     * Chooses format(s) via multiselect
     * Controls export scale (like DPI), width/height override
     * One-click export for current figure(s)
@@ -747,12 +747,12 @@ def main():
             norm_groups = {}
             
             for data_dir_path in data_dirs:
-                data_dir = Path(data_dir_path)
+                data_dir = Path(data_dir_path).resolve()
                 dir_name = data_dir.name  # e.g., "768", "512", "128"
                 
-                # Get files from this directory
-                dir_spectrum = [f for f in spectrum_files if Path(f).parent == data_dir]
-                dir_norm = [f for f in norm_files if Path(f).parent == data_dir]
+                # Get files from this directory (resolve both sides for reliable comparison)
+                dir_spectrum = [f for f in spectrum_files if Path(f).resolve().parent == data_dir]
+                dir_norm = [f for f in norm_files if Path(f).resolve().parent == data_dir]
                 
                 # Group files from this directory
                 dir_sim_groups = group_files_by_simulation(
@@ -1315,10 +1315,10 @@ def main():
         
         st.markdown("**Normalized spectrum:**")
         st.latex(r"""
-        E_{\text{norm}}(k\eta) = \frac{E(k)}{\varepsilon^{2/3} \eta^{5/3}}, \quad k\eta = \frac{k}{\eta}
+        E_{\text{norm}}(k\eta) = \frac{E(k)}{\varepsilon^{2/3} \eta^{5/3}}, \quad k\eta = k \cdot \eta
         """)
         st.markdown(r"""
-        where $\eta = (\nu^3/\varepsilon)^{1/4}$ is the Kolmogorov length scale. The normalized spectrum is plotted in the **Normalized Spectrum** tab.
+        where $\eta = (\nu^3/\varepsilon)^{1/4}$ is the Kolmogorov length scale and $k\eta$ is the normalized wavenumber (dimensionless). The normalized spectrum is plotted in the **Normalized Spectrum** tab.
         """)
         
         st.divider()

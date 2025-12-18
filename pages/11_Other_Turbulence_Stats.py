@@ -10,7 +10,7 @@ Features:
     * Palette / custom colors
     * Per-simulation overrides: color/width/dash
 - Research-grade export:
-    * PNG/PDF/SVG/EPS/JPG/WEBP/TIFF + HTML
+    * User can export to: PNG, PDF, SVG, JPG/JPEG, WEBP
 - Robust to missing columns/files
 """
 
@@ -18,11 +18,8 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.colors as pc
-from plotly.colors import hex_to_rgb
 from pathlib import Path
 import sys
-import re
 import glob
 
 # --- Project imports ---
@@ -276,7 +273,9 @@ def main():
             except Exception:
                 pass
 
-    # Custom Plotting Section (display first, before tables)
+    # =========================
+    # Custom Plotting Section
+    # =========================
     st.header("📈 Custom Plotting")
     
     if not all_dataframes:
@@ -673,7 +672,9 @@ def main():
     
     st.markdown("---")
     
-    # Display Tables Section (after plotting)
+    # =========================
+    # Display Tables Section
+    # =========================
     if table_data:
         # Display turbulence statistics tables
         turbulence_tables = {k: v for k, v in table_data.items() if v['type'] == 'turbulence_stats'}

@@ -41,9 +41,9 @@ from utils.report_builder import capture_button
 st.set_page_config(page_icon="⚫")
 
 
-# -----------------------------
+# ==========================================================
 # Helpers
-# -----------------------------
+# ==========================================================
 @st.cache_data(show_spinner=True)
 def _cached_read_vti(filepath: str):
     """Cached VTI file reading for performance"""
@@ -140,9 +140,9 @@ def _create_slice_surface(x_coords, y_coords, z_coords, field_slice, vmin, vmax,
     )
 
 
-# -----------------------------
+# ==========================================================
 # Main
-# -----------------------------
+# ==========================================================
 def main():
     inject_theme_css()
     
@@ -288,38 +288,38 @@ def main():
     # Previous / Next buttons - update file_index before slider reads it
     col_t1, col_t2, col_t3 = st.sidebar.columns([1, 2, 1])
     
-    # Previous button: go to previous file (decrease index)
-    if col_t1.button("◀", key="prev_file", help="Previous time step"):
-        if st.session_state.file_index > 0:
-            st.session_state.file_index -= 1
-            # FIX: Force the slider key to match the new index
-            st.session_state.slider_index = st.session_state.file_index
-        # Note: Streamlit automatically reruns on button click, no need for explicit st.rerun()
-    
-    # Next button: go to next file (increase index)
-    if col_t3.button("▶", key="next_file", help="Next time step"):
-        if st.session_state.file_index < len(all_files) - 1:
-            st.session_state.file_index += 1
-            # FIX: Force the slider key to match the new index
-            st.session_state.slider_index = st.session_state.file_index
-        # Note: Streamlit automatically reruns on button click, no need for explicit st.rerun()
-    
-    # Time step slider: 0-indexed (0 = first file, 1 = second file, ..., 99 = 100th file)
-    # The slider value comes from session state (updated by buttons or previous slider interaction)
-    file_index = col_t2.slider(
-        "Time Step",
-        0, len(all_files) - 1,
-        value=st.session_state.file_index,
-        key="slider_index"
-    )
-    
-    # Update session state from slider (when user drags slider)
-    # This ensures slider and buttons stay in sync
-    if file_index != st.session_state.file_index:
-        st.session_state.file_index = file_index
-    
-    # Double-check bounds (should always be valid after slider)
-    file_index = max(0, min(file_index, len(all_files) - 1))
+    # Handle single file case: no slider needed
+    if len(all_files) == 1:
+        file_index = 0
+        st.session_state.file_index = 0
+        col_t2.caption("Time Step: 0 (1 file)")
+    else:
+        # Previous button: go to previous file (decrease index)
+        if col_t1.button("◀", key="prev_file", help="Previous time step"):
+            if st.session_state.file_index > 0:
+                st.session_state.file_index -= 1
+                st.session_state.slider_index = st.session_state.file_index
+        
+        # Next button: go to next file (increase index)
+        if col_t3.button("▶", key="next_file", help="Next time step"):
+            if st.session_state.file_index < len(all_files) - 1:
+                st.session_state.file_index += 1
+                st.session_state.slider_index = st.session_state.file_index
+        
+        # Time step slider: 0-indexed (0 = first file, 1 = second file, ..., 99 = 100th file)
+        file_index = col_t2.slider(
+            "Time Step",
+            0, len(all_files) - 1,
+            value=st.session_state.file_index,
+            key="slider_index"
+        )
+        
+        # Update session state from slider (when user drags slider)
+        if file_index != st.session_state.file_index:
+            st.session_state.file_index = file_index
+        
+        # Double-check bounds (should always be valid after slider)
+        file_index = max(0, min(file_index, len(all_files) - 1))
     
     # Select file at this index: all_files[0] = first file, all_files[1] = second file, etc.
     selected_file = all_files[file_index]
@@ -336,7 +336,9 @@ def main():
     # HDF5-specific options
     is_hdf5 = selected_file.lower().endswith(('.h5', '.hdf5'))
 
-    # Load velocity data (VTI or HDF5)
+    # =========================
+    # Load velocity data
+    # =========================
     try:
         file_ext = Path(selected_file).suffix.lower()
         file_type = "HDF5" if file_ext in ['.h5', '.hdf5'] else "VTI"
@@ -377,7 +379,9 @@ def main():
             total_points = nx * ny * nz
             st.info(f"📊 Points: {total_points:,}")
 
-        # Sidebar - Visualization Options
+        # =========================
+        # Visualization Options
+        # =========================
         st.sidebar.markdown("---")
         st.sidebar.header("🎨 Visualization")
         
@@ -612,7 +616,9 @@ def main():
             key="camera_preset"
         )
 
-        # Build Plotly 3D
+        # =========================
+        # Build 3D Plot
+        # =========================
         fig = go.Figure()
 
         # Volume rendering (improved for turbulence visualization)
@@ -867,8 +873,9 @@ def main():
             capture_title += f" (Time Step {file_index})"
         capture_button(fig, title=capture_title, source_page="3D Volume Viewer")
 
-
+        # =========================
         # Theory & Equations
+        # =========================
         with st.expander("📚 Theory & Equations", expanded=False):
             st.markdown("### Velocity Fields")
             st.markdown("**Velocity magnitude:**")

@@ -40,6 +40,7 @@ def read_parameters_cached(filepath: str, mtime: float):
 def compute_compressibility_from_slice(filepath: str, mtime: float, max_size: int = 128):
     """
     Compute compressibility metrics from a subsampled slice of velocity field (.h5 only).
+    Reads only a slice from disk (memory-efficient for large files).
     Uses caching keyed by file path + modification time.
     
     Args:
@@ -51,34 +52,84 @@ def compute_compressibility_from_slice(filepath: str, mtime: float, max_size: in
         Dictionary with compressibility metrics or None if error
     """
     try:
-        h5_data = read_hdf5_file(filepath)
-        velocity = h5_data['velocity']
+        import h5py
+        import numpy as np
         
-        # Validate velocity array shape: must be (nx, ny, nz, 3)
-        if len(velocity.shape) != 4:
-            raise ValueError(f"Expected 4D velocity array (nx, ny, nz, 3), got shape {velocity.shape}")
-        if velocity.shape[3] != 3:
-            raise ValueError(f"Expected 3 velocity components in last dimension, got shape {velocity.shape}. Expected format: (nx, ny, nz, 3)")
-        
-        nx, ny, nz = velocity.shape[:3]
-        
-        # Subsample if grid is too large
-        if nx * ny * nz > max_size ** 3:
-            # Use middle slice in z-direction (most representative)
-            z_mid = nz // 2
-            velocity_slice = velocity[:, :, z_mid:z_mid+1, :]  # Keep 3D shape
-            # Also subsample in x and y if needed
-            if nx > max_size:
-                x_step = nx // max_size
-                velocity_slice = velocity_slice[::x_step, :, :, :]
-            if ny > max_size:
-                y_step = ny // max_size
-                velocity_slice = velocity_slice[:, ::y_step, :, :]
-        else:
-            velocity_slice = velocity
-        
-        # Compute compressibility on subsample
-        return compute_compressibility_h5(velocity_slice)
+        with h5py.File(filepath, 'r') as f:
+            # Find velocity dataset
+            if 'velocity' in f:
+                velocity_ds = f['velocity']
+            elif 'Velocity' in f:
+                velocity_ds = f['Velocity']
+            elif 'u' in f:
+                velocity_ds = f['u']
+            else:
+                # Try to find any 4D dataset
+                for key in f.keys():
+                    if isinstance(f[key], h5py.Dataset):
+                        data = f[key]
+                        if len(data.shape) == 4 and (data.shape[3] == 3 or data.shape[0] == 3):
+                            velocity_ds = data
+                            break
+                else:
+                    raise ValueError("Could not find velocity data in HDF5 file")
+            
+            # Get original shape (before any transpose)
+            orig_shape = velocity_ds.shape
+            
+            # Determine format and dimensions
+            if len(orig_shape) == 4:
+                if orig_shape[0] == 3:
+                    # Format: (3, nx, ny, nz) - need to transpose
+                    ncomp, nx, ny, nz = orig_shape
+                    needs_transpose = True
+                elif orig_shape[3] == 3:
+                    # Format: (nx, ny, nz, 3)
+                    nx, ny, nz, ncomp = orig_shape
+                    needs_transpose = False
+                else:
+                    raise ValueError(f"Unexpected velocity shape: {orig_shape}")
+            else:
+                raise ValueError(f"Expected 4D velocity array, got shape {orig_shape}")
+            
+            if ncomp != 3:
+                raise ValueError(f"Expected 3 velocity components, got {ncomp}")
+            
+            # Determine if we need to subsample
+            total_points = nx * ny * nz
+            needs_subsample = total_points > max_size ** 3
+            
+            if needs_subsample:
+                # Read only a slice from disk (memory-efficient)
+                # Use middle slice in z-direction (most representative)
+                z_mid = nz // 2
+                
+                # Calculate subsampling steps
+                y_step = max(1, ny // max_size) if ny > max_size else 1
+                x_step = max(1, nx // max_size) if nx > max_size else 1
+                
+                # Read slice directly from disk
+                if orig_shape[0] == 3:
+                    # Format: (3, nx, ny, nz) - read slice in z (last dimension)
+                    velocity_slice = velocity_ds[:, ::x_step, ::y_step, z_mid:z_mid+1]
+                    # Transpose to (z, y, x, 3) format
+                    velocity_slice = np.transpose(velocity_slice, (3, 2, 1, 0))
+                else:
+                    # Format: (nx, ny, nz, 3) - read slice in z (third dimension)
+                    velocity_slice = velocity_ds[::x_step, ::y_step, z_mid:z_mid+1, :]
+                    # Transpose to (z, y, x, 3) format to match expected format
+                    velocity_slice = np.transpose(velocity_slice, (2, 1, 0, 3))
+            else:
+                # Small enough - read full array but still transpose if needed
+                if orig_shape[0] == 3:
+                    velocity_slice = np.array(velocity_ds)
+                    velocity_slice = np.transpose(velocity_slice, (3, 2, 1, 0))
+                else:
+                    velocity_slice = np.array(velocity_ds)
+                    velocity_slice = np.transpose(velocity_slice, (2, 1, 0, 3))
+            
+            # Compute compressibility on slice
+            return compute_compressibility_h5(velocity_slice)
     except Exception:
         return None
 
