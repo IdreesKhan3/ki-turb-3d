@@ -53,34 +53,59 @@ def insert_section(index, type="text"):
 def save_config(data_dir):
     """Saves the current report structure to JSON."""
     config_path = data_dir / "report_config.json"
-    
+
     serializable_sections = []
     for sec in st.session_state.report_sections:
         item = sec.copy()
-        if item['type'] == 'plot':
-            item['figure'] = None
-        if item['type'] == 'table':
-            item['dataframe'] = None
+
+        # Persist tables
+        if item.get("type") == "table":
+            df = item.get("dataframe")
+            if df is None:
+                df = item.get("content")
+            if isinstance(df, pd.DataFrame):
+                item["table_json"] = df.to_json(orient="split")
+            # remove non-serializable objects
+            item["dataframe"] = None
+            if isinstance(item.get("content"), pd.DataFrame):
+                item["content"] = None
+
+        # Keep current behavior for plots (do not persist)
+        if item.get("type") == "plot":
+            item["figure"] = None
+
         serializable_sections.append(item)
-    
+
     with open(config_path, "w") as f:
         json.dump(serializable_sections, f, indent=4)
+
     st.toast(f"💾 Report configuration saved to {config_path.name}")
 
 def load_config(data_dir):
     """Loads a report structure from JSON."""
     config_path = data_dir / "report_config.json"
-    if config_path.exists():
-        with open(config_path, "r") as f:
-            data = json.load(f)
-            # Ensure header_level exists for backward compatibility
-            for section in data:
-                if 'header_level' not in section:
-                    section['header_level'] = 'H2' if section.get('type') == 'text' else 'Normal'
-            st.session_state.report_sections = data
-        st.toast("📂 Configuration loaded (Note: You may need to recapture plots/tables)")
-    else:
+    if not config_path.exists():
         st.error("No saved configuration found.")
+        return
+
+    with open(config_path, "r") as f:
+        data = json.load(f)
+
+    # Backward compatibility + table restore
+    for section in data:
+        if "header_level" not in section:
+            section["header_level"] = "H2" if section.get("type") == "text" else "Normal"
+
+        if section.get("type") == "table" and section.get("table_json"):
+            try:
+                df = pd.read_json(section["table_json"], orient="split")
+                section["dataframe"] = df
+                section["content"] = df
+            except Exception:
+                section["dataframe"] = None
+
+    st.session_state.report_sections = data
+    st.toast("📂 Configuration loaded (Note: You may need to recapture plots)")
 
 # ==========================================================
 # Main
@@ -89,7 +114,7 @@ def main():
     inject_theme_css()
     
     st.title("📄 Scientific Report Builder")
-    st.info("💡 **Tip:** Use the 'Insert' buttons between blocks to arrange figures and tables precisely within your text flow.")
+    st.info("Tip: Use the 'Insert' buttons between blocks to arrange figures and tables precisely within your text flow.")
     
     # Get data directories
     data_dirs = st.session_state.get("data_directories", [])
@@ -113,10 +138,10 @@ def main():
     
     if num_sections > st.session_state.report_section_count:
         new_count = num_sections - st.session_state.report_section_count
-        st.success(f"✅ {new_count} new section(s) added to report!")
+        st.success(f"{new_count} new section(s) added to report!")
         st.session_state.report_section_count = num_sections
     
-    st.sidebar.header("📋 Report Metadata")
+    st.sidebar.header("Report Metadata")
     
     report_title = st.sidebar.text_input(
         "Title",
@@ -206,7 +231,7 @@ def main():
                 st.caption(f"Type: {section['type'].upper()}")
             
             with c_del:
-                if st.button("❌", key=f"del_{idx}"):
+                if st.button("Delete", key=f"del_{idx}"):
                     delete_section(idx)
                     st.rerun()
             
@@ -247,7 +272,7 @@ def main():
                 if section.get('figure'):
                     st.plotly_chart(section['figure'], width='stretch', key=f"plt_{idx}")
                 else:
-                    st.warning("⚠️ Plot data missing or placeholder.")
+                    st.warning("Plot data missing or placeholder.")
                 section['caption'] = st.text_input("Caption", value=section.get('caption', ''), key=f"pc_{idx}")
         
         st.markdown("<div style='text-align: center; margin: 10px 0; opacity: 0.5;'>⬇️ <i>Insert Here</i> ⬇️</div>", unsafe_allow_html=True)
@@ -256,10 +281,10 @@ def main():
         if c_i1.button("📄 Text", key=f"add_txt_{idx}"):
             insert_section(idx, "text")
             st.rerun()
-        if c_i2.button("📊 Manual Table", key=f"add_tbl_{idx}"):
+        if c_i2.button("Manual Table", key=f"add_tbl_{idx}"):
             insert_section(idx, "manual_table")
             st.rerun()
-        if c_i3.button("📈 Placeholder Plot", key=f"add_plt_{idx}"):
+        if c_i3.button("Placeholder Plot", key=f"add_plt_{idx}"):
             st.info("To add specific plots, go to Analysis pages and click 'Capture'. They will appear at the end, then use ⬆ to move them here.")
     
     st.markdown("---")
@@ -271,14 +296,14 @@ def main():
     
     with col1:
     
-        st.subheader("📤 Export Report")
+        st.subheader("Export Report")
         
         export_fmt = st.radio("Format", ["PDF (Static)", "HTML (Interactive)"], horizontal=True)
     
     with col2:
         st.write("")
         st.write("")
-        if st.button("🚀 Generate File", type="primary", width='stretch'):
+        if st.button("Generate File", type="primary", width='stretch'):
             if not st.session_state.report_sections:
                 st.error("Please add at least one section to the report.")
                 return

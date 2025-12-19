@@ -83,7 +83,7 @@ def _get_title_dict(ps, title_text):
     )
 
 def apply_plot_style(fig, ps):
-    # Temporarily clear plot_title if show_plot_title is False to prevent centralized function from setting it
+    # Clear plot_title if show_plot_title is False to prevent centralized function from setting it
     original_plot_title = ps.get("plot_title", "")
     if not ps.get("show_plot_title", False):
         ps["plot_title"] = ""
@@ -189,7 +189,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list, sim_groups=None
     # Create unique key prefix for all widgets
     key_prefix = f"speciso_{plot_key}"
 
-    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
+    with st.sidebar.expander("Plot Style (persistent)", expanded=False):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
@@ -393,7 +393,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list, sim_groups=None
 
         st.markdown("---")
         reset_pressed = False
-        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("Reset Plot Style", key=f"{key_prefix}_reset"):
                 st.session_state.plot_styles[selected_plot] = {}
                 
                 # Clear widget state so widgets re-read from defaults on next run
@@ -477,7 +477,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list, sim_groups=None
                     if k in st.session_state:
                         del st.session_state[k]
                 
-                st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
+                st.toast(f"Reset style for '{selected_plot}'.")
                 reset_pressed = True
                 st.rerun()
 
@@ -610,7 +610,7 @@ def _avg_isotropy_coeff(files):
 def main():
     # Apply theme CSS (persists across pages)
     inject_theme_css()
-    st.title("📈 Isotropy Validation — Spectral")
+    st.title("Isotropy Validation — Spectral")
 
     # Get data directories from session state (support multiple directories)
     data_dirs = st.session_state.get("data_directories", [])
@@ -746,7 +746,7 @@ def main():
             st.session_state.axis_labels_spec_iso[k] = st.text_input(
                 k, st.session_state.axis_labels_spec_iso[k], key=f"speciso_ax_{k}"
             )
-        if st.button("♻️ Reset labels/legends"):
+        if st.button("Reset labels/legends"):
             st.session_state.spec_iso_sim_legend_names = {k: _default_labelify(k) for k in ic_groups.keys()}
             st.session_state.spec_iso_legends = {
                 "IC": "IC(k) (time-avg)",
@@ -760,7 +760,7 @@ def main():
                 "ic": "IC(k)",
                 "ek": "E<sub>ii</sub>(k)",
             }
-            st.toast("Reset.", icon="♻️")
+            st.toast("Reset.")
             st.rerun()
 
     # Sidebar time window (use minimum length across all groups)

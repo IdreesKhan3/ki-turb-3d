@@ -1,26 +1,38 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata from this file."
-title: "KI-TURB 3D: Turbulence Analysis & Visualization Suite"
+type: software
+
+title: "KI-TURB 3D: Turbulence Analysis and Visualization Suite"
+
 version: 1.0.0
 date-released: 2025-12-15
-authors:
-  - given-names: "Your First Name"
-    family-names: "Your Last Name"
-    orcid: "https://orcid.org/0000-0000-0000-0000"
-    affiliation: "Your Institution"
-    email: "your.email@example.com"
-keywords:
-  - "turbulence"
-  - "lattice boltzmann method"
-  - "direct numerical simulation"
-  - "large eddy simulation"
-  - "data visualization"
-  - "streamlit"
-  - "turbulence analysis"
-  - "computational fluid dynamics"
-license: "MIT"
-repository-code: "https://github.com/username/repository"
-doi: "10.5281/zenodo.XXXXXXX"
-url: "https://github.com/username/repository"
-abstract: "KI-TURB 3D is a comprehensive web-based application for analyzing and visualizing turbulence data from Lattice Boltzmann Method (LBM) Direct Numerical Simulation (DNS) and Large Eddy Simulation (LES) simulations. The tool is designed for Homogeneous Isotropic Turbulence (HIT) analysis with primary focus on Multiple Relaxation Time (MRT) collision operators, and supports Single Relaxation Time (SRT), Bhatnagar-Gross-Krook (BGK), and Two Relaxation Time (TRT) data."
 
+authors:
+  - given-names: "Idrees"
+    family-names: "Khan"
+    orcid: "https://orcid.org/0009-0003-0046-821X"  
+    affiliation: "University of Rome"
+    email: "email@example.com"              
+
+keywords:
+  - turbulence
+  - lattice Boltzmann method
+  - direct numerical simulation
+  - large eddy simulation
+  - computational fluid dynamics
+  - turbulence analysis
+  - data visualization
+  - streamlit
+
+license: MIT
+
+repository-code: "https://github.com/USERNAME/ki-turb-3d"
+url: "https://github.com/USERNAME/ki-turb-3d"
+
+abstract: >
+  KI-TURB 3D is a web-based application for analysis and visualization of
+  turbulence data from Lattice Boltzmann Method (LBM) simulations, including
+  Direct Numerical Simulation (DNS) and Large Eddy Simulation (LES).
+  The framework is designed for homogeneous isotropic turbulence (HIT)
+  and supports Multiple Relaxation Time (MRT), Single Relaxation Time (SRT),
+  Bhatnagar-Gross-Krook (BGK), and Two Relaxation Time (TRT) formulations.

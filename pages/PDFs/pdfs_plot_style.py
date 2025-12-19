@@ -102,7 +102,7 @@ def plot_style_sidebar(data_dir: Path, file_list, plot_names: list):
     
     key_prefix = f"comparison_{plot_key}"
     
-    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
+    with st.sidebar.expander("Plot Style (persistent)", expanded=False):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
@@ -214,7 +214,7 @@ def plot_style_sidebar(data_dir: Path, file_list, plot_names: list):
         
         st.markdown("---")
         reset_pressed = False
-        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("Reset Plot Style", key=f"{key_prefix}_reset"):
             st.session_state.plot_styles[selected_plot] = {}
             
             # Clear widget state
@@ -248,7 +248,7 @@ def plot_style_sidebar(data_dir: Path, file_list, plot_names: list):
                 if k in st.session_state:
                     del st.session_state[k]
             
-            st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
+            st.toast(f"Reset style for '{selected_plot}'.")
             reset_pressed = True
             st.rerun()
     

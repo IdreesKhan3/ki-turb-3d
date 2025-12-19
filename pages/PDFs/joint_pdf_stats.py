@@ -413,7 +413,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
             if 'nu' in params:
                 nu_from_file = params['nu']
         except Exception as e:
-            st.sidebar.warning(f"⚠️ Error reading simulation.input: {e}")
+            st.sidebar.warning(f"Error reading simulation.input: {e}")
     
     # Set default value: use file value if available, otherwise use a reasonable default
     default_nu = nu_from_file if nu_from_file is not None else 0.004
@@ -422,7 +422,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
     if nu_from_file is not None:
         st.sidebar.info(f"📄 Viscosity from simulation.input: {nu_from_file:.6f}")
     else:
-        st.sidebar.warning("⚠️ Viscosity not found in simulation.input. Please enter manually or check parameter file.")
+        st.sidebar.warning("Viscosity not found in simulation.input. Please enter manually or check parameter file.")
     
     nu_help = "Kinematic viscosity used in dissipation calculation: ε = 2ν S_ij S_ij"
     if nu_from_file is not None:
@@ -489,7 +489,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
         return
     
     # Plot parameters
-    st.sidebar.header("📊 Plot Parameters")
+    st.sidebar.header("Plot Parameters")
     pdf_bins = st.sidebar.slider("PDF bins", 50, 200, 100, 10, key="joint_pdf_bins")
     rq_bins = st.sidebar.slider("R-Q space bins", 50, 200, 100, 10, key="joint_pdf_rq_bins")
     use_log_scale = st.sidebar.checkbox(
@@ -531,7 +531,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                     velocity = vti_data['velocity']
                     
                     if velocity is None or len(velocity.shape) != 4:
-                        st.warning(f"⚠️ {filename}: Invalid velocity shape")
+                        st.warning(f"{filename}: Invalid velocity shape")
                         continue
                     
                     # Try to get viscosity from metadata, parameter file, or use sidebar value
@@ -571,7 +571,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                     velocity = vti_data['velocity']
                     
                     if velocity is None or len(velocity.shape) != 4:
-                        st.warning(f"⚠️ {filename}: Invalid velocity shape")
+                        st.warning(f"{filename}: Invalid velocity shape")
                         continue
                     
                     u_centers, omega_centers, joint_pdf = compute_velocity_enstrophy_joint_pdf(
@@ -597,7 +597,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                     velocity = vti_data['velocity']
                     
                     if velocity is None or len(velocity.shape) != 4:
-                        st.warning(f"⚠️ {filename}: Invalid velocity shape")
+                        st.warning(f"{filename}: Invalid velocity shape")
                         continue
                     
                     # Try to get viscosity from metadata, parameter file, or use sidebar value
@@ -637,7 +637,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                     velocity = vti_data['velocity']
                     
                     if velocity is None or len(velocity.shape) != 4:
-                        st.warning(f"⚠️ {filename}: Invalid velocity shape")
+                        st.warning(f"{filename}: Invalid velocity shape")
                         continue
                     
                     # Compute R-Q joint PDF

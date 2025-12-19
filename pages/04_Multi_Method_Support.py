@@ -15,7 +15,7 @@ st.set_page_config(page_icon="⚫")
 
 def main():
     inject_theme_css()
-    st.title("🔄 Multi-Method Support")
+    st.title("Multi-Method Support")
     
     # Get theme colors for consistent styling
     current_theme = st.session_state.get("theme", "Light Scientific")
@@ -70,7 +70,7 @@ def main():
     st.markdown(f"""
     <div style='background: {card_bg}; padding: 1.2rem; border-radius: 6px; border: 2px solid {accent_color}; margin-top: 1.5rem;'>
         <h3 style='margin: 0 0 0.8rem 0; color: {text_color}; font-size: 1.1rem; display: flex; align-items: center;'>
-            <span style='margin-right: 0.5rem;'>🔧</span> Extend & Contribute
+            Extend & Contribute
         </h3>
         <p style='margin: 0 0 0.8rem 0; color: {text_color}; line-height: 1.7; font-size: 0.95rem;'>
             Users are welcome to extend this page to implement additional turbulence analysis quantities 

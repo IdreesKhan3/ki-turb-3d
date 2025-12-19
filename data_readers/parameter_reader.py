@@ -4,8 +4,7 @@ Extracts all parameters from parameters module
 """
 
 import re
-from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 
 def read_parameters(filepath: str) -> Dict:

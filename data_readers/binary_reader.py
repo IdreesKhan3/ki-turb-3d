@@ -5,8 +5,7 @@ Reads structure_funcs*_t*.bin files and tau_analysis_*.bin files
 
 import numpy as np
 import struct
-from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict
 
 
 def read_structure_function_file(filepath: str) -> Dict:

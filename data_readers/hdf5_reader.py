@@ -10,8 +10,7 @@ Expected HDF5 structure:
 
 import numpy as np
 import h5py
-from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 
 def read_hdf5_file(filepath: str) -> Dict:

@@ -294,7 +294,7 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
         return
     
     # Plot parameters
-    st.sidebar.header("📊 Plot Parameters")
+    st.sidebar.header("Plot Parameters")
     pdf_bins = st.sidebar.slider("PDF bins", 50, 500, 100, 10, key="vorticity_pdf_bins")
     normalize_pdf = st.sidebar.checkbox(
         "Normalize PDFs",
@@ -321,7 +321,7 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
                     velocity = vti_data['velocity']
                     
                     if velocity is None or len(velocity.shape) != 4:
-                        st.warning(f"⚠️ {filename}: Invalid velocity shape")
+                        st.warning(f"{filename}: Invalid velocity shape")
                         continue
                     
                     # Compute PDF
@@ -346,7 +346,7 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
                     velocity = vti_data['velocity']
                     
                     if velocity is None or len(velocity.shape) != 4:
-                        st.warning(f"⚠️ {filename}: Invalid velocity shape")
+                        st.warning(f"{filename}: Invalid velocity shape")
                         continue
                     
                     # Compute PDF
@@ -364,7 +364,7 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
     # ============================================
     # Statistics Section
     # ============================================
-    with st.expander("📈 Statistical Moments (Skewness & Kurtosis)", expanded=False):
+    with st.expander("Statistical Moments (Skewness & Kurtosis)", expanded=False):
         from .velocity_magnitude_stats import display_statistics_table
         
         # Compute statistics from first available file

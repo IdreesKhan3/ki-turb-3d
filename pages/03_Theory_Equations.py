@@ -23,7 +23,7 @@ def main():
     st.title("📚 Theory & Equations")
     
     # Navigation tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📐 NS-Equations", "🔬 LBM Formulation", "⚛️ D3Q19 Lattice Visualization", "🔧 MRT Matrix Generator"])
+    tab1, tab2, tab3, tab4 = st.tabs(["NS-Equations", "LBM Formulation", "D3Q19 Lattice Visualization", "MRT Matrix Generator"])
     
     with tab1:
         st.header("From Navier-Stokes to LBM")
@@ -99,7 +99,7 @@ def main():
             The 19×19 transformation matrix $\mathbf{M}$ is constructed using the orthogonal moment basis ([d'Humières, 2002](/Citation#dhumieres2002)).
             The matrix transforms distribution functions $f_\alpha$ to moment space: $\mathbf{m} = \mathbf{M} \mathbf{f}$.
             """)
-            st.info("💡 *Full 19×19 matrix display available in MRT Matrix Generator tool (coming soon)*")
+            st.info("Full 19×19 matrix display available in MRT Matrix Generator tool")
             
             st.markdown("**Relaxation matrix $\mathbf{\Lambda}$ (diagonal):**")
             st.latex(r"""
@@ -317,7 +317,7 @@ def main():
     
     # D3Q19 Lattice Visualization Tab
     with tab3:
-        st.header("⚛️ D3Q19 Lattice Stencil Visualization")
+        st.header("D3Q19 Lattice Stencil Visualization")
         st.markdown("Interactive 3D visualization of the D3Q19 lattice stencil with full customization controls.")
         
         # Initialize session state for D3Q19 settings
@@ -326,10 +326,10 @@ def main():
         
         # Sidebar controls
         with st.sidebar:
-            st.header("🎨 D3Q19 Visualization Controls")
+            st.header("D3Q19 Visualization Controls")
             
             # Stencil Configuration
-            with st.expander("📐 Stencil Configuration", expanded=True):
+            with st.expander("Stencil Configuration", expanded=True):
                 st.session_state.d3q19_settings['show_vectors'] = st.checkbox(
                     "Show Vectors", 
                     value=st.session_state.d3q19_settings.get('show_vectors', True),
@@ -458,7 +458,7 @@ def main():
                 )
             
             # Faces and Edges
-            with st.expander("🎨 Faces & Edges", expanded=False):
+            with st.expander("Faces & Edges", expanded=False):
                 st.session_state.d3q19_settings['show_faces'] = st.checkbox(
                     "Show Colored Faces", 
                     value=st.session_state.d3q19_settings.get('show_faces', True),
@@ -571,9 +571,9 @@ def main():
             
             # Reset button
             st.markdown("---")
-            if st.button("♻️ Reset to Defaults", key="d3q19_reset"):
+            if st.button("Reset to Defaults", key="d3q19_reset"):
                 st.session_state.d3q19_settings = _default_d3q19_settings()
-                st.toast("Reset.", icon="♻️")
+                st.toast("Reset.")
                 st.rerun()
         
         # Generate and display visualization with theme-aware colors

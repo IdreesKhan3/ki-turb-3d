@@ -228,48 +228,41 @@ def main() -> None:
     # Software Citation Section
     # =========================
     st.subheader("How to cite this software")
-    st.markdown("If you use KI-TURB 3D in your research, please cite it using one of the formats below.")
-    
+    st.markdown(
+        "If you use **KI-TURB 3D** in your research, please cite the specific released version used."
+    )
+
     # BibTeX format
     st.markdown("**BibTeX format:**")
     bibtex_citation = dedent(
         r"""
         @software{ki_turb_3d,
-          title = {KI-TURB 3D: Turbulence Analysis & Visualization Suite},
-          author = {Your Last Name, Your First Name},
-          year = {2025},
-          url = {https://github.com/username/repository},
+          title   = {KI-TURB 3D: Turbulence Analysis and Visualization Suite},
+          author  = {Idrees, Khan},
+          year    = {2025},
           version = {1.0.0},
-          doi = {10.5281/zenodo.XXXXXXX},
+          url     = {https://github.com/USERNAME/ki-turb-3d},
           license = {MIT}
         }
         """
     ).strip()
     st.code(bibtex_citation, language="bibtex")
-    
+
     # APA format
     st.markdown("**APA format:**")
-    apa_citation = "Your Last Name, Y. F. (2025). KI-TURB 3D: Turbulence Analysis & Visualization Suite (Version 1.0.0) [Computer software]. https://github.com/username/repository"
+    apa_citation = (
+        "Idrees, K. (2025). "
+        "KI-TURB 3D: Turbulence Analysis and Visualization Suite "
+        "(Version 1.0.0) [Computer software]. "
+        "https://github.com/USERNAME/ki-turb-3d"
+    )
     st.code(apa_citation, language="text")
-    
-    st.info("**Note:** Replace the placeholder information (author name, repository URL, DOI) with your actual details. The DOI will be available after publication through Zenodo or the journal.")
-    
-    # CITATION.cff file
-    st.markdown("**CITATION.cff file (Citation File Format):**")
-    citation_cff_path = project_root / "CITATION.cff"
-    if citation_cff_path.exists():
-        with open(citation_cff_path, "r", encoding="utf-8") as f:
-            citation_cff_content = f.read()
 
-        st.code(citation_cff_content, language="yaml")
-        st.download_button(
-            label="Download CITATION.cff",
-            data=citation_cff_content.encode("utf-8"),
-            file_name="CITATION.cff",
-            mime="text/yaml",
-        )
-    else:
-        st.warning("CITATION.cff file not found in the project root.")
+    st.info(
+        "A persistent DOI is not yet assigned for this software. "
+        "Please use the software version and repository URL for citation. "
+        "A DOI will be added in a future release."
+    )
 
     st.divider()
 

@@ -213,7 +213,7 @@ def parse_directions_input(input_str, default_list):
     parts = [s.strip() for s in input_str.replace(',', ' ').split() if s.strip()]
     
     if len(parts) != 19:
-        st.warning(f"Direction vector must have exactly 19 values. Found {len(parts)}. Using defaults temporarily.")
+        st.warning(f"Direction vector must have exactly 19 values. Found {len(parts)}. Using default values.")
         return default_list
     
     try:

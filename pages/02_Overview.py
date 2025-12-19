@@ -155,7 +155,7 @@ def main():
     # Apply theme CSS (persists across pages)
     inject_theme_css()
     
-    st.title("📊 Overview")
+    st.title("Overview")
     
     # Get data directories from session state (support multiple directories)
     data_dirs = st.session_state.get("data_directories", [])
@@ -238,7 +238,7 @@ def main():
     
     # Display parameters - show comparison if multiple, single view if one
     if len(data_dirs) > 1:
-        st.header("📊 Simulation Parameters Comparison")
+        st.header("Simulation Parameters Comparison")
         
         # Create comparison table
         comparison_data = []
@@ -362,7 +362,7 @@ def main():
     has_validation = any(sim['mach_number'] is not None or sim['knudsen_number'] is not None or sim['compressibility'] is not None for sim in all_simulations_data)
     
     if has_validation:
-        st.header("🔬 Physics Validation")
+        st.header("Physics Validation")
         
         if len(data_dirs) > 1:
             # Comparison table for multiple simulations
@@ -407,7 +407,7 @@ def main():
             if validation_data:
                 validation_df = pd.DataFrame(validation_data)
                 st.dataframe(validation_df, use_container_width=True, hide_index=True)
-                st.caption("💡 N/A values indicate missing required files or data for computation")
+                st.caption("N/A values indicate missing required files or data for computation")
         else:
             # Single simulation - detailed view
             sim = all_simulations_data[0]
@@ -517,18 +517,18 @@ def main():
         for sim in all_simulations_data:
             files = sim['files']
             row = {'Directory': sim['directory']}
-            row['Real Turbulence Stats'] = "✅" if len(files['real_turb_stats']) > 0 else "❌"
-            row['Energy Spectra'] = "✅" if len(files['spectrum']) > 0 else "❌"
-            row['Normalized Spectra'] = "✅" if len(files['norm_spectrum']) > 0 else "❌"
-            row['Structure Functions'] = "✅" if (len(files['structure_functions_txt']) > 0 or len(files['structure_functions_bin']) > 0) else "❌"
-            row['Flatness'] = "✅" if len(files['flatness']) > 0 else "❌"
-            row['Isotropy'] = "✅" if len(files['isotropy']) > 0 else "❌"
-            row['Spectral Turbulence Stats'] = "✅" if len(files['spectral_turb_stats']) > 0 else "❌"
+            row['Real Turbulence Stats'] = "Yes" if len(files['real_turb_stats']) > 0 else "No"
+            row['Energy Spectra'] = "Yes" if len(files['spectrum']) > 0 else "No"
+            row['Normalized Spectra'] = "Yes" if len(files['norm_spectrum']) > 0 else "No"
+            row['Structure Functions'] = "Yes" if (len(files['structure_functions_txt']) > 0 or len(files['structure_functions_bin']) > 0) else "No"
+            row['Flatness'] = "Yes" if len(files['flatness']) > 0 else "No"
+            row['Isotropy'] = "Yes" if len(files['isotropy']) > 0 else "No"
+            row['Spectral Turbulence Stats'] = "Yes" if len(files['spectral_turb_stats']) > 0 else "No"
             availability_data.append(row)
         
         availability_df = pd.DataFrame(availability_data)
         st.dataframe(availability_df, use_container_width=True, hide_index=True)
-        st.caption("💡 ❌ indicates the file type is not found in that directory. ✅ means files are available.")
+        st.caption("No indicates the file type is not found in that directory. Yes means files are available.")
     else:
         # Single simulation - original checklist
         files = all_simulations_data[0]['files']
@@ -543,7 +543,7 @@ def main():
         }
         
         for item, available in checklist.items():
-            status = "✅" if available else "❌"
+            status = "Yes" if available else "No"
             st.markdown(f"{status} {item}")
     
     # Theory Equations Section

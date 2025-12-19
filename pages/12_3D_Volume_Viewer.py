@@ -146,7 +146,7 @@ def _create_slice_surface(x_coords, y_coords, z_coords, field_slice, vmin, vmax,
 def main():
     inject_theme_css()
     
-    st.title("🔬 3D Volume Viewer")
+    st.title("3D Volume Viewer")
     st.markdown("**Interactive 3D Volume Visualization with ParaView-like Controls**")
 
     # Get data directories
@@ -367,23 +367,23 @@ def main():
         
         # Verify data is valid (check for NaN/Inf)
         if np.any(np.isnan(velocity)) or np.any(np.isinf(velocity)):
-            st.warning(f"⚠️ File {filename} contains NaN or Inf values. Visualization may be incorrect.")
+            st.warning(f"File {filename} contains NaN or Inf values. Visualization may be incorrect.")
         
         # Display file info
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.success(f"✅ Loaded: {Path(selected_file).name}")
+            st.success(f"Loaded: {Path(selected_file).name}")
         with col2:
-            st.info(f"📐 Grid: {nx} × {ny} × {nz}")
+            st.info(f"Grid: {nx} × {ny} × {nz}")
         with col3:
             total_points = nx * ny * nz
-            st.info(f"📊 Points: {total_points:,}")
+            st.info(f"Points: {total_points:,}")
 
         # =========================
         # Visualization Options
         # =========================
         st.sidebar.markdown("---")
-        st.sidebar.header("🎨 Visualization")
+        st.sidebar.header("Visualization")
         
         field_type = st.sidebar.selectbox(
             "Field to visualize:",
@@ -490,18 +490,33 @@ def main():
             )
 
         if show_iso:
-            # Special threshold slider for Q_S^S method (based on paper thresholds: 2.5, 3.5, 5.0, 6.5)
+            # Special threshold slider for Q_S^S method 
             if field_type == "Q_S^S":
-                st.sidebar.markdown("**Q_S^S Threshold (Paper values: 2.5-6.5)**")
-                qss_threshold = st.sidebar.slider(
-                    "Q_S^S threshold",
-                    min_value=0.0, max_value=10.0,
-                    value=5.0,
-                    step=0.1,
-                    help="Paper thresholds: 32³=2.5, 64³=3.5, 128³=5.0, 256³=6.5",
-                    key="qss_threshold"
+                st.sidebar.markdown("**Q_S^S Threshold (log10 scale; actual value = 10^slider)**")
+                # qss_threshold = st.sidebar.slider(  # linear scale
+                #     "Q_S^S threshold",
+                #     min_value=0.0, max_value=10.0,
+                #     value=5.0,
+                #     step=0.1,
+                #     help="Paper thresholds: 32³=2.5, 64³=3.5, 128³=5.0, 256³=6.5",
+                #     key="qss_threshold"
+                # )
+                # iso_value = qss_threshold
+                qss_max = float(np.nanmax(field_ds))
+                qss_max = max(qss_max, 1e-30)
+                
+                log_iso = st.sidebar.slider(
+                    "log10(Q_S^S threshold)",
+                    min_value=-12.0,
+                    max_value=float(np.log10(qss_max)),
+                    value=float(np.log10(0.5 * qss_max)),
+                    step=0.05,
+                    key="log_qss_threshold"
                 )
-                iso_value = qss_threshold
+                
+                iso_value = 10.0 ** log_iso
+
+
             else:
                 iso_min, iso_max = float(vrange[0]), float(vrange[1])
                 if iso_max <= iso_min:
@@ -560,7 +575,7 @@ def main():
 
         # Plot Style (simplified for 3D)
         st.sidebar.markdown("---")
-        with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
+        with st.sidebar.expander("Plot Style (persistent)", expanded=False):
             # Initialize plot style
             if "plot_style_3d" not in st.session_state:
                 st.session_state.plot_style_3d = {}

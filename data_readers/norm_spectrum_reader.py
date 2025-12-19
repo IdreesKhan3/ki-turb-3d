@@ -4,8 +4,7 @@ Reads norm_*.dat files (normalized spectrum with Pope model)
 """
 
 import numpy as np
-from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple
 
 
 def read_norm_spectrum_file(filepath: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:

@@ -88,7 +88,7 @@ def _get_title_dict(ps, title_text):
     )
 
 def apply_plot_style(fig, ps):
-    # Temporarily clear plot_title if show_plot_title is False to prevent centralized function from setting it
+    # Clear plot_title if show_plot_title is False to prevent centralized function from setting it
     original_plot_title = ps.get("plot_title", "")
     if not ps.get("show_plot_title", False):
         ps["plot_title"] = ""
@@ -207,7 +207,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
     # Create unique key prefix for all widgets
     key_prefix = f"realiso_{plot_key}"
 
-    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
+    with st.sidebar.expander("Plot Style (persistent)", expanded=False):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
@@ -421,7 +421,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
 
         st.markdown("---")
         reset_pressed = False
-        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("Reset Plot Style", key=f"{key_prefix}_reset"):
                 # 1) Reset the underlying style dict
                 st.session_state.plot_styles[selected_plot] = {}
                 
@@ -530,7 +530,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
                     if k in st.session_state:
                         del st.session_state[k]
                 
-                st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
+                st.toast(f"Reset style for '{selected_plot}'.")
                 reset_pressed = True
                 st.rerun()
 
@@ -757,7 +757,7 @@ def main():
     
     if eps_file is None or not eps_file.exists():
         st.error(f"eps_real_validation.csv not found in dataset folder: {data_dir}")
-        st.info(f"💡 Looking for files matching: eps_real_validation*.csv")
+        st.info(f"Looking for files matching: eps_real_validation*.csv")
         st.info(f"📂 Current directory: {data_dir}")
         # Show what files are actually in the directory
         csv_files = list(data_dir.glob("*.csv"))
@@ -828,7 +828,7 @@ def main():
                 k, st.session_state.axis_labels_real_iso[k], key=f"realiso_ax_{k}"
             )
 
-        if st.button("♻️ Reset labels/legends"):
+        if st.button("Reset labels/legends"):
             st.session_state.real_iso_legends = {
                 "Ex": "E<sub>x</sub>/E<sub>tot</sub>", 
                 "Ey": "E<sub>y</sub>/E<sub>tot</sub>", 
@@ -851,7 +851,7 @@ def main():
                 "lumley_y": "η = (-II<sub>b</sub>/3)<sup>1/2</sup>",
                 "convergence": "Running standard deviation",
             }
-            st.toast("Reset.", icon="♻️")
+            st.toast("Reset.")
             st.rerun()
 
     # Sidebar: analysis controls

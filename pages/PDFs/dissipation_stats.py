@@ -182,7 +182,7 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
             if 'nu' in params:
                 nu_from_file = params['nu']
         except Exception as e:
-            st.sidebar.warning(f"⚠️ Error reading simulation.input: {e}")
+            st.sidebar.warning(f"Error reading simulation.input: {e}")
     
     # Set default value: use file value if available, otherwise use a reasonable default
     default_nu = nu_from_file if nu_from_file is not None else 0.004
@@ -191,7 +191,7 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
     if nu_from_file is not None:
         st.sidebar.info(f"📄 Viscosity from simulation.input: {nu_from_file:.6f}")
     else:
-        st.sidebar.warning("⚠️ Viscosity not found in simulation.input. Please enter manually or check parameter file.")
+        st.sidebar.warning("Viscosity not found in simulation.input. Please enter manually or check parameter file.")
     
     nu_help = "Kinematic viscosity used in dissipation calculation: ε = 2ν S_ij S_ij"
     if nu_from_file is not None:
@@ -234,7 +234,7 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
         return
     
     # Plot parameters
-    st.sidebar.header("📊 Plot Parameters")
+    st.sidebar.header("Plot Parameters")
     pdf_bins = st.sidebar.slider("PDF bins", 50, 500, 100, 10, key="dissipation_pdf_bins")
     normalize_pdf = st.sidebar.checkbox(
         "Normalize by mean (ε/⟨ε⟩)",
@@ -258,7 +258,7 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
                 velocity = vti_data['velocity']
                 
                 if velocity is None or len(velocity.shape) != 4:
-                    st.warning(f"⚠️ {filename}: Invalid velocity shape")
+                    st.warning(f"{filename}: Invalid velocity shape")
                     continue
                 
                 # Try to get viscosity from metadata, parameter file, or use sidebar value
@@ -298,7 +298,7 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
     # ============================================
     # Statistics Section
     # ============================================
-    with st.expander("📈 Statistical Moments (Skewness & Kurtosis)", expanded=False):
+    with st.expander("Statistical Moments (Skewness & Kurtosis)", expanded=False):
         from .velocity_magnitude_stats import display_statistics_table
         
         # Compute statistics from first available file

@@ -6,8 +6,7 @@ Reads VTK ImageData (.vti) files written by bin_for_vec_field subroutine
 import numpy as np
 import struct
 import xml.etree.ElementTree as ET
-from pathlib import Path
-from typing import Dict, Tuple, Optional
+from typing import Dict
 
 
 def read_vti_file(filepath: str) -> Dict:

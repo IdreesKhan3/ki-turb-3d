@@ -377,7 +377,7 @@ def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,
         return
     
     # Plot parameters
-    st.sidebar.header("📊 Plot Parameters")
+    st.sidebar.header("Plot Parameters")
     pdf_bins = st.sidebar.slider("Velocity PDF bins", 50, 500, 100, 10, key="velocity_pdf_bins")
     mag_bins = st.sidebar.slider("Velocity Magnitude PDF bins", 50, 500, 100, 10, key="velocity_mag_pdf_bins")
     normalize_pdf = st.sidebar.checkbox(
@@ -411,7 +411,7 @@ def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,
                     velocity = vti_data['velocity']
                     
                     if velocity is None or len(velocity.shape) != 4:
-                        st.warning(f"⚠️ {filename}: Invalid velocity shape")
+                        st.warning(f"{filename}: Invalid velocity shape")
                         continue
                     
                     # Compute PDF for each component
@@ -436,7 +436,7 @@ def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,
                     velocity = vti_data['velocity']
                     
                     if velocity is None or len(velocity.shape) != 4:
-                        st.warning(f"⚠️ {filename}: Invalid velocity shape")
+                        st.warning(f"{filename}: Invalid velocity shape")
                         continue
                     
                     # Compute PDF
@@ -454,7 +454,7 @@ def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,
     # ============================================
     # Statistics Section
     # ============================================
-    with st.expander("📈 Statistical Moments (Skewness & Kurtosis)", expanded=False):
+    with st.expander("Statistical Moments (Skewness & Kurtosis)", expanded=False):
         # Compute statistics from first available file
         stats_dict = {}
         if selected_files_pdf or selected_files_mag:

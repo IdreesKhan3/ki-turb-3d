@@ -61,7 +61,7 @@ def _load_velocity_file(filepath: str):
 # -----------------------------
 def main():
     inject_theme_css()
-    st.title("📊 PDFs")
+    st.title("PDFs")
     
     # Get data directories
     data_dirs = st.session_state.get("data_directories", [])

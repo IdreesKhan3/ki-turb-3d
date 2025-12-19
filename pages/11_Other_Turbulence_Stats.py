@@ -75,7 +75,7 @@ def apply_plot_style(fig, ps):
     if ps.get("show_plot_title", False) and (not ps.get("plot_title") or ps.get("plot_title") == ""):
         ps["plot_title"] = "Custom Multi-Trace Plot"
     
-    # Temporarily clear plot_title if show_plot_title is False to prevent centralized function from setting it
+    # Clear plot_title if show_plot_title is False to prevent centralized function from setting it
     original_plot_title = ps.get("plot_title", "")
     if not ps.get("show_plot_title", False):
         ps["plot_title"] = ""
@@ -123,7 +123,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups):
 def main():
     inject_theme_css()
     
-    st.title("📊 Other Turbulence Stats")
+    st.title("Other Turbulence Stats")
 
     # Get data directories from session state (support multiple directories)
     data_dirs = st.session_state.get("data_directories", [])
@@ -276,7 +276,7 @@ def main():
     # =========================
     # Custom Plotting Section
     # =========================
-    st.header("📈 Custom Plotting")
+    st.header("Custom Plotting")
     
     if not all_dataframes:
         st.info("No CSV files found. Please load data from the Overview page.")

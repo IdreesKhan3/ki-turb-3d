@@ -4,9 +4,6 @@ Reads turbulence_stats*.csv and eps_real_validation_*.csv files
 """
 
 import pandas as pd
-import numpy as np
-from pathlib import Path
-from typing import Dict, Optional
 
 
 def read_csv_data(filepath: str) -> pd.DataFrame:

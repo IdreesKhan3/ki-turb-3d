@@ -201,7 +201,7 @@ def _get_title_dict(ps, title_text):
     )
 
 def apply_plot_style(fig, ps):
-    # Temporarily clear plot_title if show_plot_title is False to prevent centralized function from setting it
+    # Clear plot_title if show_plot_title is False to prevent centralized function from setting it
     original_plot_title = ps.get("plot_title", "")
     if not ps.get("show_plot_title", False):
         ps["plot_title"] = ""
@@ -312,7 +312,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
     # Create unique key prefix for all widgets
     key_prefix = f"structure_{plot_key}"
 
-    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
+    with st.sidebar.expander("Plot Style (persistent)", expanded=False):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
@@ -499,7 +499,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
 
         st.markdown("---")
         reset_pressed = False
-        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("Reset Plot Style", key=f"{key_prefix}_reset"):
             st.session_state.plot_styles[selected_plot] = {}
             
             # Clear widget state so widgets re-read from defaults on next run
@@ -604,7 +604,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
                 if k in st.session_state:
                     del st.session_state[k]
             
-            st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
+            st.toast(f"Reset style for '{selected_plot}'.")
             reset_pressed = True
             st.rerun()
 
@@ -640,7 +640,7 @@ def main():
     # Apply theme CSS (persists across pages)
     inject_theme_css()
     
-    st.title("📊 Structure Functions")
+    st.title("Structure Functions")
 
     # Get data directories from session state (support multiple directories)
     data_dirs = st.session_state.get("data_directories", [])
@@ -791,7 +791,7 @@ def main():
     
     # Show file counts per simulation (helpful for debugging)
     if len(sim_groups) > 1:
-        with st.sidebar.expander("📊 File counts", expanded=False):
+        with st.sidebar.expander("File counts", expanded=False):
             for sim_prefix in sorted(file_lengths.keys()):
                 count = file_lengths[sim_prefix]
                 st.text(f"{sim_prefix}: {count} files")
@@ -874,7 +874,7 @@ def main():
             "Anomaly y-label", st.session_state.axis_labels_structure.get("y_anom", "ξ<sub>p</sub> - p/3"), key="ax_struct_yanom"
         )
 
-        if st.button("♻️ Reset labels/legends"):
+        if st.button("Reset labels/legends"):
             st.session_state.structure_legend_names = {k: k.replace("_", " ").title() for k in sim_groups.keys()}
             st.session_state.axis_labels_structure.update({
                 "x_r": "Separation distance r",
@@ -883,7 +883,7 @@ def main():
                 "y_ess": "S<sub>p</sub>(r)",
                 "y_anom": "ξ<sub>p</sub> - p/3",
             })
-            st.toast("Reset.", icon="♻️")
+            st.toast("Reset.")
             st.rerun()
 
     # Full style sidebar

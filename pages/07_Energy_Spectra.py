@@ -193,7 +193,7 @@ def _get_title_dict(ps, title_text):
     )
 
 def apply_plot_style(fig, ps):
-    # Temporarily clear plot_title if show_plot_title is False to prevent centralized function from setting it
+    # Clear plot_title if show_plot_title is False to prevent centralized function from setting it
     original_plot_title = ps.get("plot_title", "")
     if not ps.get("show_plot_title", False):
         ps["plot_title"] = ""
@@ -287,7 +287,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list
     # Create unique key prefix for all widgets
     key_prefix = f"energy_{plot_key}"
 
-    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
+    with st.sidebar.expander("Plot Style (persistent)", expanded=False):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
@@ -479,7 +479,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list
 
         st.markdown("---")
         reset_pressed = False
-        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("Reset Plot Style", key=f"{key_prefix}_reset"):
                 st.session_state.plot_styles[selected_plot] = {}
                 
                 # Clear widget state so widgets re-read from defaults on next run
@@ -592,7 +592,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list
                     if k in st.session_state:
                         del st.session_state[k]
                 
-                st.toast(f"Reset style for '{selected_plot}'.", icon="♻️")
+                st.toast(f"Reset style for '{selected_plot}'.")
                 reset_pressed = True
                 st.rerun()
 
@@ -610,7 +610,7 @@ def main():
     # Apply theme CSS (persists across pages)
     inject_theme_css()
     
-    st.title("📈 Energy Spectra")
+    st.title("Energy Spectra")
 
     st.session_state.setdefault("spectrum_legend_names", {})
     st.session_state.setdefault("norm_legend_names", {})
@@ -667,7 +667,7 @@ def main():
 
         if not spectrum_files and not norm_files:
             st.error("No spectrum*.dat or norm*.dat files found in the selected directories.")
-            st.info("💡 Switch to 'Custom Files' mode to select files from any location, or select multiple directories in the main app.")
+            st.info("Switch to 'Custom Files' mode to select files from any location, or select multiple directories in the main app.")
             return
         
         # Use first directory for metadata storage
@@ -890,7 +890,7 @@ def main():
             )
 
             st.markdown("---")
-            if st.button("♻️ Reset labels/legends"):
+            if st.button("Reset labels/legends"):
                 st.session_state.spectrum_legend_names = {k: _default_labelify(k) for k in sim_groups.keys()}
                 st.session_state.norm_legend_names = {k: _default_labelify(k) for k in norm_groups.keys()}
                 st.session_state.axis_labels_raw = {"x": "Wavenumber k", "y": "Energy spectrum E(k)"}
@@ -898,7 +898,7 @@ def main():
                     "x": "Normalized wavenumber kη",
                     "y": "Normalized spectrum E<sub>norm</sub>(kη)",
                 }
-                st.toast("Reset.", icon="♻️")
+                st.toast("Reset.")
                 st.rerun()
 
     # Full plot style sidebar (includes backgrounds, ticks, per-sim, highlight)

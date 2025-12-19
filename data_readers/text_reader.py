@@ -4,8 +4,7 @@ Reads structure_functions_*.txt and flatness_data*_*.txt files
 """
 
 import numpy as np
-from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple
 
 
 def read_structure_function_txt(filepath: str) -> Tuple[np.ndarray, np.ndarray]:
