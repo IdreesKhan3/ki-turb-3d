@@ -151,7 +151,7 @@ REFERENCES = [
         "short": "Yu et al. (2006)",
         "full": (
             "Yu, H., Luo, L.-S., & Girimaji, S. S. (2006). LES of turbulent square jet flow using an MRT lattice "
-            "Boltzmann model. Computers & Fluids, 35(8–9), 957–965."
+            "Boltzmann model. Computers & Fluids, 35(8-9), 957-965."
         ),
     },
     {
@@ -238,10 +238,10 @@ def main() -> None:
         r"""
         @software{ki_turb_3d,
           title   = {KI-TURB 3D: Turbulence Analysis and Visualization Suite},
-          author  = {Idrees, Khan},
+          author  = {Muhammad Idrees Khan},
           year    = {2025},
           version = {1.0.0},
-          url     = {https://github.com/USERNAME/ki-turb-3d},
+          url     = {https://github.com/IdreesKhan3/ki-turb-3d},
           license = {MIT}
         }
         """
@@ -251,10 +251,10 @@ def main() -> None:
     # APA format
     st.markdown("**APA format:**")
     apa_citation = (
-        "Idrees, K. (2025). "
+        "Khan, M. I. (2025). "
         "KI-TURB 3D: Turbulence Analysis and Visualization Suite "
         "(Version 1.0.0) [Computer software]. "
-        "https://github.com/USERNAME/ki-turb-3d"
+        "https://github.com/IdreesKhan3/ki-turb-3d"
     )
     st.code(apa_citation, language="text")
 

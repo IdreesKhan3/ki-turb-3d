@@ -5,14 +5,13 @@ type: software
 title: "KI-TURB 3D: Turbulence Analysis and Visualization Suite"
 
 version: 1.0.0
-date-released: 2025-12-15
+date-released: 2025-12-19
 
 authors:
-  - given-names: "Idrees"
+  - given-names: "Muhammad Idrees"
     family-names: "Khan"
-    orcid: "https://orcid.org/0009-0003-0046-821X"  
-    affiliation: "University of Rome"
-    email: "email@example.com"              
+    orcid: "https://orcid.org/0009-0003-0046-821X"
+    affiliation: "University of Rome 'Tor Vergata'"
 
 keywords:
   - turbulence
@@ -26,13 +25,13 @@ keywords:
 
 license: MIT
 
-repository-code: "https://github.com/USERNAME/ki-turb-3d"
-url: "https://github.com/USERNAME/ki-turb-3d"
+repository-code: "https://github.com/IdreesKhan3/ki-turb-3d"
+url: "https://github.com/IdreesKhan3/ki-turb-3d"
 
 abstract: >
-  KI-TURB 3D is a web-based application for analysis and visualization of
-  turbulence data from Lattice Boltzmann Method (LBM) simulations, including
+  KI-TURB 3D is a web-based scientific software for the analysis and visualization
+  of turbulence data from Lattice Boltzmann Method (LBM) simulations, including
   Direct Numerical Simulation (DNS) and Large Eddy Simulation (LES).
-  The framework is designed for homogeneous isotropic turbulence (HIT)
-  and supports Multiple Relaxation Time (MRT), Single Relaxation Time (SRT),
+  The framework is designed for homogeneous isotropic turbulence (HIT) and
+  supports Multiple Relaxation Time (MRT), Single Relaxation Time (SRT),
   Bhatnagar-Gross-Krook (BGK), and Two Relaxation Time (TRT) formulations.
