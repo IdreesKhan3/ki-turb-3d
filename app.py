@@ -337,6 +337,90 @@ def main():
         
         st.markdown("---")
         
+        # Privacy Settings - Streamlit Telemetry Toggle
+        with st.expander("⚙️ Privacy Settings", expanded=False):
+            st.caption("**Streamlit Anonymous Telemetry**")
+            
+            # Check current telemetry setting from Streamlit config
+            import os
+            from pathlib import Path
+            
+            config_dir = Path.home() / ".streamlit"
+            config_file = config_dir / "config.toml"
+            
+            # Read current setting from config file
+            current_telemetry = True  # Default Streamlit behavior
+            if config_file.exists():
+                try:
+                    with open(config_file, 'r') as f:
+                        content = f.read()
+                        if 'gatherUsageStats' in content:
+                            # Parse the setting
+                            import re
+                            match = re.search(r'gatherUsageStats\s*=\s*(true|false)', content, re.IGNORECASE)
+                            if match:
+                                current_telemetry = match.group(1).lower() == 'true'
+                except:
+                    pass
+            
+            telemetry_enabled = st.checkbox(
+                "Enable anonymous usage statistics",
+                value=current_telemetry,
+                help="Streamlit collects anonymous telemetry (version, OS, Python version). Your data and code are never sent. Disable for complete privacy.",
+                key="telemetry_toggle"
+            )
+            
+            # Update config file if changed
+            if telemetry_enabled != current_telemetry:
+                try:
+                    # Create .streamlit directory if it doesn't exist
+                    config_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # Read existing config or create new
+                    existing_config = ""
+                    if config_file.exists():
+                        with open(config_file, 'r') as f:
+                            existing_config = f.read()
+                    
+                    # Update or add gatherUsageStats setting
+                    import re
+                    new_value = "true" if telemetry_enabled else "false"
+                    
+                    if 'gatherUsageStats' in existing_config:
+                        # Replace existing setting
+                        updated_config = re.sub(
+                            r'gatherUsageStats\s*=\s*(true|false)',
+                            f'gatherUsageStats = {new_value}',
+                            existing_config,
+                            flags=re.IGNORECASE
+                        )
+                    else:
+                        # Add new setting
+                        if '[browser]' in existing_config:
+                            # Add under existing [browser] section
+                            updated_config = re.sub(
+                                r'\[browser\]',
+                                f'[browser]\ngatherUsageStats = {new_value}',
+                                existing_config,
+                                count=1
+                            )
+                        else:
+                            # Add new [browser] section
+                            updated_config = existing_config + f"\n\n[browser]\ngatherUsageStats = {new_value}\n"
+                    
+                    # Write updated config
+                    with open(config_file, 'w') as f:
+                        f.write(updated_config)
+                    
+                    st.success(f"✅ Telemetry {'enabled' if telemetry_enabled else 'disabled'}. Please **restart the app** for changes to take effect.")
+                    st.info("💡 Run: `streamlit run app.py` again")
+                except Exception as e:
+                    st.error(f"Failed to update config: {str(e)}")
+            
+            st.caption("ℹ️ This only affects Streamlit telemetry. Your turbulence data always stays local.")
+        
+        st.markdown("---")
+        
         st.subheader("Data Selection")
         
         # Mode selection: Single or Multiple directories

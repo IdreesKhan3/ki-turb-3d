@@ -138,6 +138,8 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
     
     st.header("Dissipation Rate PDF")
     st.markdown("Compare dissipation rate PDFs across different simulations/methods.")
+    axis_labels = st.session_state.get("axis_labels_pdfs", {})
+    legend_titles = st.session_state.get("legend_titles_pdfs", {})
     
     # Handle both single directory and multiple directories
     if isinstance(data_dir_or_dirs, (list, tuple)):
@@ -359,14 +361,18 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
             hovertemplate=f"ε = %{{x:.4e}}<br>PDF = %{{y:.4e}}<extra>{label_base}</extra>"
         ))
     
-    x_label = "ε / ⟨ε⟩" if normalize_pdf else "ε"
-    y_label = "⟨ε⟩ P(ε / ⟨ε⟩)" if normalize_pdf else "P(ε)"
+    x_label_default = "ε / ⟨ε⟩" if normalize_pdf else "ε"
+    y_label_default = "⟨ε⟩ P(ε / ⟨ε⟩)" if normalize_pdf else "P(ε)"
+    x_label = axis_labels.get("dissipation_x", x_label_default)
+    y_label = axis_labels.get("dissipation_y", y_label_default)
+    legend_title = legend_titles.get("dissipation_pdf", "")
     layout_kwargs = dict(
         xaxis_title=x_label,
         yaxis_title=y_label,
         height=ps.get("figure_height", 500) if ps else 500,
         hovermode='x unified',
-        legend=dict(x=1.02, y=1)
+        legend=dict(x=1.02, y=1),
+        legend_title_text=legend_title if legend_title else None
     )
     
     if ps:

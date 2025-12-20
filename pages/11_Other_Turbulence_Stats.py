@@ -34,7 +34,7 @@ from utils.plot_style import (
     resolve_line_style, render_per_sim_style_ui, render_axis_limits_ui, apply_axis_limits, 
     render_figure_size_ui, apply_figure_size, default_plot_style, apply_plot_style as apply_plot_style_base,
     plot_style_sidebar as shared_plot_style_sidebar, _get_palette, _axis_title_font, _tick_font,
-    get_tick_format, ensure_per_sim_defaults, render_legend_axis_labels_ui
+    get_tick_format, ensure_per_sim_defaults, render_legend_axis_labels_ui, convert_superscript
 )
 from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
@@ -62,7 +62,7 @@ def _get_title_dict(ps, title_text):
             font_color = "#000000"
     
     return dict(
-        text=title_text,
+        text=convert_superscript(title_text),
         font=dict(
             family=ps.get("font_family", "Arial"),
             size=ps.get("title_size", 16),

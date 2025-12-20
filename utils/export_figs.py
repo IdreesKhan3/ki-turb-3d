@@ -68,6 +68,16 @@ def export_panel(fig: Figure, out_dir: Path, base_name: str):
                 st.warning("Please select at least one format.")
                 return
             
+            # export-only copy (do not alter Streamlit rendering)
+            try:
+                fig_export = fig.full_copy()
+            except Exception:
+                fig_export = fig  # fallback if full_copy not available
+
+            # avoid PDF/SVG/PNG zero-line artifact at x=0/y=0
+            fig_export.update_xaxes(zeroline=False)
+            fig_export.update_yaxes(zeroline=False)
+            
             errors = []
             for f_label in fmts:
                 ext = _EXPORT_FORMATS[f_label]
@@ -82,7 +92,7 @@ def export_panel(fig: Figure, out_dir: Path, base_name: str):
                             kwargs["width"] = int(width_px)
                         if height_px > 0:
                             kwargs["height"] = int(height_px)
-                        fig.write_image(str(out), scale=scale, **kwargs)
+                        fig_export.write_image(str(out), scale=scale, **kwargs)
                 except Exception as e:
                     errors.append((out.name, str(e)))
             

@@ -313,6 +313,8 @@ def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,
     
     st.header("Velocity Magnitude PDF")
     st.markdown("Compare velocity component PDFs and velocity magnitude PDFs across different simulations/methods.")
+    axis_labels = st.session_state.get("axis_labels_pdfs", {})
+    legend_titles = st.session_state.get("legend_titles_pdfs", {})
     
     # Handle both single directory and multiple directories
     if isinstance(data_dir_or_dirs, (list, tuple)):
@@ -573,14 +575,18 @@ def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,
                     hovertemplate=f"w = %{{x:.4f}}<br>PDF = %{{y:.4e}}<extra>{label_base} - w</extra>"
                 ))
             
-            x_label_vel = "u / σ<sub>u</sub>" if normalize_pdf else "u"
-            y_label_vel = "σ<sub>u</sub> P(u / σ<sub>u</sub>)" if normalize_pdf else "P(u)"
+            x_label_vel_default = "u / σ<sub>u</sub>" if normalize_pdf else "u"
+            y_label_vel_default = "σ<sub>u</sub> P(u / σ<sub>u</sub>)" if normalize_pdf else "P(u)"
+            x_label_vel = axis_labels.get("velocity_x", x_label_vel_default)
+            y_label_vel = axis_labels.get("velocity_y", y_label_vel_default)
+            legend_title_vel = legend_titles.get("velocity_pdf", "")
             layout_kwargs = dict(
                 xaxis_title=x_label_vel,
                 yaxis_title=y_label_vel,
                 height=ps_pdf.get("figure_height", 500) if ps_pdf else 500,
                 hovermode='x unified',
-                legend=dict(x=1.02, y=1)
+                legend=dict(x=1.02, y=1),
+                legend_title_text=legend_title_vel if legend_title_vel else None
             )
             
             if ps_pdf:
@@ -659,14 +665,18 @@ def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,
                     hovertemplate=f"|u| = %{{x:.4f}}<br>PDF = %{{y:.4e}}<extra>{label_base}</extra>"
                 ))
             
-            x_label = "|u| / σ<sub>|u|</sub>" if normalize_mag else "|u|"
-            y_label = "σ<sub>|u|</sub> P(|u| / σ<sub>|u|</sub>)" if normalize_mag else "P(|u|)"
+            x_label_default = "|u| / σ<sub>|u|</sub>" if normalize_mag else "|u|"
+            y_label_default = "σ<sub>|u|</sub> P(|u| / σ<sub>|u|</sub>)" if normalize_mag else "P(|u|)"
+            x_label = axis_labels.get("velocity_mag_x", x_label_default)
+            y_label = axis_labels.get("velocity_mag_y", y_label_default)
+            legend_title_mag = legend_titles.get("velocity_mag_pdf", "")
             layout_kwargs = dict(
                 xaxis_title=x_label,
                 yaxis_title=y_label,
                 height=ps_mag.get("figure_height", 500) if ps_mag else 500,
                 hovermode='x unified',
-                legend=dict(x=1.02, y=1)
+                legend=dict(x=1.02, y=1),
+                legend_title_text=legend_title_mag if legend_title_mag else None
             )
             
             if ps_mag:

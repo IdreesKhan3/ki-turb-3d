@@ -20,10 +20,20 @@ def add_ess_inset(
     colors_palette: list,
     plot_style: dict,
     show_sl_theory: bool = True,
-    show_exp_anom: bool = True
+    show_exp_anom: bool = True,
+    inset_x_label: str = "p",
+    inset_y_label: str = "ξp - p/3",
+    inset_legend_sl: str = "SL94",
+    inset_legend_b93: str = "B93"
 ):
     """
     Adds the Anomaly (xi_p - p/3) inset to the ESS figure.
+    
+    Args:
+        inset_x_label: X-axis label for inset (default: "p")
+        inset_y_label: Y-axis label for inset (default: "ξp - p/3")
+        inset_legend_sl: Legend label for She-Leveque theory (default: "SL94")
+        inset_legend_b93: Legend label for experimental B93 (default: "B93")
     """
     # 1. Determine ranges and p values
     inset_ps = []
@@ -64,11 +74,13 @@ def add_ess_inset(
     
     inset_tick_font = dict(
         family=base_tick_font.get("family", "Arial"),
-        size=int(base_tick_font.get("size", 12) * inset_scale)
+        size=int(base_tick_font.get("size", 12) * inset_scale),
+        color=base_tick_font.get("color", "#000000")
     )
     inset_axis_font = dict(
         family=base_axis_font.get("family", "Arial"),
-        size=int(base_axis_font.get("size", 14) * inset_scale)
+        size=int(base_axis_font.get("size", 14) * inset_scale),
+        color=base_axis_font.get("color", "#000000")
     )
     
     # Grid settings from plot_style
@@ -103,7 +115,7 @@ def add_ess_inset(
         xaxis2=dict(
             domain=[0.77, 0.95],
             anchor="y2",
-            title=dict(text="p", font=inset_axis_font),
+            title=dict(text=inset_x_label, font=inset_axis_font),
             tickfont=inset_tick_font,
             type="linear",
             showgrid=grid_on_x,
@@ -126,7 +138,7 @@ def add_ess_inset(
         yaxis2=dict(
             domain=[0.3, 0.52],
             anchor="x2",
-            title=dict(text="ξp - p/3", font=inset_axis_font),
+            title=dict(text=inset_y_label, font=inset_axis_font),
             tickfont=inset_tick_font,
             type="linear",
             showgrid=grid_on_y,
@@ -192,7 +204,7 @@ def add_ess_inset(
         fig.add_trace(go.Scatter(
             x=inset_ps, y=theory_anom,
             mode="lines+markers",
-            name="She–Leveque 1994 (inset)",
+            name="She–Leveque 1994",
             line=dict(color=sl_color, dash="dash", width=inset_lw),
             marker=dict(symbol="diamond", size=inset_ms),
             xaxis="x2",
@@ -210,9 +222,100 @@ def add_ess_inset(
         fig.add_trace(go.Scatter(
             x=TABLE_P, y=exp_anom,
             mode="lines+markers",
-            name="Experiment B93 (inset)",
+            name="Experiment (B93)",
             line=dict(color=exp_color, width=inset_lw),
             marker=dict(symbol="x", size=inset_ms),
+            xaxis="x2",
+            yaxis="y2",
+            showlegend=False,
+            hoverinfo="skip"
+        ))
+    
+    # 5b. Add inset legend annotations (matching matplotlib ax_inset.legend approach)
+    # Position legend in lower left corner of inset, with line markers like matplotlib
+    legend_x_start = min(inset_ps) + 0.08 * (max(inset_ps) - min(inset_ps))
+    legend_font_size = int(inset_tick_font.get("size", 10) * 1.0)  # Same size as tick font for better readability
+    
+    # Vertical spacing between legend entries - increased for better separation
+    y_spacing = 0.15 * (inset_y_max - inset_y_min)
+    legend_y_start = inset_y_min + 0.12 * (inset_y_max - inset_y_min)
+    
+    legend_idx = 0
+    
+    # Add She-Leveque legend entry with line+marker
+    if show_sl_theory:
+        sl_color = plot_style.get("she_leveque_color", "#000000")
+        legend_y = legend_y_start + legend_idx * y_spacing
+        
+        # Add text label
+        fig.add_annotation(
+            text=inset_legend_sl,
+            xref="x2", yref="y2",
+            x=legend_x_start + 0.5,
+            y=legend_y,
+            showarrow=False,
+            font=dict(size=legend_font_size, color=axis_line_color),
+            xanchor="left",
+            yanchor="middle"
+        )
+        
+        # Add line marker (small line segment showing the dash style)
+        line_length = 0.35
+        fig.add_shape(
+            type="line",
+            x0=legend_x_start - 0.3, x1=legend_x_start + line_length - 0.3,
+            y0=legend_y, y1=legend_y,
+            line=dict(color=sl_color, dash="dash", width=1.5 * 0.7),
+            xref="x2", yref="y2"
+        )
+        
+        # Add diamond marker
+        fig.add_trace(go.Scatter(
+            x=[legend_x_start + (line_length/2) - 0.3],
+            y=[legend_y],
+            mode="markers",
+            marker=dict(symbol="diamond", size=3, color=sl_color),
+            xaxis="x2",
+            yaxis="y2",
+            showlegend=False,
+            hoverinfo="skip"
+        ))
+        
+        legend_idx += 1
+    
+    # Add B93 legend entry with line+marker
+    if show_exp_anom:
+        exp_color = plot_style.get("experimental_b93_color", "#00BFC4")
+        legend_y = legend_y_start + legend_idx * y_spacing
+        
+        # Add text label
+        fig.add_annotation(
+            text=inset_legend_b93,
+            xref="x2", yref="y2",
+            x=legend_x_start + 0.5,
+            y=legend_y,
+            showarrow=False,
+            font=dict(size=legend_font_size, color=axis_line_color),
+            xanchor="left",
+            yanchor="middle"
+        )
+        
+        # Add line segment
+        line_length = 0.35
+        fig.add_shape(
+            type="line",
+            x0=legend_x_start - 0.3, x1=legend_x_start + line_length - 0.3,
+            y0=legend_y, y1=legend_y,
+            line=dict(color=exp_color, width=1.5 * 0.7),
+            xref="x2", yref="y2"
+        )
+        
+        # Add x marker
+        fig.add_trace(go.Scatter(
+            x=[legend_x_start + (line_length/2) - 0.3],
+            y=[legend_y],
+            mode="markers",
+            marker=dict(symbol="x", size=4, color=exp_color),
             xaxis="x2",
             yaxis="y2",
             showlegend=False,

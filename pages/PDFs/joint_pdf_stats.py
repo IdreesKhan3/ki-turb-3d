@@ -369,6 +369,8 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
     
     st.header("Joint Probability Density Functions")
     st.markdown("Compare joint PDFs of turbulence quantities across different simulations/methods.")
+    axis_labels = st.session_state.get("axis_labels_pdfs", {})
+    legend_titles = st.session_state.get("legend_titles_pdfs", {})
     
     # Handle both single directory and multiple directories
     if isinstance(data_dir_or_dirs, (list, tuple)):
@@ -697,14 +699,18 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                     hovertemplate=f"|u| = %{{x:.4f}}<br>ε = %{{y:.4e}}<br>{z_label} = %{{z:.2f}}<extra>{label}</extra>"
                 ))
             
-            x_label_ud = "|u| / σ<sub>|u|</sub>" if normalize_pdf else "|u|"
-            y_label_ud = "ε / ⟨ε⟩" if normalize_pdf else "ε"
+            x_label_ud_default = "|u| / σ<sub>|u|</sub>" if normalize_pdf else "|u|"
+            y_label_ud_default = "ε / ⟨ε⟩" if normalize_pdf else "ε"
+            x_label_ud = axis_labels.get("joint_ud_x", x_label_ud_default)
+            y_label_ud = axis_labels.get("joint_ud_y", y_label_ud_default)
+            legend_title_ud = legend_titles.get("joint_ud_pdf", "")
             layout_kwargs_ud = dict(
                 xaxis_title=x_label_ud,
                 yaxis_title=y_label_ud,
                 height=ps_ud.get("figure_height", 500) if ps_ud else 500,
                 hovermode='closest',
-                legend=dict(x=1.02, y=1)
+                legend=dict(x=1.02, y=1),
+                legend_title_text=legend_title_ud if legend_title_ud else None
             )
             
             if ps_ud:
@@ -779,14 +785,18 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                     hovertemplate=f"|u| = %{{x:.4f}}<br>|ω| = %{{y:.4f}}<br>{z_label} = %{{z:.2f}}<extra>{label}</extra>"
                 ))
             
-            x_label_uo = "|u| / σ<sub>|u|</sub>" if normalize_pdf else "|u|"
-            y_label_uo = "|ω| / σ<sub>|ω|</sub>" if normalize_pdf else "|ω|"
+            x_label_uo_default = "|u| / σ<sub>|u|</sub>" if normalize_pdf else "|u|"
+            y_label_uo_default = "|ω| / σ<sub>|ω|</sub>" if normalize_pdf else "|ω|"
+            x_label_uo = axis_labels.get("joint_uo_x", x_label_uo_default)
+            y_label_uo = axis_labels.get("joint_uo_y", y_label_uo_default)
+            legend_title_uo = legend_titles.get("joint_uo_pdf", "")
             layout_kwargs_uo = dict(
                 xaxis_title=x_label_uo,
                 yaxis_title=y_label_uo,
                 height=ps_uo.get("figure_height", 500) if ps_uo else 500,
                 hovermode='closest',
-                legend=dict(x=1.02, y=1)
+                legend=dict(x=1.02, y=1),
+                legend_title_text=legend_title_uo if legend_title_uo else None
             )
             
             if ps_uo:
@@ -866,14 +876,18 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                     hovertemplate=f"ε = %{{x:.4e}}<br>|ω| = %{{y:.4f}}<br>{z_label} = %{{z:.2f}}<extra>{label}</extra>"
                 ))
             
-                x_label_do = "ε / ⟨ε⟩" if normalize_pdf else "ε"
-                y_label_do = "|ω| / σ<sub>|ω|</sub>" if normalize_pdf else "|ω|"
+                x_label_do_default = "ε / ⟨ε⟩" if normalize_pdf else "ε"
+                y_label_do_default = "|ω| / σ<sub>|ω|</sub>" if normalize_pdf else "|ω|"
+                x_label_do = axis_labels.get("joint_do_x", x_label_do_default)
+                y_label_do = axis_labels.get("joint_do_y", y_label_do_default)
+                legend_title_do = legend_titles.get("joint_do_pdf", "")
                 layout_kwargs_do = dict(
                     xaxis_title=x_label_do,
                     yaxis_title=y_label_do,
                 height=ps_do.get("figure_height", 500) if ps_do else 500,
                 hovermode='closest',
-                legend=dict(x=1.02, y=1)
+                    legend=dict(x=1.02, y=1),
+                    legend_title_text=legend_title_do if legend_title_do else None
             )
             
             if ps_do:
@@ -982,12 +996,16 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
             plot_name_rq = "R-Q Topological Space"
             ps_rq = get_plot_style_func(plot_name_rq) if get_plot_style_func else {}
             
+            x_label_rq = axis_labels.get("rq_x", "R")
+            y_label_rq = axis_labels.get("rq_y", "Q")
+            legend_title_rq = legend_titles.get("rq_pdf", "")
             layout_kwargs_rq = dict(
-                xaxis_title="R",
-                yaxis_title="Q",
+                xaxis_title=x_label_rq,
+                yaxis_title=y_label_rq,
                 height=ps_rq.get("figure_height", 500) if ps_rq else 500,
                 hovermode='closest',
-                legend=dict(x=1.02, y=1)
+                legend=dict(x=1.02, y=1),
+                legend_title_text=legend_title_rq if legend_title_rq else None
             )
             
             if ps_rq:

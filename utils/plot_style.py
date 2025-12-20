@@ -73,6 +73,35 @@ PLOTLY_MARKER_STYLES = [
 ]
 
 
+def convert_superscript(text):
+    """
+    Convert ^ followed by digits to Unicode superscript characters.
+    
+    Args:
+        text: Input string that may contain ^digit sequences
+    
+    Returns:
+        String with ^digit converted to superscript Unicode
+    """
+    superscript_map = {
+        '0': '⁰',
+        '1': '¹',
+        '2': '²',
+        '3': '³',
+        '4': '⁴',
+        '5': '⁵',
+        '6': '⁶',
+        '7': '⁷',
+        '8': '⁸',
+        '9': '⁹',
+    }
+    import re
+    def replace_match(match):
+        num = match.group(1)
+        return ''.join(superscript_map.get(d, d) for d in num)
+    return re.sub(r'\^(\d+)', replace_match, text)
+
+
 def resolve_line_style(sim_prefix, idx, colors, ps, style_key="per_sim_style", 
                        include_marker=False, default_marker="circle"):
     """
@@ -428,7 +457,21 @@ def _axis_title_font(ps):
     Returns:
         Font dictionary for axis titles
     """
-    return dict(family=ps.get("font_family", "Arial"), size=ps.get("axis_title_size", 14))
+    # Get font color from plot style (defaults based on template)
+    font_color = ps.get("font_color")
+    if font_color is None:
+        # Auto-detect from template if font_color not set
+        template = ps.get("template", "plotly_white")
+        if "dark" in template.lower():
+            font_color = "#d4d4d4"
+        else:
+            font_color = "#000000"
+    
+    return dict(
+        family=ps.get("font_family", "Arial"), 
+        size=ps.get("axis_title_size", 14),
+        color=font_color
+    )
 
 
 def _tick_font(ps):
@@ -441,7 +484,21 @@ def _tick_font(ps):
     Returns:
         Font dictionary for tick labels
     """
-    return dict(family=ps.get("font_family", "Arial"), size=ps.get("tick_font_size", 12))
+    # Get font color from plot style (defaults based on template)
+    font_color = ps.get("font_color")
+    if font_color is None:
+        # Auto-detect from template if font_color not set
+        template = ps.get("template", "plotly_white")
+        if "dark" in template.lower():
+            font_color = "#d4d4d4"
+        else:
+            font_color = "#000000"
+    
+    return dict(
+        family=ps.get("font_family", "Arial"), 
+        size=ps.get("tick_font_size", 12),
+        color=font_color
+    )
 
 
 def _default_labelify(name: str) -> str:
@@ -701,7 +758,7 @@ def render_plot_title_ui(ps, key_prefix=""):
         ps["plot_title"] = st.text_input(
             "Title text",
             value=ps.get("plot_title", ""),
-            help="Enter the title text for this plot",
+            help="Enter the title text for this plot. Use ^ followed by digits for superscripts (e.g., 512^3 displays as 512³).",
             key=f"{key_prefix}_plot_title"
         )
     return ps
@@ -761,7 +818,7 @@ def apply_plot_style(fig, ps):
                 size=ps.get("title_size", 16),
                 color=font_color
             ),
-            text=ps.get("plot_title")
+            text=convert_superscript(ps.get("plot_title"))
         )
     
     fig.update_layout(**layout_update)

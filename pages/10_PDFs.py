@@ -19,7 +19,7 @@ from pages.PDFs.joint_pdf_stats import render_joint_pdf_tab
 from utils.plot_style import resolve_line_style, apply_axis_limits, apply_figure_size
 from pages.PDFs.pdfs_plot_style import (
     get_plot_style, apply_plot_style,
-    _get_palette, plot_style_sidebar, export_panel
+    _get_palette, plot_style_sidebar, export_panel, ensure_label_state
 )
 from utils.report_builder import capture_button
 
@@ -105,16 +105,17 @@ def main():
     # Use first directory for metadata storage
     data_dir = Path(data_dirs[0]).resolve()
     
-    # Initialize plot styles
+    # Initialize plot styles and label state
     st.session_state.setdefault("plot_styles", {})
+    ensure_label_state()
     
     # Combine all files from all directories
     all_files = [Path(f).name for f in all_vti_files + all_hdf5_files]
-    
+
     # Plot style sidebar
     plot_names = ["Velocity PDF", "R-Q Topological Space", "Vorticity PDF", "Enstrophy PDF", "Velocity Magnitude PDF", "Dissipation PDF", "Velocity-Dissipation Joint PDF", "Velocity-Enstrophy Joint PDF", "Dissipation-Enstrophy Joint PDF"]
     if all_files:
-        plot_style_sidebar(data_dir, all_files, plot_names)
+        plot_style_sidebar(data_dir, all_files, plot_names, include_label_panel=True)
     
     # Create tabs
     tabs = st.tabs([

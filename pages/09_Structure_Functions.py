@@ -53,7 +53,7 @@ from utils.plot_style import (
     render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
     render_axis_scale_ui, render_tick_format_ui, render_axis_borders_ui,
     render_plot_title_ui, _get_palette, _normalize_plot_name,
-    resolve_line_style, render_per_sim_style_ui, ensure_per_sim_defaults
+    resolve_line_style, render_per_sim_style_ui, ensure_per_sim_defaults, convert_superscript
 )
 from pages.StructureFunctions.ess_inset import add_ess_inset
 
@@ -192,7 +192,7 @@ def _get_title_dict(ps, title_text):
             font_color = "#000000"
     
     return dict(
-        text=title_text,
+        text=convert_superscript(title_text),
         font=dict(
             family=ps.get("font_family", "Arial"),
             size=ps.get("title_size", 16),
@@ -271,6 +271,10 @@ def get_plot_style(plot_name: str):
     merged = default.copy()
     merged = apply_theme_to_plot_style(merged, current_theme)
     
+    # Store theme-determined backgrounds before applying user overrides
+    theme_plot_bgcolor = merged["plot_bgcolor"]
+    theme_paper_bgcolor = merged["paper_bgcolor"]
+    
     # Then apply user overrides (from plot_style) - this ensures user settings override theme
     for key, value in plot_style.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
@@ -278,6 +282,11 @@ def get_plot_style(plot_name: str):
             merged[key].update(value)
         else:
             merged[key] = value
+    
+    # Always restore theme-based backgrounds to ensure dark/light theme switches work correctly
+    # (backgrounds should never be persisted across theme changes)
+    merged["plot_bgcolor"] = theme_plot_bgcolor
+    merged["paper_bgcolor"] = theme_paper_bgcolor
     
     # Update She-Leveque and Experimental B93 curve colors for dark theme if they're still at light theme defaults
     if "Dark" in current_theme and (plot_name == "Anomalies (ξₚ − p/3)" or plot_name == "ESS Inset"):
@@ -662,7 +671,12 @@ def main():
         "y_sp": "Structure functions S<sub>p</sub>(r)",
         "x_ess": "S<sub>3</sub>(r)",
         "y_ess": "S<sub>p</sub>(r)",
+        "x_anom": "p",
         "y_anom": "ξ<sub>p</sub> - p/3",
+        "x_inset": "p",
+        "y_inset": "ξ<sub>p</sub> - p/3",
+        "inset_legend_sl": "SL94",
+        "inset_legend_b93": "B93",
     })
     st.session_state.setdefault("plot_styles", {})
 
@@ -870,8 +884,26 @@ def main():
         st.session_state.axis_labels_structure["y_ess"] = st.text_input(
             "ESS y-label", st.session_state.axis_labels_structure.get("y_ess", "S<sub>p</sub>(r)"), key="ax_struct_yess"
         )
+        st.session_state.axis_labels_structure["x_anom"] = st.text_input(
+            "Anomaly x-label", st.session_state.axis_labels_structure.get("x_anom", "p"), key="ax_struct_xanom"
+        )
         st.session_state.axis_labels_structure["y_anom"] = st.text_input(
             "Anomaly y-label", st.session_state.axis_labels_structure.get("y_anom", "ξ<sub>p</sub> - p/3"), key="ax_struct_yanom"
+        )
+        
+        st.markdown("---")
+        st.markdown("### Inset labels")
+        st.session_state.axis_labels_structure["x_inset"] = st.text_input(
+            "Inset x-label", st.session_state.axis_labels_structure.get("x_inset", "p"), key="ax_struct_x_inset"
+        )
+        st.session_state.axis_labels_structure["y_inset"] = st.text_input(
+            "Inset y-label", st.session_state.axis_labels_structure.get("y_inset", "ξ<sub>p</sub> - p/3"), key="ax_struct_y_inset"
+        )
+        st.session_state.axis_labels_structure["inset_legend_sl"] = st.text_input(
+            "Inset She-Leveque legend", st.session_state.axis_labels_structure.get("inset_legend_sl", "SL94"), key="ax_struct_legend_sl"
+        )
+        st.session_state.axis_labels_structure["inset_legend_b93"] = st.text_input(
+            "Inset B93 legend", st.session_state.axis_labels_structure.get("inset_legend_b93", "B93"), key="ax_struct_legend_b93"
         )
 
         if st.button("Reset labels/legends"):
@@ -881,7 +913,12 @@ def main():
                 "y_sp": "Structure functions S<sub>p</sub>(r)",
                 "x_ess": "S<sub>3</sub>(r)",
                 "y_ess": "S<sub>p</sub>(r)",
+                "x_anom": "p",
                 "y_anom": "ξ<sub>p</sub> - p/3",
+                "x_inset": "p",
+                "y_inset": "ξ<sub>p</sub> - p/3",
+                "inset_legend_sl": "SL94",
+                "inset_legend_b93": "B93",
             })
             st.toast("Reset.")
             st.rerun()
@@ -1163,7 +1200,11 @@ def main():
                     colors_palette=colors_ess,
                     plot_style=ps_inset,
                     show_sl_theory=show_sl_theory,
-                    show_exp_anom=show_exp_anom
+                    show_exp_anom=show_exp_anom,
+                    inset_x_label=st.session_state.axis_labels_structure.get("x_inset", "p"),
+                    inset_y_label=st.session_state.axis_labels_structure.get("y_inset", "ξ<sub>p</sub> - p/3"),
+                    inset_legend_sl=st.session_state.axis_labels_structure.get("inset_legend_sl", "SL94"),
+                    inset_legend_b93=st.session_state.axis_labels_structure.get("inset_legend_b93", "B93")
                 )
             
             st.plotly_chart(fig_ess, width='stretch')
@@ -1227,7 +1268,7 @@ def main():
             fig_anom.add_hline(y=0, line_dash="dot", line_color="black", line_width=1)
 
             layout_kwargs_anom = dict(
-                xaxis_title="p",
+                xaxis_title=st.session_state.axis_labels_structure.get("x_anom", "p"),
                 yaxis_title=st.session_state.axis_labels_structure.get("y_anom", "ξ<sub>p</sub> - p/3"),
                 height=360,
                 legend_title="",

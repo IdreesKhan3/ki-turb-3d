@@ -230,6 +230,9 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
     st.header("Vorticity & Enstrophy PDFs")
     st.markdown("Compare vorticity magnitude and enstrophy PDFs across different simulations/methods.")
     
+    axis_labels = st.session_state.get("axis_labels_pdfs", {})
+    legend_titles = st.session_state.get("legend_titles_pdfs", {})
+
     # Handle both single directory and multiple directories
     if isinstance(data_dir_or_dirs, (list, tuple)):
         data_dirs = [Path(d).resolve() for d in data_dir_or_dirs]
@@ -446,14 +449,18 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
                     hovertemplate=f"|ω| = %{{x:.4f}}<br>PDF = %{{y:.4e}}<extra>{label_base}</extra>"
                 ))
             
-            x_label_vort = "|ω| / σ<sub>|ω|</sub>" if normalize_pdf else "|ω|"
-            y_label_vort = "σ<sub>|ω|</sub> P(|ω| / σ<sub>|ω|</sub>)" if normalize_pdf else "P(|ω|)"
+            x_label_vort_default = "|ω| / σ<sub>|ω|</sub>" if normalize_pdf else "|ω|"
+            y_label_vort_default = "σ<sub>|ω|</sub> P(|ω| / σ<sub>|ω|</sub>)" if normalize_pdf else "P(|ω|)"
+            x_label_vort = axis_labels.get("vorticity_x", x_label_vort_default)
+            y_label_vort = axis_labels.get("vorticity_y", y_label_vort_default)
+            legend_title_vort = legend_titles.get("vorticity_pdf", "")
             layout_kwargs = dict(
                 xaxis_title=x_label_vort,
                 yaxis_title=y_label_vort,
                 height=ps_vort.get("figure_height", 500) if ps_vort else 500,
                 hovermode='x unified',
-                legend=dict(x=1.02, y=1)
+                legend=dict(x=1.02, y=1),
+                legend_title_text=legend_title_vort if legend_title_vort else None
             )
             
             if ps_vort:
@@ -532,14 +539,18 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
                     hovertemplate=f"Ω = %{{x:.4f}}<br>PDF = %{{y:.4e}}<extra>{label_base}</extra>"
                 ))
             
-            x_label_enst = "Ω / ⟨Ω⟩" if normalize_pdf else "Ω"
-            y_label_enst = "⟨Ω⟩ P(Ω / ⟨Ω⟩)" if normalize_pdf else "P(Ω)"
+            x_label_enst_default = "Ω / ⟨Ω⟩" if normalize_pdf else "Ω"
+            y_label_enst_default = "⟨Ω⟩ P(Ω / ⟨Ω⟩)" if normalize_pdf else "P(Ω)"
+            x_label_enst = axis_labels.get("enstrophy_x", x_label_enst_default)
+            y_label_enst = axis_labels.get("enstrophy_y", y_label_enst_default)
+            legend_title_enst = legend_titles.get("enstrophy_pdf", "")
             layout_kwargs = dict(
                 xaxis_title=x_label_enst,
                 yaxis_title=y_label_enst,
                 height=ps_enst.get("figure_height", 500) if ps_enst else 500,
                 hovermode='x unified',
-                legend=dict(x=1.02, y=1)
+                legend=dict(x=1.02, y=1),
+                legend_title_text=legend_title_enst if legend_title_enst else None
             )
             
             if ps_enst:

@@ -36,7 +36,7 @@ from data_readers.hdf5_reader import read_hdf5_file
 from utils.file_detector import natural_sort_key
 from utils.iso_surfaces import compute_qs_s, compute_q_invariant, compute_r_invariant
 from utils.export_figs import export_panel
-from utils.plot_style import default_plot_style, render_figure_size_ui, apply_figure_size, render_plot_title_ui
+from utils.plot_style import default_plot_style, render_figure_size_ui, apply_figure_size, render_plot_title_ui, convert_superscript
 from utils.report_builder import capture_button
 st.set_page_config(page_icon="⚫")
 
@@ -808,7 +808,7 @@ def main():
         # Add title if enabled
         if ps.get("show_plot_title", False) and ps.get("plot_title"):
             layout_kwargs_title["title"] = dict(
-                text=ps.get("plot_title"),
+                text=convert_superscript(ps.get("plot_title")),
                 font=dict(
                     family=ps.get("font_family", "Arial"),
                     size=title_size,

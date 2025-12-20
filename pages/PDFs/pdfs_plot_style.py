@@ -20,6 +20,110 @@ export_panel = _export_panel
 
 
 # ==========================================================
+# Persistent axis/legend label state
+# ==========================================================
+DEFAULT_AXIS_LABELS = {
+    "vorticity_x": "|ω|",
+    "vorticity_y": "P(|ω|)",
+    "enstrophy_x": "Ω",
+    "enstrophy_y": "P(Ω)",
+    "velocity_x": "u",
+    "velocity_y": "P(u)",
+    "velocity_mag_x": "|u|",
+    "velocity_mag_y": "P(|u|)",
+    "dissipation_x": "ε",
+    "dissipation_y": "P(ε)",
+    "joint_ud_x": "|u|",
+    "joint_ud_y": "ε",
+    "joint_uo_x": "|u|",
+    "joint_uo_y": "|ω|",
+    "joint_do_x": "ε",
+    "joint_do_y": "|ω|",
+    "rq_x": "R",
+    "rq_y": "Q",
+}
+
+DEFAULT_LEGEND_TITLES = {
+    "vorticity_pdf": "",
+    "enstrophy_pdf": "",
+    "velocity_pdf": "",
+    "velocity_mag_pdf": "",
+    "dissipation_pdf": "",
+    "joint_ud_pdf": "",
+    "joint_uo_pdf": "",
+    "joint_do_pdf": "",
+    "rq_pdf": "",
+}
+
+
+def ensure_label_state():
+    """Ensure axis/legend label dictionaries exist in session state."""
+    if "axis_labels_pdfs" not in st.session_state:
+        st.session_state.axis_labels_pdfs = DEFAULT_AXIS_LABELS.copy()
+    if "legend_titles_pdfs" not in st.session_state:
+        st.session_state.legend_titles_pdfs = DEFAULT_LEGEND_TITLES.copy()
+
+
+def _render_labels_sidebar():
+    """Render persistent legend and axis label controls."""
+    ensure_label_state()
+    with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
+        st.markdown("### Legend titles")
+        legend_keys = [
+            ("vorticity_pdf", "Vorticity PDF"),
+            ("enstrophy_pdf", "Enstrophy PDF"),
+            ("velocity_pdf", "Velocity Components PDF"),
+            ("velocity_mag_pdf", "Velocity Magnitude PDF"),
+            ("dissipation_pdf", "Dissipation PDF"),
+            ("joint_ud_pdf", "P(|u|, ε)"),
+            ("joint_uo_pdf", "P(|u|, |ω|)"),
+            ("joint_do_pdf", "P(ε, |ω|)"),
+            ("rq_pdf", "R-Q Topological Space"),
+        ]
+        for key, label in legend_keys:
+            st.session_state.legend_titles_pdfs[key] = st.text_input(
+                f"Legend title – {label}",
+                st.session_state.legend_titles_pdfs.get(key, ""),
+                key=f"legend_title_{key}"
+            )
+
+        st.markdown("---")
+        st.markdown("### Axis labels")
+        label_fields = [
+            ("vorticity_x", "Vorticity PDF x-label"),
+            ("vorticity_y", "Vorticity PDF y-label"),
+            ("enstrophy_x", "Enstrophy PDF x-label"),
+            ("enstrophy_y", "Enstrophy PDF y-label"),
+            ("velocity_x", "Velocity PDF x-label"),
+            ("velocity_y", "Velocity PDF y-label"),
+            ("velocity_mag_x", "Velocity Magnitude x-label"),
+            ("velocity_mag_y", "Velocity Magnitude y-label"),
+            ("dissipation_x", "Dissipation PDF x-label"),
+            ("dissipation_y", "Dissipation PDF y-label"),
+            ("joint_ud_x", "P(|u|, ε) x-label"),
+            ("joint_ud_y", "P(|u|, ε) y-label"),
+            ("joint_uo_x", "P(|u|, |ω|) x-label"),
+            ("joint_uo_y", "P(|u|, |ω|) y-label"),
+            ("joint_do_x", "P(ε, |ω|) x-label"),
+            ("joint_do_y", "P(ε, |ω|) y-label"),
+            ("rq_x", "R-Q x-label"),
+            ("rq_y", "R-Q y-label"),
+        ]
+        for key, label in label_fields:
+            st.session_state.axis_labels_pdfs[key] = st.text_input(
+                label,
+                st.session_state.axis_labels_pdfs.get(key, DEFAULT_AXIS_LABELS.get(key, "")),
+                key=f"axis_label_{key}"
+            )
+
+        if st.button("Reset labels & legends", key="reset_pdfs_labels"):
+            st.session_state.axis_labels_pdfs = DEFAULT_AXIS_LABELS.copy()
+            st.session_state.legend_titles_pdfs = DEFAULT_LEGEND_TITLES.copy()
+            st.toast("Reset PDF labels & legends.")
+            st.rerun()
+
+
+# ==========================================================
 # Plot styling system
 # ==========================================================
 def _normalize_plot_name_local(plot_name: str) -> str:
@@ -80,8 +184,14 @@ def get_plot_style(plot_name: str):
     
     return merged
 
-def plot_style_sidebar(data_dir: Path, file_list, plot_names: list):
-    """Plot style configuration sidebar for PDFs page using shared module components."""
+def plot_style_sidebar(data_dir: Path, file_list, plot_names: list, include_label_panel: bool = True):
+    """Plot style configuration sidebar for PDFs page using shared module components.
+
+    include_label_panel: when True, also render persistent legend/axis label controls.
+    """
+    ensure_label_state()
+    if include_label_panel:
+        _render_labels_sidebar()
     selected_plot = st.sidebar.selectbox(
         "Select plot to configure",
         plot_names,

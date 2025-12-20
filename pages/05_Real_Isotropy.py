@@ -42,7 +42,7 @@ from utils.plot_style import (
     default_plot_style, apply_plot_style as apply_plot_style_base,
     render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
     render_axis_scale_ui, render_tick_format_ui, render_axis_borders_ui,
-    render_plot_title_ui, _get_palette
+    render_plot_title_ui, _get_palette, convert_superscript
 )
 from utils.export_figs import export_panel
 st.set_page_config(page_icon="⚫")
@@ -79,7 +79,7 @@ def _get_title_dict(ps, title_text):
             font_color = "#000000"
     
     return dict(
-        text=title_text,
+        text=convert_superscript(title_text),
         font=dict(
             family=ps.get("font_family", "Arial"),
             size=ps.get("title_size", 16),
@@ -166,6 +166,10 @@ def get_plot_style(plot_name: str):
     merged = default.copy()
     merged = apply_theme_to_plot_style(merged, current_theme)
     
+    # Store theme-determined backgrounds before applying user overrides
+    theme_plot_bgcolor = merged["plot_bgcolor"]
+    theme_paper_bgcolor = merged["paper_bgcolor"]
+    
     # Then apply user overrides (from plot_style) - this ensures user settings override theme
     for key, value in plot_style.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
@@ -173,6 +177,11 @@ def get_plot_style(plot_name: str):
             merged[key].update(value)
         else:
             merged[key] = value
+    
+    # Always restore theme-based backgrounds to ensure dark/light theme switches work correctly
+    # (backgrounds should never be persisted across theme changes)
+    merged["plot_bgcolor"] = theme_plot_bgcolor
+    merged["paper_bgcolor"] = theme_paper_bgcolor
     
     # Update reference line colors for dark theme if they're still at light theme defaults
     if "Dark" in current_theme:
@@ -1054,6 +1063,7 @@ def main():
         
         st.plotly_chart(fig_a, width='stretch')
         capture_button(fig_a, title="Real-Space Isotropy Analysis (Part A)", source_page="Real Isotropy")
+
         export_panel(fig_a, data_dir, "real_iso_energy_fractions")
 
         # (b) Lumley triangle
