@@ -18,7 +18,7 @@ def read_structure_function_txt(filepath: str) -> Tuple[np.ndarray, np.ndarray]:
         Tuple of (r_values, S_p_values) or multiple orders
     """
     try:
-        data = np.loadtxt(filepath, skiprows=1)
+        data = np.loadtxt(filepath, skiprows=1, encoding='utf-8')
         r = data[:, 0]
         # Assume remaining columns are different orders
         S_p_data = data[:, 1:]
@@ -40,7 +40,7 @@ def read_flatness_file(filepath: str) -> Tuple[np.ndarray, np.ndarray]:
         Tuple of (r_values, flatness_values)
     """
     try:
-        data = np.loadtxt(filepath, skiprows=1)
+        data = np.loadtxt(filepath, skiprows=1, encoding='utf-8')
         r = data[:, 0]
         flatness = data[:, 1]
         return r, flatness

@@ -21,7 +21,7 @@ def read_spectrum_file(filepath: str) -> Tuple[np.ndarray, np.ndarray]:
         Tuple of (k_values, E_values)
     """
     try:
-        data = np.loadtxt(filepath, comments='#')
+        data = np.loadtxt(filepath, comments='#', encoding='utf-8')
         if data.shape[1] < 2:
             raise ValueError(f"Expected at least 2 columns, got {data.shape[1]}")
         

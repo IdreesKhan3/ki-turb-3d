@@ -18,7 +18,7 @@ def read_csv_data(filepath: str) -> pd.DataFrame:
     """
     try:
         # skipinitialspace=True handles leading spaces from Fortran formatting
-        df = pd.read_csv(filepath, skipinitialspace=True)
+        df = pd.read_csv(filepath, skipinitialspace=True, encoding='utf-8')
         # Ensure iter column is numeric (Fortran may write with spaces)
         if 'iter' in df.columns:
             df['iter'] = pd.to_numeric(df['iter'], errors='coerce')
@@ -44,7 +44,7 @@ def read_eps_validation_csv(filepath: str) -> pd.DataFrame:
         DataFrame with real-space validation data
     """
     try:
-        df = pd.read_csv(filepath)
+        df = pd.read_csv(filepath, encoding='utf-8')
         # Clean numeric columns
         numeric_cols = ['iter', 'iter_norm', 'eps_real', 'eps_spectral', 'TKE_real', 
                        'u_rms_real', 'energy_balance_ratio', 'frac_x', 'frac_y', 'frac_z']

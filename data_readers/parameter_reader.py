@@ -29,7 +29,7 @@ def read_parameters(filepath: str) -> Dict:
     params = {}
     
     try:
-        with open(filepath, 'r') as f:
+        with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()
         
         # Extract content between &input_params and /

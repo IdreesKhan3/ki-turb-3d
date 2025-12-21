@@ -533,7 +533,7 @@ def _extract_iter(fname: str):
 
 @st.cache_data(show_spinner=False)
 def _read_isotropy_coeff_file(fname: str):
-    data = np.loadtxt(fname, comments="#")
+    data = np.loadtxt(fname, comments="#", encoding='utf-8')
     if data.ndim == 1:
         data = data.reshape(1, -1)
     return data

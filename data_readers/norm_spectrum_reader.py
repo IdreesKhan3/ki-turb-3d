@@ -20,7 +20,7 @@ def read_norm_spectrum_file(filepath: str) -> Tuple[np.ndarray, np.ndarray, np.n
         Tuple of (k_eta, E_norm, E_pope_norm)
     """
     try:
-        data = np.loadtxt(filepath, comments='#')
+        data = np.loadtxt(filepath, comments='#', encoding='utf-8')
         if data.shape[1] < 3:
             raise ValueError(f"Expected at least 3 columns, got {data.shape[1]}")
         
