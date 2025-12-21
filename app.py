@@ -430,6 +430,9 @@ def main():
                     st.error(f"Failed to update config: {str(e)}")
             
             st.caption("ℹ️ This only affects Streamlit telemetry. Your turbulence data always stays local.")
+            
+            # Link to full privacy policy
+            st.markdown("📄 [View Full Privacy Policy](https://github.com/IdreesKhan3/ki-turb-3d/blob/main/PRIVACY_POLICY.md)")
         
         st.markdown("---")
         

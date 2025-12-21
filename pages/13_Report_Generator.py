@@ -253,16 +253,32 @@ def main():
                         section['dataframe'],
                         key=f"tbl_ed_{idx}",
                         num_rows="dynamic",
-                        width='stretch'
+                        use_container_width=True,
+                        column_config={
+                            "_index": st.column_config.NumberColumn("Row", help="Row number")
+                        }
                     )
+                    # Add column button below the table
+                    if st.button("➕ Add Column", key=f"add_col_{idx}"):
+                        new_col_name = f"Column {len(section['dataframe'].columns) + 1}"
+                        section['dataframe'][new_col_name] = ""
+                        st.rerun()
                 elif 'content' in section and isinstance(section['content'], pd.DataFrame):
                     section['content'] = st.data_editor(
                         section['content'],
                         key=f"tbl_man_{idx}",
                         num_rows="dynamic",
-                        width='stretch'
+                        use_container_width=True,
+                        column_config={
+                            "_index": st.column_config.NumberColumn("Row", help="Row number")
+                        }
                     )
                     section['dataframe'] = section['content']
+                    # Add column button below the table
+                    if st.button("➕ Add Column", key=f"add_col_man_{idx}"):
+                        new_col_name = f"Column {len(section['content'].columns) + 1}"
+                        section['content'][new_col_name] = ""
+                        st.rerun()
                 else:
                     st.error("Table data lost.")
                 
