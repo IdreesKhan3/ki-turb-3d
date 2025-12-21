@@ -23,7 +23,7 @@ import re
 from pathlib import Path
 import sys
 
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(project_root))
 
 from utils.theme_config import inject_theme_css, apply_theme_to_plot_style

@@ -10,7 +10,7 @@ import json
 import pandas as pd
 from datetime import datetime
 
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(project_root))
 
 from utils.theme_config import inject_theme_css

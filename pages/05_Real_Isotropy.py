@@ -32,7 +32,7 @@ import matplotlib
 
 
 # --- Project imports ---
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(project_root))
 
 from utils.file_detector import detect_simulation_files
@@ -178,10 +178,12 @@ def get_plot_style(plot_name: str):
         else:
             merged[key] = value
     
-    # Always restore theme-based backgrounds to ensure dark/light theme switches work correctly
-    # (backgrounds should never be persisted across theme changes)
-    merged["plot_bgcolor"] = theme_plot_bgcolor
-    merged["paper_bgcolor"] = theme_paper_bgcolor
+    # Only restore theme-based backgrounds if user hasn't customized them
+    # This allows user customizations to persist while still supporting theme switches
+    if "plot_bgcolor" not in plot_style:
+        merged["plot_bgcolor"] = theme_plot_bgcolor
+    if "paper_bgcolor" not in plot_style:
+        merged["paper_bgcolor"] = theme_paper_bgcolor
     
     # Update reference line colors for dark theme if they're still at light theme defaults
     if "Dark" in current_theme:

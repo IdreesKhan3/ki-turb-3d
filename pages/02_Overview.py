@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 
 # Add project root to path
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(project_root))
 
 from data_readers.csv_reader import read_eps_validation_csv

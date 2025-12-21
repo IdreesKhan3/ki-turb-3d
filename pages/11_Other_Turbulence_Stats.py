@@ -23,7 +23,7 @@ import sys
 import glob
 
 # --- Project imports ---
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(project_root))
 
 from data_readers.csv_reader import read_csv_data
@@ -143,7 +143,7 @@ def main():
     if len(data_dirs) > 1:
         st.info(f"📁 **Multiple simulations loaded:** {len(data_dirs)} directories")
         with st.expander("View loaded directories", expanded=False):
-            project_root = Path(__file__).parent.parent
+            project_root = Path(__file__).parent.parent.resolve()
             for i, data_dir_path in enumerate(data_dirs, 1):
                 data_dir_obj = Path(data_dir_path)
                 try:

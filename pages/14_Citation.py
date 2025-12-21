@@ -11,7 +11,7 @@ from pathlib import Path
 from textwrap import dedent
 
 # --- App imports (keep consistent with your project structure) ---
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.resolve()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 

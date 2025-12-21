@@ -11,7 +11,7 @@ import logging
 
 # Add project root to path (for direct execution)
 # If installed as package, this is not needed
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.resolve()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
@@ -232,30 +232,42 @@ def _load_single_directory_and_merge(dir_path: str):
     return True
 
 
-def _resolve_directory_path(user_dir: str):
+def _resolve_directory_path(user_dir: str, log_warnings: bool = True):
     """
     Try to resolve a directory path (absolute or relative to project root).
+    
+    Args:
+        user_dir: Directory path to resolve
+        log_warnings: Whether to log warnings if directory not found
     
     Returns:
         Path object if found, None otherwise
     """
     if not user_dir:
-        logger.debug("Empty directory path provided")
+        if log_warnings:
+            logger.debug("Empty directory path provided")
         return None
     
+    # Normalize path separators for cross-platform compatibility
+    user_dir = user_dir.strip().replace('\\', '/')
+    
     # Try as absolute path first
-    abs_path = Path(user_dir)
+    abs_path = Path(user_dir).resolve()
     if abs_path.exists() and abs_path.is_dir():
-        logger.debug(f"Resolved as absolute path: {abs_path.absolute()}")
-        return abs_path.absolute()
+        logger.debug(f"Resolved as absolute path: {abs_path}")
+        return abs_path
     
     # Try as relative path from project root
-    relative_path = project_root / user_dir
+    relative_path = (project_root / user_dir).resolve()
     if relative_path.exists() and relative_path.is_dir():
-        logger.debug(f"Resolved as relative path: {relative_path.absolute()}")
-        return relative_path.absolute()
+        logger.debug(f"Resolved as relative path: {relative_path}")
+        return relative_path
     
-    logger.warning(f"Could not resolve directory path: {user_dir}")
+    if log_warnings:
+        logger.warning(f"Could not resolve directory path: {user_dir}")
+        logger.debug(f"Project root: {project_root}")
+        logger.debug(f"Tried absolute: {abs_path}")
+        logger.debug(f"Tried relative: {relative_path}")
     return None
 
 
@@ -521,7 +533,7 @@ def main():
                     ("examples", "examples"),
                 ]
                 for label, path in quick_paths:
-                    resolved = _resolve_directory_path(path)
+                    resolved = _resolve_directory_path(path, log_warnings=False)
                     if resolved:
                         if st.button(f"{label}", key=f"quick_{path}", width='stretch'):
                             if _load_single_directory_and_merge(path):
