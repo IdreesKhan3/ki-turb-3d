@@ -5,7 +5,7 @@ type: software
 title: "KI-TURB 3D: Turbulence Analysis and Visualization Suite"
 
 version: 1.0.0
-date-released: 2025-12-19
+date-released: 2025-12-21
 
 authors:
   - given-names: "Muhammad Idrees"
