@@ -130,9 +130,7 @@ docs/.doctrees/
 *.backup
 *.old
 
-# Large binary files (if not using Git LFS)
-# *.vti
-# *.bin
+# Large binary files - use Git LFS for examples/
 *.h5
 *.hdf5
 
@@ -140,8 +138,10 @@ docs/.doctrees/
 SRC/
 RUN/
 no_chatboat_app/
-# Example data (temporarily ignored)
-examples/
+
+# User-specific data directories (not example data)
+user/DNS/
+user/LES/
 
 # HDF5 library (local installation)
 hdf5_lib/

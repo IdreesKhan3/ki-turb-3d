@@ -1,0 +1,13 @@
+&input_params
+nx = 256
+ny = 256
+nz = 256
+!tau= 0.6
+nu = .00366933333333333333
+u0 = 0.043
+num_time_steps = 1000000
+vtk_interval = 1000000000
+data_interval = 1000
+iti_signal = 1000
+tag = 'data1'
+/
