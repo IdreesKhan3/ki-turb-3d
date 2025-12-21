@@ -41,6 +41,7 @@ env/
 *.swo
 *~
 .DS_Store
+.vscode-server/
 *.sublime-project
 *.sublime-workspace
 

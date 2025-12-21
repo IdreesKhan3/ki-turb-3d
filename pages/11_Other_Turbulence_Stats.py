@@ -218,14 +218,31 @@ def main():
                     st.warning(f"Could not load {csv_path.name}: {e}")
                     continue
         else:
-            # Single directory: original behavior
-            try:
-                df_stats = read_csv_data(str(files['real_turb_stats'][0]))
-                all_dataframes['turbulence_stats'] = df_stats
-                available_columns['turbulence_stats'] = list(df_stats.columns)
-                table_data['turbulence_stats'] = {'df': df_stats, 'dir_name': None, 'type': 'turbulence_stats'}
-            except Exception as e:
-                st.warning(f"Could not load turbulence stats: {e}")
+            # Single directory: load all turbulence_stats files (data1, data2, data3...)
+            if len(csv_files) > 1:
+                # Multiple turbulence_stats files in single directory
+                for idx, csv_file in enumerate(csv_files, 1):
+                    csv_path = Path(csv_file)
+                    file_suffix = csv_path.stem.replace('turbulence_stats', '').strip('_')
+                    key_suffix = f"_{file_suffix}" if file_suffix else f"_{idx}"
+                    try:
+                        df_stats = read_csv_data(str(csv_file))
+                        key = f"turbulence_stats{key_suffix}"
+                        all_dataframes[key] = df_stats
+                        available_columns[key] = list(df_stats.columns)
+                        table_data[key] = {'df': df_stats, 'dir_name': csv_path.stem, 'type': 'turbulence_stats'}
+                    except Exception as e:
+                        st.warning(f"Could not load {csv_path.name}: {e}")
+                        continue
+            else:
+                # Single turbulence_stats file
+                try:
+                    df_stats = read_csv_data(str(files['real_turb_stats'][0]))
+                    all_dataframes['turbulence_stats'] = df_stats
+                    available_columns['turbulence_stats'] = list(df_stats.columns)
+                    table_data['turbulence_stats'] = {'df': df_stats, 'dir_name': None, 'type': 'turbulence_stats'}
+                except Exception as e:
+                    st.warning(f"Could not load turbulence stats: {e}")
 
     # Load eps_real_validation CSV files from all directories
     eps_files = files.get("spectral_turb_stats", [])
@@ -264,14 +281,31 @@ def main():
                     st.warning(f"Could not load {eps_path.name} from {dir_name}: {e}")
                     continue
         else:
-            # Single directory: original behavior
-            try:
-                df_val = pd.read_csv(str(eps_files[0]))
-                all_dataframes['eps_validation'] = df_val
-                available_columns['eps_validation'] = list(df_val.columns)
-                table_data['eps_validation'] = {'df': df_val, 'dir_name': None, 'type': 'eps_validation'}
-            except Exception:
-                pass
+            # Single directory: load all eps_real_validation files (data1, data2, data3...)
+            if len(eps_files) > 1:
+                # Multiple eps_real_validation files in single directory
+                for idx, eps_file in enumerate(eps_files, 1):
+                    eps_path = Path(eps_file)
+                    file_suffix = eps_path.stem.replace('eps_real_validation', '').strip('_')
+                    key_suffix = f"_{file_suffix}" if file_suffix else f"_{idx}"
+                    try:
+                        df_val = pd.read_csv(str(eps_file))
+                        key = f"eps_validation{key_suffix}"
+                        all_dataframes[key] = df_val
+                        available_columns[key] = list(df_val.columns)
+                        table_data[key] = {'df': df_val, 'dir_name': eps_path.stem, 'type': 'eps_validation'}
+                    except Exception as e:
+                        st.warning(f"Could not load {eps_path.name}: {e}")
+                        continue
+            else:
+                # Single eps_real_validation file
+                try:
+                    df_val = pd.read_csv(str(eps_files[0]))
+                    all_dataframes['eps_validation'] = df_val
+                    available_columns['eps_validation'] = list(df_val.columns)
+                    table_data['eps_validation'] = {'df': df_val, 'dir_name': None, 'type': 'eps_validation'}
+                except Exception:
+                    pass
 
     # =========================
     # Custom Plotting Section
@@ -635,6 +669,10 @@ def main():
                 plot_bgcolor=ps.get("plot_bgcolor", "#FFFFFF"),
                 paper_bgcolor=ps.get("paper_bgcolor", "#FFFFFF")
             )
+            
+            # Remove the zero lines (horizontal line on x-axis)
+            fig.update_xaxes(zeroline=False)
+            fig.update_yaxes(zeroline=False)
             
             # Final check: explicitly ensure legend is visible
             if ps.get("show_legend", True) and len(fig.data) > 0:

@@ -166,9 +166,15 @@ def get_plot_style(plot_name: str):
     merged = default.copy()
     merged = apply_theme_to_plot_style(merged, current_theme)
     
-    # Store theme-determined backgrounds before applying user overrides
-    theme_plot_bgcolor = merged["plot_bgcolor"]
-    theme_paper_bgcolor = merged["paper_bgcolor"]
+    # Store all theme-determined properties before applying user overrides
+    theme_props = {
+        "plot_bgcolor": merged["plot_bgcolor"],
+        "paper_bgcolor": merged["paper_bgcolor"],
+        "font_color": merged.get("font_color"),
+        "axis_line_color": merged.get("axis_line_color"),
+        "grid_color": merged.get("grid_color"),
+        "template": merged.get("template"),
+    }
     
     # Then apply user overrides (from plot_style) - this ensures user settings override theme
     for key, value in plot_style.items():
@@ -178,12 +184,31 @@ def get_plot_style(plot_name: str):
         else:
             merged[key] = value
     
-    # Only restore theme-based backgrounds if user hasn't customized them
-    # This allows user customizations to persist while still supporting theme switches
-    if "plot_bgcolor" not in plot_style:
-        merged["plot_bgcolor"] = theme_plot_bgcolor
-    if "paper_bgcolor" not in plot_style:
-        merged["paper_bgcolor"] = theme_paper_bgcolor
+    # Restore theme properties unless they were explicitly customized to non-default values
+    # This ensures app theme changes always apply (unless user picked custom colors)
+    for prop_key, theme_value in theme_props.items():
+        if prop_key in plot_style:
+            stored_value = plot_style[prop_key]
+            # Check if stored value is a template default (not a custom color)
+            if prop_key in ["plot_bgcolor", "paper_bgcolor"]:
+                if stored_value in ["#1e1e1e", "#FFFFFF", "#F5F5F5"]:
+                    merged[prop_key] = theme_value
+            elif prop_key == "font_color":
+                if stored_value in [None, "#000000", "#d4d4d4", "#FFFFFF"]:
+                    merged[prop_key] = theme_value
+            elif prop_key == "axis_line_color":
+                if stored_value in ["#000000", "#FFFFFF", "#d4d4d4"]:
+                    merged[prop_key] = theme_value
+            elif prop_key == "grid_color":
+                if stored_value in ["#B0B0B0", "#404040", "#D0D0D0"]:
+                    merged[prop_key] = theme_value
+            elif prop_key == "template":
+                # Always use theme template unless user explicitly changed it
+                if stored_value in ["plotly_white", "simple_white", "plotly_dark"]:
+                    merged[prop_key] = theme_value
+        else:
+            # Property not in plot_style, use theme default
+            merged[prop_key] = theme_value
     
     # Update reference line colors for dark theme if they're still at light theme defaults
     if "Dark" in current_theme:

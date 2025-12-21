@@ -83,9 +83,6 @@ def main():
             <li>New turbulence statistics and visualization methods</li>
             <li>Extended boundary condition support (beyond periodic)</li>
         </ul>
-        <p style='margin: 0.8rem 0 0 0; color: {secondary_text}; font-size: 0.85rem; font-style: italic;'>
-            The codebase is structured to facilitate extensions while maintaining the core HIT analysis framework.
-        </p>
     </div>
     """, unsafe_allow_html=True)
 
