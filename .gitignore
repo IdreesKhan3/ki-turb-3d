@@ -131,8 +131,7 @@ docs/.doctrees/
 *.old
 
 # Large binary files - use Git LFS for examples/
-*.h5
-*.hdf5
+
 
 # Fortran source and simulation output directories
 SRC/
