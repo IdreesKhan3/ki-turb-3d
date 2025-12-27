@@ -202,11 +202,21 @@ def get_plot_style(plot_name: str):
         else:
             merged[key] = value
     
-    # Only restore theme-based backgrounds if user hasn't customized them
-    # This allows user customizations to persist while still supporting theme switches
-    if "plot_bgcolor" not in plot_style:
+    # Update backgrounds to match current theme if using default colors
+    if "plot_bgcolor" in plot_style:
+        stored_bg = plot_style["plot_bgcolor"]
+        # If stored value is a theme default, update to current theme
+        if stored_bg in ["#1e1e1e", "#FFFFFF", "#F5F5F5"]:
+            merged["plot_bgcolor"] = theme_plot_bgcolor
+    else:
         merged["plot_bgcolor"] = theme_plot_bgcolor
-    if "paper_bgcolor" not in plot_style:
+    
+    if "paper_bgcolor" in plot_style:
+        stored_bg = plot_style["paper_bgcolor"]
+        # If stored value is a theme default, update to current theme
+        if stored_bg in ["#1e1e1e", "#FFFFFF", "#F5F5F5"]:
+            merged["paper_bgcolor"] = theme_paper_bgcolor
+    else:
         merged["paper_bgcolor"] = theme_paper_bgcolor
     
     # Update reference line color for dark theme if it's still at light theme default
@@ -241,7 +251,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
     # Create unique key prefix for all widgets
     key_prefix = f"flatness_{plot_key}"
 
-    with st.sidebar.expander("Plot Style (persistent)", expanded=False):
+    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
@@ -415,7 +425,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
 
         st.markdown("---")
         reset_pressed = False
-        if st.button("Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
                 st.session_state.plot_styles[selected_plot] = {}
                 
                 # Clear widget state so widgets re-read from defaults on next run
@@ -548,7 +558,7 @@ def main():
     # Apply theme CSS (persists across pages)
     inject_theme_css()
     
-    st.title("📉 Flatness Factors")
+    st.title("Flatness Factors")
 
     # Get data directories from session state (support multiple directories)
     data_dirs = st.session_state.get("data_directories", [])
@@ -682,7 +692,7 @@ def main():
     show_reference = st.sidebar.checkbox("Show Gaussian reference (F=3)", value=True)
 
     # Sidebar: legends + axis labels (persistent)
-    with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
+    with st.sidebar.expander("🏷️ Legend & Axis Labels (persistent)", expanded=False):
         st.markdown("### Legend names")
         for sim_prefix in sorted(sim_groups.keys()):
             st.session_state.flatness_legend_names.setdefault(
@@ -707,7 +717,7 @@ def main():
             key="axis_flat_y"
         )
 
-        if st.button("Reset labels/legends"):
+        if st.button("♻️ Reset labels/legends"):
             st.session_state.flatness_legend_names = {
                 k: _format_legend_name(k) for k in sim_groups.keys()
             }

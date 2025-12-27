@@ -14,21 +14,7 @@ from data_readers.parameter_reader import read_parameters
 
 def compute_velocity_dissipation_joint_pdf(velocity, nu=1.0, bins=100, dx=1.0, dy=1.0, dz=1.0,
                                            u_range=None, eps_range=None, normalize=False):
-    """
-    Compute Joint PDF of velocity magnitude and dissipation rate: P(|u|, ε)
-    
-    Args:
-        velocity: (nx, ny, nz, 3) array of velocity components
-        nu: Kinematic viscosity (default 1.0)
-        bins: Number of bins for each axis
-        dx, dy, dz: Grid spacing (default 1.0)
-        u_range: (u_min, u_max) for |u| axis, or None for auto
-        eps_range: (eps_min, eps_max) for ε axis, or None for auto
-        normalize: If True, normalize |u| by RMS and ε by mean
-        
-    Returns:
-        u_centers, eps_centers, joint_pdf (2D array)
-    """
+    """Compute joint PDF P(|u|, ε)"""
     # Compute velocity magnitude: |u| = √(ux² + uy² + uz²)
     u_mag = np.sqrt(
         velocity[:, :, :, 0]**2 + 
@@ -97,20 +83,7 @@ def compute_velocity_dissipation_joint_pdf(velocity, nu=1.0, bins=100, dx=1.0, d
 
 def compute_velocity_enstrophy_joint_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=1.0,
                                          u_range=None, omega_range=None, normalize=False):
-    """
-    Compute Joint PDF of velocity magnitude and vorticity magnitude: P(|u|, |ω|)
-    
-    Args:
-        velocity: (nx, ny, nz, 3) array of velocity components
-        bins: Number of bins for each axis
-        dx, dy, dz: Grid spacing (default 1.0)
-        u_range: (u_min, u_max) for |u| axis, or None for auto
-        omega_range: (omega_min, omega_max) for |ω| axis, or None for auto
-        normalize: If True, normalize both |u| and |ω| by RMS
-        
-    Returns:
-        u_centers, omega_centers, joint_pdf (2D array)
-    """
+    """Compute joint PDF P(|u|, |ω|)"""
     # Compute velocity magnitude: |u| = √(ux² + uy² + uz²)
     u_mag = np.sqrt(
         velocity[:, :, :, 0]**2 + 
@@ -165,21 +138,7 @@ def compute_velocity_enstrophy_joint_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=
 
 def compute_dissipation_enstrophy_joint_pdf(velocity, nu=1.0, bins=100, dx=1.0, dy=1.0, dz=1.0,
                                             eps_range=None, omega_range=None, normalize=False):
-    """
-    Compute Joint PDF of dissipation rate and vorticity magnitude: P(ε, |ω|)
-    
-    Args:
-        velocity: (nx, ny, nz, 3) array of velocity components
-        nu: Kinematic viscosity (default 1.0)
-        bins: Number of bins for each axis
-        dx, dy, dz: Grid spacing (default 1.0)
-        eps_range: (eps_min, eps_max) for ε axis, or None for auto
-        omega_range: (omega_min, omega_max) for |ω| axis, or None for auto
-        normalize: If True, normalize ε by mean and |ω| by RMS
-        
-    Returns:
-        eps_centers, omega_centers, joint_pdf (2D array)
-    """
+    """Compute joint PDF P(ε, |ω|)"""
     # Compute dissipation: ε = 2ν S_ij S_ij
     _, S = compute_rotation_deformation_tensors(velocity, dx, dy, dz)
     S_squared_sum = np.einsum('ijklm,ijklm->ijk', S, S)
@@ -248,22 +207,7 @@ def compute_dissipation_enstrophy_joint_pdf(velocity, nu=1.0, bins=100, dx=1.0, 
 
 
 def compute_rq_joint_pdf(velocity, r_bins=100, q_bins=100, r_range=None, q_range=None):
-    """
-    Compute Joint PDF of Q and R invariants
-    
-    Q and R are normalized by <S_ij S_ij> (mean strain rate squared) to match literature conventions.
-    This normalization brings Q values to typical ranges of -30 to 30 as seen in turbulence literature.
-    
-    Args:
-        velocity: (nx, ny, nz, 3) array of velocity components
-        r_bins: Number of bins for R axis
-        q_bins: Number of bins for Q axis
-        r_range: (r_min, r_max) for R axis, or None for auto
-        q_range: (q_min, q_max) for Q axis, or None for auto
-        
-    Returns:
-        R_centers, Q_centers, joint_pdf (2D array)
-    """
+    """Compute joint PDF of Q and R invariants, normalized by <S_ij S_ij>"""
     # Compute Q and R invariants
     Q = compute_q_invariant(velocity)
     R = compute_r_invariant(velocity)
@@ -325,23 +269,7 @@ def compute_rq_joint_pdf(velocity, r_bins=100, q_bins=100, r_range=None, q_range
 
 
 def compute_discriminant_line(r_values):
-    """
-    Compute Q values for the zero-discriminant line D = (Q/3)^3 + (R/2)^2 = 0
-    
-    The discriminant D = 0 separates regions with real eigenvalues (inside V) 
-    from complex eigenvalues (outside V). Solving for Q:
-    (Q/3)^3 = -(R/2)^2
-    Q = -3 * (R^2/4)^(1/3)
-    
-    Q is always negative on this boundary, regardless of R's sign.
-    This gives a V-shape (cusp) with vertex at (0,0) extending downward.
-    
-    Args:
-        r_values: Array of R values
-        
-    Returns:
-        Q values for the discriminant line (always negative, forming V-shape)
-    """
+    """Compute Q values for D=0 line: Q = -3*(R/2)^(2/3)"""
     q_values = -3 * np.power(np.abs(r_values) / 2.0, 2.0/3.0)
     return q_values
 
@@ -350,19 +278,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                           get_plot_style_func=None, apply_plot_style_func=None,
                           get_palette_func=None, resolve_line_style_func=None,
                           export_panel_func=None, capture_button_func=None):
-    """
-    Render the Joint PDFs tab content
-    
-    Args:
-        data_dir_or_dirs: Path to data directory (Path) or list of directories (list of Path/str)
-        load_velocity_file_func: Function to load velocity files (takes filepath)
-        get_plot_style_func: Optional function to get plot style (plot_name) -> style_dict
-        apply_plot_style_func: Optional function to apply plot style (fig, style_dict) -> fig
-        get_palette_func: Optional function to get color palette (style_dict) -> color_list
-        resolve_line_style_func: Optional function to resolve line style for files
-        export_panel_func: Optional function to show export panel (fig, out_dir, base_name)
-        capture_button_func: Optional function to add capture button (fig, title, source_page)
-    """
+    """Render the Joint PDFs tab content"""
     import glob
     from pathlib import Path
     from utils.file_detector import natural_sort_key
@@ -1064,7 +980,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
         st.markdown("**Reference:** [Kareem & Asker (2022)](/Citation#kareem2022) — Simulations of isotropic turbulent flows using lattice Boltzmann method with different forcing functions")
         st.markdown("**Joint PDF of velocity gradient tensor invariants:**")
         st.markdown("**Second Invariant Q:**")
-        st.latex(r"Q = \frac{1}{4}(\omega_i\omega_i - 2S_{ij}S_{ij})")
+        st.latex(r"Q = -\frac{1}{2} A_{ij} A_{ij} = \frac{1}{4}\left(\omega_i\omega_i - 2S_{ij}S_{ij}\right)")
         st.markdown("**Third Invariant R:**")
         st.latex(r"R = -\frac{1}{3}\left(S_{ij}S_{jk}S_{ki} + \frac{3}{4}\omega_i\omega_j S_{ij}\right)")
         st.markdown("**Zero Discriminant Line:**")

@@ -13,19 +13,7 @@ from utils.iso_surfaces import compute_vorticity_vector
 
 
 def compute_vorticity_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=1.0, normalize=False):
-    """
-    Compute smooth Probability Density Function for vorticity magnitude |ω|
-    Uses Kernel Density Estimation (KDE) to produce smooth curves
-    
-    Args:
-        velocity: (nx, ny, nz, 3) array of velocity components
-        bins: Number of evaluation points for smooth curve
-        dx, dy, dz: Grid spacing (default 1.0)
-        normalize: If True, normalize by RMS (|ω|/σ_|ω|)
-        
-    Returns:
-        omega_grid, pdf_omega (arrays) - smooth PDF curve
-    """
+    """Compute smooth PDF for vorticity magnitude using KDE"""
     # Compute vorticity vector
     vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
     
@@ -81,12 +69,7 @@ def compute_vorticity_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=1.0, normalize=
 
 
 def compute_vorticity_statistics(velocity, dx=1.0, dy=1.0, dz=1.0):
-    """
-    Compute statistical moments (mean, RMS, skewness, kurtosis) for vorticity magnitude.
-    
-    Returns:
-        mean, rms, skewness, kurtosis (floats)
-    """
+    """Compute statistics for vorticity magnitude"""
     from utils.iso_surfaces import compute_vorticity_vector
     from .velocity_magnitude_stats import compute_skewness_kurtosis
     
@@ -110,19 +93,7 @@ def compute_vorticity_statistics(velocity, dx=1.0, dy=1.0, dz=1.0):
 
 
 def compute_enstrophy_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=1.0, normalize=False):
-    """
-    Compute smooth Probability Density Function for enstrophy Ω = |ω|²
-    Uses Kernel Density Estimation (KDE) to produce smooth curves
-    
-    Args:
-        velocity: (nx, ny, nz, 3) array of velocity components
-        bins: Number of evaluation points for smooth curve
-        dx, dy, dz: Grid spacing (default 1.0)
-        normalize: If True, normalize by mean (Ω/⟨Ω⟩)
-        
-    Returns:
-        enstrophy_grid, pdf_enstrophy (arrays) - smooth PDF curve
-    """
+    """Compute smooth PDF for enstrophy using KDE"""
     # Compute vorticity vector
     vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
     
@@ -178,12 +149,7 @@ def compute_enstrophy_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=1.0, normalize=
 
 
 def compute_enstrophy_statistics(velocity, dx=1.0, dy=1.0, dz=1.0):
-    """
-    Compute statistical moments (mean, RMS, skewness, kurtosis) for enstrophy.
-    
-    Returns:
-        mean, rms, skewness, kurtosis (floats)
-    """
+    """Compute statistics for enstrophy"""
     from utils.iso_surfaces import compute_vorticity_vector
     from .velocity_magnitude_stats import compute_skewness_kurtosis
     
@@ -210,19 +176,7 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
                                get_plot_style_func=None, apply_plot_style_func=None,
                                get_palette_func=None, resolve_line_style_func=None,
                                export_panel_func=None, capture_button_func=None):
-    """
-    Render the Vorticity & Enstrophy PDFs tab content
-    
-    Args:
-        data_dir_or_dirs: Path to data directory (Path) or list of directories (list of Path/str)
-        load_velocity_file_func: Function to load velocity files (takes filepath)
-        get_plot_style_func: Optional function to get plot style (plot_name) -> style_dict
-        apply_plot_style_func: Optional function to apply plot style (fig, style_dict) -> fig
-        get_palette_func: Optional function to get color palette (style_dict) -> color_list
-        resolve_line_style_func: Optional function to resolve line style for files
-        export_panel_func: Optional function to show export panel (fig, out_dir, base_name)
-        capture_button_func: Optional function to add capture button (fig, title, source_page)
-    """
+    """Render the Vorticity & Enstrophy PDFs tab content"""
     import glob
     from pathlib import Path
     from utils.file_detector import natural_sort_key

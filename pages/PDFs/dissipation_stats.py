@@ -119,19 +119,7 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
                             get_plot_style_func=None, apply_plot_style_func=None,
                             get_palette_func=None, resolve_line_style_func=None,
                             export_panel_func=None, capture_button_func=None):
-    """
-    Render the Dissipation Rate PDF tab content
-    
-    Args:
-        data_dir_or_dirs: Path to data directory (Path) or list of directories (list of Path/str)
-        load_velocity_file_func: Function to load velocity files (takes filepath)
-        get_plot_style_func: Optional function to get plot style (plot_name) -> style_dict
-        apply_plot_style_func: Optional function to apply plot style (fig, style_dict) -> fig
-        get_palette_func: Optional function to get color palette (style_dict) -> color_list
-        resolve_line_style_func: Optional function to resolve line style for files
-        export_panel_func: Optional function to show export panel (fig, out_dir, base_name)
-        capture_button_func: Optional function to add capture button (fig, title, source_page)
-    """
+    """Render the Dissipation Rate PDF tab content"""
     import glob
     from pathlib import Path
     from utils.file_detector import natural_sort_key

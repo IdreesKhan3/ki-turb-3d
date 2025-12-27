@@ -26,16 +26,7 @@ def add_ess_inset(
     inset_legend_sl: str = "SL94",
     inset_legend_b93: str = "B93"
 ):
-    """
-    Adds the Anomaly (xi_p - p/3) inset to the ESS figure.
-    
-    Args:
-        inset_x_label: X-axis label for inset (default: "p")
-        inset_y_label: Y-axis label for inset (default: "ξp - p/3")
-        inset_legend_sl: Legend label for She-Leveque theory (default: "SL94")
-        inset_legend_b93: Legend label for experimental B93 (default: "B93")
-    """
-    # 1. Determine ranges and p values
+    """Add anomaly (ξp - p/3) inset to ESS figure"""
     inset_ps = []
     inset_y_min = None
     inset_y_max = None
@@ -66,8 +57,7 @@ def add_ess_inset(
     if not inset_ps or inset_y_min is None:
         return fig
 
-    # 2. Extract style settings from plot_style (reuse existing utilities)
-    # Scale down font sizes for inset (typically 70% of main plot)
+    # Extract style settings from plot_style (reuse existing utilities)
     inset_scale = 0.7
     base_tick_font = _tick_font(plot_style)
     base_axis_font = _axis_title_font(plot_style)
@@ -110,7 +100,7 @@ def add_ess_inset(
     tick_dir = "outside" if ticks_outside else "inside"
     tick_color = plot_style.get("tick_color") or axis_line_color
     
-    # 3. Update Layout with Inset Axes (using plot_style settings)
+    # Update Layout with Inset Axes (using plot_style settings)
     fig.update_layout(
         xaxis2=dict(
             domain=[0.77, 0.95],
@@ -158,8 +148,7 @@ def add_ess_inset(
         )
     )
 
-    # 3. Add Simulation Traces
-    # We iterate exactly as the main loop to ensure colors match
+    # Add Simulation Traces
     for idx, sim_prefix in enumerate(sorted(sim_groups.keys())):
         # Skip if this sim has no ESS data calculated
         if sim_prefix not in xi_all or not xi_all[sim_prefix]:
@@ -178,7 +167,6 @@ def add_ess_inset(
         
         name_label = legend_names.get(sim_prefix, _default_labelify(sim_prefix))
 
-        # Scale down line width and marker size for inset (70% of main plot)
         inset_lw = lw * 0.7
         inset_ms = max(2, int(msize * 0.5))
         
@@ -195,7 +183,7 @@ def add_ess_inset(
             hoverinfo="skip"
         ))
 
-    # 4. Add She-Leveque Theory
+    # Add She-Leveque Theory
     if show_sl_theory:
         theory_anom = [zeta_p_she_leveque(p) - p/3 for p in inset_ps]
         sl_color = plot_style.get("she_leveque_color", "#000000")
@@ -213,7 +201,7 @@ def add_ess_inset(
             hoverinfo="skip"
         ))
 
-    # 5. Add Experimental B93
+    # Add Experimental B93
     if show_exp_anom:
         exp_anom = [EXP_ZETA[i] - TABLE_P[i]/3 for i in range(len(TABLE_P))]
         exp_color = plot_style.get("experimental_b93_color", "#00BFC4")
@@ -231,7 +219,7 @@ def add_ess_inset(
             hoverinfo="skip"
         ))
     
-    # 5b. Add inset legend annotations (matching matplotlib ax_inset.legend approach)
+    # Add inset legend annotations 
     # Position legend in lower left corner of inset, with line markers like matplotlib
     legend_x_start = min(inset_ps) + 0.08 * (max(inset_ps) - min(inset_ps))
     legend_font_size = int(inset_tick_font.get("size", 10) * 1.0)  # Same size as tick font for better readability
@@ -322,7 +310,7 @@ def add_ess_inset(
             hoverinfo="skip"
         ))
 
-    # 6. Add Background and Zero-line
+    # Add Background and Zero-line
     # Use plot background color from plot_style
     inset_bgcolor = plot_style.get("plot_bgcolor", "#FFFFFF")
     inset_bg_opacity = 0.9  # Keep background slightly transparent for overlay effect
@@ -338,16 +326,16 @@ def add_ess_inset(
         xref="x2", yref="y2"
     )
 
-    # Zero line - use zero_line_color from plot_style if available, otherwise fall back to axis_line_color
+    # Zero_line_color from plot_style if available, otherwise fall back to axis_line_color
     zero_line_color = plot_style.get("zero_line_color", axis_line_color)
     zero_line_width = plot_style.get("zero_line_width", axis_line_width)
     # Ensure zero line is at least slightly thicker than grid to be visible
     if zero_line_width <= grid_width:
         zero_line_width = max(zero_line_width, grid_width * 1.5)
     
-    # Draw zero line above background but ensure it's visible
-    # Use "above" layer so it appears on top of axis lines and grid
-    # Use a distinct dash style to differentiate from grid (dashdot instead of dash)
+    # Zero line above background and  visible
+    # "above" layer so it appears on top of axis lines and grid
+    # For gird i use dashdot instead of dash to be visible
     fig.add_shape(
         type="line",
         x0=min(inset_ps)-0.5, x1=max(inset_ps)+0.5,

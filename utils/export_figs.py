@@ -78,6 +78,19 @@ def export_panel(fig: Figure, out_dir: Path, base_name: str):
             fig_export.update_xaxes(zeroline=False)
             fig_export.update_yaxes(zeroline=False)
             
+            # For PDF export, explicitly preserve margins to prevent Kaleido from adding extra padding
+
+            if "PDF (vector)" in fmts:
+                margin = fig_export.layout.margin
+                if margin is not None:
+                    # Get margin values safely
+                    l_val = getattr(margin, 'l', 50) if margin else 50
+                    r_val = getattr(margin, 'r', 20) if margin else 20
+                    t_val = getattr(margin, 't', 30) if margin else 30
+                    b_val = getattr(margin, 'b', 50) if margin else 50
+                    # Explicitly set margins to prevent PDF padding issues
+                    fig_export.update_layout(margin=dict(l=l_val, r=r_val, t=t_val, b=b_val))
+
             errors = []
             for f_label in fmts:
                 ext = _EXPORT_FORMATS[f_label]

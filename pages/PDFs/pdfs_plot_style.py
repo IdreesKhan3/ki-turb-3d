@@ -67,7 +67,7 @@ def ensure_label_state():
 def _render_labels_sidebar():
     """Render persistent legend and axis label controls."""
     ensure_label_state()
-    with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
+    with st.sidebar.expander("🏷️ Legend & Axis Labels (persistent)", expanded=False):
         st.markdown("### Legend titles")
         legend_keys = [
             ("vorticity_pdf", "Vorticity PDF"),
@@ -116,7 +116,7 @@ def _render_labels_sidebar():
                 key=f"axis_label_{key}"
             )
 
-        if st.button("Reset labels & legends", key="reset_pdfs_labels"):
+        if st.button("♻️ Reset labels & legends", key="reset_pdfs_labels"):
             st.session_state.axis_labels_pdfs = DEFAULT_AXIS_LABELS.copy()
             st.session_state.legend_titles_pdfs = DEFAULT_LEGEND_TITLES.copy()
             st.toast("Reset PDF labels & legends.")
@@ -212,7 +212,7 @@ def plot_style_sidebar(data_dir: Path, file_list, plot_names: list, include_labe
     
     key_prefix = f"comparison_{plot_key}"
     
-    with st.sidebar.expander("Plot Style (persistent)", expanded=False):
+    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
@@ -324,7 +324,7 @@ def plot_style_sidebar(data_dir: Path, file_list, plot_names: list, include_labe
         
         st.markdown("---")
         reset_pressed = False
-        if st.button("Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
             st.session_state.plot_styles[selected_plot] = {}
             
             # Clear widget state
@@ -368,10 +368,3 @@ def plot_style_sidebar(data_dir: Path, file_list, plot_names: list, include_labe
             if isinstance(value, dict):
                 ps_copy[key] = value.copy()
         st.session_state.plot_styles[selected_plot] = ps_copy
-
-
-# ==========================================================
-# Export system - now uses shared export_figs module
-# ==========================================================
-# export_panel is imported and re-exported above for backward compatibility
-

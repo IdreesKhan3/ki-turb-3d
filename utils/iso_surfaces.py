@@ -195,6 +195,8 @@ def compute_q_invariant(velocity: np.ndarray, dx: float = 1.0, dy: float = 1.0, 
     
     Q = -(1/2) A_ij A_ij = (1/4)(ω_i ω_i - 2 S_ij S_ij)
     
+    Reference: Kareem & Asker (2022)
+    
     Args:
         velocity: (nx, ny, nz, 3) array of velocity components
         dx, dy, dz: Grid spacing

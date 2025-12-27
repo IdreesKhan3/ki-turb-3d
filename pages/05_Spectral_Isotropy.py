@@ -105,7 +105,7 @@ def apply_plot_style(fig, ps):
             b=ps.get("margin_bottom", 50)
         ))
     
-    # Always set title with correct font color if show_plot_title is True
+    # It always sets title with correct font color if show_plot_title is True
     if ps.get("show_plot_title", False) and ps.get("plot_title"):
         fig.update_layout(title=_get_title_dict(ps, ps["plot_title"]))
     
@@ -226,7 +226,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list, sim_groups=None
     # Create unique key prefix for all widgets
     key_prefix = f"speciso_{plot_key}"
 
-    with st.sidebar.expander("Plot Style (persistent)", expanded=False):
+    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
@@ -430,7 +430,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list, sim_groups=None
 
         st.markdown("---")
         reset_pressed = False
-        if st.button("Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
                 st.session_state.plot_styles[selected_plot] = {}
                 
                 # Clear widget state so widgets re-read from defaults on next run
@@ -580,7 +580,6 @@ def _avg_isotropy_coeff(files):
         E22 = d[:, 2] if d.shape[1] > 2 else None
         E33 = d[:, 3] if d.shape[1] > 3 else None
 
-        # Use the derivative-based Spectral Isotropy Ratio from Fortran (column 6, 0-indexed)
         # Expected columns: k, E11, E22, E33, dE11/dk, IC_standard, IC_deriv
         if d.shape[1] >= 7:
             IC = d[:, 6]   # IC_deriv from Fortran (column 6, 0-indexed)
@@ -762,7 +761,7 @@ def main():
         return
 
     # Sidebar legends + axis labels persistence
-    with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
+    with st.sidebar.expander("🏷️ Legend & Axis Labels (persistent)", expanded=False):
         st.markdown("### Simulation legend names")
         for sim_prefix in sorted(ic_groups.keys()):
             st.session_state.spec_iso_sim_legend_names.setdefault(sim_prefix, _default_labelify(sim_prefix))
@@ -783,7 +782,7 @@ def main():
             st.session_state.axis_labels_spec_iso[k] = st.text_input(
                 k, st.session_state.axis_labels_spec_iso[k], key=f"speciso_ax_{k}"
             )
-        if st.button("Reset labels/legends"):
+        if st.button("♻️ Reset labels/legends"):
             st.session_state.spec_iso_sim_legend_names = {k: _default_labelify(k) for k in ic_groups.keys()}
             st.session_state.spec_iso_legends = {
                 "IC": "IC(k) (time-avg)",
@@ -1081,7 +1080,7 @@ def main():
         """)
         
         st.markdown("**Derivative-based Spectral Isotropy Ratio:**")
-        st.latex(r"\text{IC}_{\text{deriv}}(k) = \frac{2E_{11}(k)}{2E_{22}(k) - k \frac{dE_{11}}{dk}}")
+        st.latex(r"\text{IC}_{\text{deriv}}(k) = \frac{2E_{22}(k) - k \frac{dE_{11}}{dk}}{2E_{11}(k)}")
         st.markdown(r"""
         The derivative-based formula includes the spectral derivative term, making it less sensitive to numerical noise when $E_{22}(k)$ is small. The ratio $\text{IC}_{\text{deriv}}(k)$ is plotted as a function of wavenumber $k$ in the **IC(k) Time-Avg** tab, and summary statistics (mean, std, min, max) are shown in the **Summary** tab.
         """)

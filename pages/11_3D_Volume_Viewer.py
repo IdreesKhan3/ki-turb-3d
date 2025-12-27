@@ -575,7 +575,7 @@ def main():
 
         # Plot Style (simplified for 3D)
         st.sidebar.markdown("---")
-        with st.sidebar.expander("Plot Style (persistent)", expanded=False):
+        with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
             # Initialize plot style
             if "plot_style_3d" not in st.session_state:
                 st.session_state.plot_style_3d = {}
@@ -621,6 +621,12 @@ def main():
             
             # Save to session state
             st.session_state.plot_style_3d = ps
+        
+        # Coordinate axes controls
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📐 Coordinate Axes")
+        show_axes = st.sidebar.checkbox("Show coordinate axes", value=False, key="show_axes_3d")
+        show_axis_labels = st.sidebar.checkbox("Show axes labels", value=False, key="show_axis_labels_3d")
         
         # Camera controls
         st.sidebar.markdown("---")
@@ -766,6 +772,63 @@ def main():
                 vmin, cmax, cmap, slice_opacity
             ))
 
+        # Add coordinate axes if requested
+        if show_axes:
+            axis_length = max(nx_d, ny_d, nz_d) * 0.15
+            # X axis (red)
+            fig.add_trace(go.Scatter3d(
+                x=[0, axis_length], y=[0, 0], z=[0, 0],
+                mode='lines+markers',
+                line=dict(color='red', width=3),
+                marker=dict(size=5, color='red'),
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+            # Y axis (green)
+            fig.add_trace(go.Scatter3d(
+                x=[0, 0], y=[0, axis_length], z=[0, 0],
+                mode='lines+markers',
+                line=dict(color='green', width=3),
+                marker=dict(size=5, color='green'),
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+            # Z axis (blue)
+            fig.add_trace(go.Scatter3d(
+                x=[0, 0], y=[0, 0], z=[0, axis_length],
+                mode='lines+markers',
+                line=dict(color='blue', width=3),
+                marker=dict(size=5, color='blue'),
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+            
+            if show_axis_labels:
+                fig.add_trace(go.Scatter3d(
+                    x=[axis_length * 1.1], y=[0], z=[0],
+                    mode='text',
+                    text=['x'],
+                    textfont=dict(size=14, color='red'),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+                fig.add_trace(go.Scatter3d(
+                    x=[0], y=[axis_length * 1.1], z=[0],
+                    mode='text',
+                    text=['y'],
+                    textfont=dict(size=14, color='green'),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+                fig.add_trace(go.Scatter3d(
+                    x=[0], y=[0], z=[axis_length * 1.1],
+                    mode='text',
+                    text=['z'],
+                    textfont=dict(size=14, color='blue'),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+
         # Camera presets
         camera_dicts = {
             "Isometric": dict(eye=dict(x=1.4, y=1.4, z=1.2)),
@@ -821,9 +884,9 @@ def main():
             height=default_height,
             **layout_kwargs_title,
             scene=dict(
-                xaxis_title="X",
-                yaxis_title="Y",
-                zaxis_title="Z",
+                xaxis_title="X" if show_axis_labels else "",
+                yaxis_title="Y" if show_axis_labels else "",
+                zaxis_title="Z" if show_axis_labels else "",
                 aspectmode="data",
                 camera=camera_dicts.get(camera_preset, camera_dicts["Isometric"]),
                 bgcolor=scene_bgcolor,
@@ -831,6 +894,7 @@ def main():
                     backgroundcolor=scene_bgcolor,
                     gridcolor=grid_color,
                     showbackground=True,
+                    showticklabels=show_axis_labels,
                     title_font=dict(size=axis_title_size, color=font_color),
                     tickfont=dict(color=font_color)
                 ),
@@ -838,6 +902,7 @@ def main():
                     backgroundcolor=scene_bgcolor,
                     gridcolor=grid_color,
                     showbackground=True,
+                    showticklabels=show_axis_labels,
                     title_font=dict(size=axis_title_size, color=font_color),
                     tickfont=dict(color=font_color)
                 ),
@@ -845,6 +910,7 @@ def main():
                     backgroundcolor=scene_bgcolor,
                     gridcolor=grid_color,
                     showbackground=True,
+                    showticklabels=show_axis_labels,
                     title_font=dict(size=axis_title_size, color=font_color),
                     tickfont=dict(color=font_color)
                 )

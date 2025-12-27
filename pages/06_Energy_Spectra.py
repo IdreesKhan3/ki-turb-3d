@@ -323,7 +323,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list
     # Create unique key prefix for all widgets
     key_prefix = f"energy_{plot_key}"
 
-    with st.sidebar.expander("Plot Style (persistent)", expanded=False):
+    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
@@ -515,7 +515,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, norm_groups, plot_names: list
 
         st.markdown("---")
         reset_pressed = False
-        if st.button("Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
                 st.session_state.plot_styles[selected_plot] = {}
                 
                 # Clear widget state so widgets re-read from defaults on next run
@@ -877,7 +877,7 @@ def main():
 
     # Legends + axis labels
     if sim_groups or norm_groups:
-        with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
+        with st.sidebar.expander("🏷️ Legend & Axis Labels (persistent)", expanded=False):
             st.markdown("### Legend names")
             if sim_groups:
                 st.markdown("**Raw spectra:**")
@@ -926,7 +926,7 @@ def main():
             )
 
             st.markdown("---")
-            if st.button("Reset labels/legends"):
+            if st.button("♻️ Reset labels/legends"):
                 st.session_state.spectrum_legend_names = {k: _default_labelify(k) for k in sim_groups.keys()}
                 st.session_state.norm_legend_names = {k: _default_labelify(k) for k in norm_groups.keys()}
                 st.session_state.axis_labels_raw = {"x": "Wavenumber k", "y": "Energy spectrum E(k)"}

@@ -1060,7 +1060,7 @@ def render_legend_axis_labels_ui(data_dir=None, traces=None,
     if axis_labels_key not in st.session_state:
         st.session_state[axis_labels_key] = {'x': 'X', 'y': 'Y'}
     
-    with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
+    with st.sidebar.expander("🏷️ Legend & Axis Labels (persistent)", expanded=False):
         st.markdown("### Trace Legend Names")
         if traces:
             for idx, trace in enumerate(traces):
