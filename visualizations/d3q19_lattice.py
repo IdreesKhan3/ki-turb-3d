@@ -207,55 +207,7 @@ def plot_d3q19_lattice(
     title: str = "D3Q19 Lattice Stencil",
     
 ) -> go.Figure:
-    """
-    Create interactive D3Q19 lattice visualization with Plotly
-    
-    Args:
-        show_vectors: Whether to show vectors from origin to lattice points
-        vector_scale: Scale factor for vector length
-        vector_width: Width of vector lines
-        node_size: Size of lattice point markers
-        node_colors: List of colors for each lattice point (19 colors)
-        node_opacity: Opacity of lattice points
-        node_style: Marker style for nodes ('circle', 'circle-open', 'square', 'square-open', 'diamond', 'diamond-open', 'cross', 'x')
-        node_edge_color: Color of node edges
-        node_edge_width: Width of node edges
-        origin_size: Size of origin marker
-        origin_color: Color of origin marker
-        origin_style: Marker style for origin ('circle', 'circle-open', 'square', 'square-open', 'diamond', 'diamond-open', 'cross', 'x')
-        vector_color: Color of vectors
-        vector_opacity: Opacity of vectors
-        vector_linestyle: Style of vector lines
-        show_vector_arrows: Whether to show arrow heads on vectors
-        arrow_head_size: Size of arrow heads
-        show_labels: Whether to show labels (C1, C2, etc.)
-        label_prefix: Prefix for labels ('C' for C1, C2, etc.)
-        label_font_size: Font size for labels
-        label_color: Color of labels
-        label_offset: Offset factor for label positioning
-        show_faces: Whether to show colored faces
-        face_opacity: Opacity of faces
-        show_cube_edges: Whether to show cube bounding box edges
-        cube_edge_color: Color of cube edges
-        cube_edge_width: Width of cube edges
-        cube_edge_style: Style of cube edges
-        show_grid: Whether to show grid
-        grid_color: Color of grid
-        grid_opacity: Opacity of grid
-        background_color: Background color
-        show_axes: Whether to show coordinate axes
-        show_axis_labels: Whether to show axis labels
-        show_origin_marker: Whether to show origin marker
-        camera_elevation: Camera elevation angle
-        camera_azimuth: Camera azimuth angle
-        camera_zoom: Camera zoom level
-        width: Figure width
-        height: Figure height
-        title: Figure title
-        
-    Returns:
-        Plotly figure object
-    """
+    """Create interactive D3Q19 lattice visualization"""
     if node_colors is None:
         node_colors = DEFAULT_LATTICE_COLORS.copy()
     

@@ -243,7 +243,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
     # Create unique key prefix for all widgets
     key_prefix = f"realiso_{plot_key}"
 
-    with st.sidebar.expander("Plot Style (persistent)", expanded=False):
+    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
@@ -457,7 +457,7 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
 
         st.markdown("---")
         reset_pressed = False
-        if st.button("Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
                 # 1) Reset the underlying style dict
                 st.session_state.plot_styles[selected_plot] = {}
                 
@@ -613,7 +613,7 @@ def load_turbulence_data(csv_path: Path):
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # fallback mapping if columns are different
-    # your eps_real_validation.csv mapping:
+    # user's eps_real_validation.csv mapping:
     # iter,iter_norm,eps_real,eps_spectral,TKE_real,u_rms_real,...,frac_x,frac_y,frac_z
     cols = df.columns.tolist()
     if "frac_x" not in cols and len(cols) >= 20:
@@ -841,7 +841,7 @@ def main():
     # time_norm will be computed after user selects normalization option
 
     # Sidebar: labels/legends persistence
-    with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
+    with st.sidebar.expander("🏷️ Legend & Axis Labels (persistent)", expanded=False):
         st.markdown("### Curve names")
         for k in st.session_state.real_iso_legends:
             st.session_state.real_iso_legends[k] = st.text_input(
@@ -864,7 +864,7 @@ def main():
                 k, st.session_state.axis_labels_real_iso[k], key=f"realiso_ax_{k}"
             )
 
-        if st.button("Reset labels/legends"):
+        if st.button("♻️ Reset labels/legends"):
             st.session_state.real_iso_legends = {
                 "Ex": "E<sub>x</sub>/E<sub>tot</sub>", 
                 "Ey": "E<sub>y</sub>/E<sub>tot</sub>", 
@@ -978,8 +978,8 @@ def main():
                 showlegend=True,
             ))
 
-        # Moving average (optional) - matching original script style
-        # Original uses alpha=0.7-0.9 for moving averages, so use full color (opacity=1.0)
+        # Moving average (optional)
+        # alpha=0.7-0.9 for moving averages, so use full color (opacity=1.0)
         if ma_win and ma_win > 1 and len(E_x) > ma_win:
             def _ma(x):
                 k = np.ones(ma_win)/ma_win
@@ -987,7 +987,7 @@ def main():
             t_ma = time_norm[ma_win//2: ma_win//2 + len(_ma(E_x))]
 
             for i, (curve, arr) in enumerate([("Ex",E_x),("Ey",E_y),("Ez",E_z)]):
-                c = color_list[i]  # Use original script colors directly
+                c = color_list[i]  # Use my other python script colors method directly
                 # Use plot style line width for moving average lines
                 ma_line_width = ps_a.get("line_width", 1.6) * 1.1  # Slightly thicker than default
                 # Full color for moving average lines - explicitly set opacity=1.0
@@ -1142,7 +1142,7 @@ def main():
             hoverinfo="skip"
         ))
         # Add filled area (fills between lower boundary and two-component limit)
-        # Note: Original code uses fill_between without label, so not in legend
+        # Note: Original code (I mean my auxiliary script which uses matplotlib) uses fill_between without label, so not in legend
         # Theme-aware fill color for dark theme
         if is_dark:
             # Use transparent dark gray for dark theme

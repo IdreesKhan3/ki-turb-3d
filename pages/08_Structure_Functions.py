@@ -271,9 +271,11 @@ def get_plot_style(plot_name: str):
     merged = default.copy()
     merged = apply_theme_to_plot_style(merged, current_theme)
     
-    # Store theme-determined backgrounds before applying user overrides
+    # Store theme-determined properties before applying user overrides
     theme_plot_bgcolor = merged["plot_bgcolor"]
     theme_paper_bgcolor = merged["paper_bgcolor"]
+    theme_font_color = merged.get("font_color")
+    theme_axis_line_color = merged.get("axis_line_color")
     
     # Then apply user overrides (from plot_style) - this ensures user settings override theme
     for key, value in plot_style.items():
@@ -283,12 +285,34 @@ def get_plot_style(plot_name: str):
         else:
             merged[key] = value
     
-    # Only restore theme-based backgrounds if user hasn't customized them
-    # This allows user customizations to persist while still supporting theme switches
-    if "plot_bgcolor" not in plot_style:
+    # Update theme-dependent colors if using default values
+    if "plot_bgcolor" in plot_style:
+        if plot_style["plot_bgcolor"] in ["#1e1e1e", "#FFFFFF", "#F5F5F5"]:
+            merged["plot_bgcolor"] = theme_plot_bgcolor
+    else:
         merged["plot_bgcolor"] = theme_plot_bgcolor
-    if "paper_bgcolor" not in plot_style:
+    
+    if "paper_bgcolor" in plot_style:
+        if plot_style["paper_bgcolor"] in ["#1e1e1e", "#FFFFFF", "#F5F5F5"]:
+            merged["paper_bgcolor"] = theme_paper_bgcolor
+    else:
         merged["paper_bgcolor"] = theme_paper_bgcolor
+    
+    if "font_color" in plot_style:
+        if plot_style["font_color"] in [None, "#000000", "#d4d4d4", "#FFFFFF"]:
+            merged["font_color"] = theme_font_color
+    else:
+        merged["font_color"] = theme_font_color
+    
+    if "axis_line_color" in plot_style:
+        if plot_style["axis_line_color"] in ["#000000", "#FFFFFF", "#d4d4d4"]:
+            merged["axis_line_color"] = theme_axis_line_color
+    else:
+        merged["axis_line_color"] = theme_axis_line_color
+    
+    # Tick color defaults to axis_line_color if not explicitly set
+    if "tick_color" not in plot_style or plot_style.get("tick_color") is None:
+        merged["tick_color"] = None  # Will use axis_line_color in apply_plot_style
     
     # Update She-Leveque and Experimental B93 curve colors for dark theme if they're still at light theme defaults
     if "Dark" in current_theme and (plot_name == "Anomalies (ξₚ − p/3)" or plot_name == "ESS Inset"):
@@ -323,7 +347,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
     # Create unique key prefix for all widgets
     key_prefix = f"structure_{plot_key}"
 
-    with st.sidebar.expander("Plot Style (persistent)", expanded=False):
+    with st.sidebar.expander("🎨 Plot Style (persistent)", expanded=False):
         st.markdown(f"**Configuring: {selected_plot}**")
         st.markdown("**Fonts**")
         fonts = ["Arial", "Helvetica", "Times New Roman", "Computer Modern", "Courier New"]
@@ -510,7 +534,7 @@ def plot_style_sidebar(data_dir: Path, sim_groups, plot_names: list):
 
         st.markdown("---")
         reset_pressed = False
-        if st.button("Reset Plot Style", key=f"{key_prefix}_reset"):
+        if st.button("♻️ Reset Plot Style", key=f"{key_prefix}_reset"):
             st.session_state.plot_styles[selected_plot] = {}
             
             # Clear widget state so widgets re-read from defaults on next run
@@ -862,7 +886,7 @@ def main():
     fit_rmax = st.sidebar.number_input("Fit r_max", value=r_max_default, min_value=fit_rmin + 1e-12, format="%.6g")
 
     # Sidebar legends + axis labels (persistent)
-    with st.sidebar.expander("Legend & Axis Labels (persistent)", expanded=False):
+    with st.sidebar.expander("🏷️ Legend & Axis Labels (persistent)", expanded=False):
         st.markdown("### Legend names")
         for sim_prefix in sorted(sim_groups.keys()):
             st.session_state.structure_legend_names.setdefault(sim_prefix, sim_prefix.replace("_", " ").title())
@@ -908,7 +932,7 @@ def main():
             "Inset B93 legend", st.session_state.axis_labels_structure.get("inset_legend_b93", "B93"), key="ax_struct_legend_b93"
         )
 
-        if st.button("Reset labels/legends"):
+        if st.button("♻️ Reset labels/legends"):
             st.session_state.structure_legend_names = {k: k.replace("_", " ").title() for k in sim_groups.keys()}
             st.session_state.axis_labels_structure.update({
                 "x_r": "Separation distance r",

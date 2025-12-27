@@ -14,18 +14,7 @@ from scipy.stats import gaussian_kde
 # Higher-order moments: Skewness and Kurtosis
 # ==========================================================
 def compute_skewness_kurtosis(data):
-    """
-    Compute skewness and kurtosis for a data array.
-    
-    Skewness: S = ⟨u'³⟩/⟨u'²⟩^(3/2)
-    Kurtosis: K = ⟨u'⁴⟩/⟨u'²⟩²
-    
-    Args:
-        data: 1D array of values (already flattened and cleaned)
-        
-    Returns:
-        mean, rms, skewness, kurtosis (floats)
-    """
+    """Compute mean, RMS, skewness, and kurtosis"""
     # Remove NaN/Inf
     data_clean = data[np.isfinite(data)]
     
@@ -62,18 +51,7 @@ def compute_skewness_kurtosis(data):
 
 
 def compute_velocity_magnitude_pdf(velocity, bins=100, normalize=False):
-    """
-    Compute smooth Probability Density Function for velocity magnitude |u|
-    Uses Kernel Density Estimation (KDE) to produce smooth curves
-    
-    Args:
-        velocity: (nx, ny, nz, 3) array of velocity components
-        bins: Number of evaluation points for smooth curve
-        normalize: If True, normalize by RMS (|u|/σ_|u|)
-        
-    Returns:
-        u_mag_grid, pdf_u_mag (arrays) - smooth PDF curve
-    """
+    """Compute smooth PDF for velocity magnitude using KDE"""
     # Compute velocity magnitude: |u| = √(ux² + uy² + uz²)
     u_mag = np.sqrt(
         velocity[:, :, :, 0]**2 + 
@@ -126,12 +104,7 @@ def compute_velocity_magnitude_pdf(velocity, bins=100, normalize=False):
 
 
 def compute_velocity_magnitude_statistics(velocity):
-    """
-    Compute statistical moments (mean, RMS, skewness, kurtosis) for velocity magnitude.
-    
-    Returns:
-        mean, rms, skewness, kurtosis (floats)
-    """
+    """Compute statistics for velocity magnitude"""
     # Compute velocity magnitude: |u| = √(ux² + uy² + uz²)
     u_mag = np.sqrt(
         velocity[:, :, :, 0]**2 + 
@@ -149,18 +122,7 @@ def compute_velocity_magnitude_statistics(velocity):
 
 
 def compute_velocity_pdf(velocity, bins=100, normalize=False):
-    """
-    Compute smooth Probability Density Function for each velocity component (u, v, w)
-    Uses Kernel Density Estimation (KDE) to produce smooth curves like reference figures
-    
-    Args:
-        velocity: (nx, ny, nz, 3) array of velocity components
-        bins: Number of evaluation points for smooth curve
-        normalize: If True, normalize by RMS (u/σ_u)
-        
-    Returns:
-        u_grid, pdf_u, pdf_v, pdf_w (all arrays) - smooth PDF curves
-    """
+    """Compute smooth PDFs for velocity components using KDE"""
     # Extract each component
     ux = velocity[:, :, :, 0].flatten()
     uy = velocity[:, :, :, 1].flatten()
@@ -236,12 +198,7 @@ def compute_velocity_pdf(velocity, bins=100, normalize=False):
 
 
 def compute_velocity_component_statistics(velocity):
-    """
-    Compute statistical moments (mean, RMS, skewness, kurtosis) for each velocity component (u, v, w).
-    
-    Returns:
-        Dictionary with keys 'u', 'v', 'w', each containing (mean, rms, skewness, kurtosis)
-    """
+    """Compute statistics for each velocity component"""
     # Extract each component
     ux = velocity[:, :, :, 0].flatten()
     uy = velocity[:, :, :, 1].flatten()
@@ -260,13 +217,7 @@ def compute_velocity_component_statistics(velocity):
 
 
 def display_statistics_table(statistics_dict, title="Statistical Moments"):
-    """
-    Display statistics in a formatted table.
-    
-    Args:
-        statistics_dict: Dictionary with keys as variable names and values as (mean, rms, skewness, kurtosis) tuples
-        title: Title for the statistics section
-    """
+    """Display statistics in a formatted table"""
     st.markdown(f"### {title}")
     st.markdown("**Higher-order moments:**")
     st.markdown("- **Skewness**: $S = \\langle u'^3 \\rangle / \\langle u'^2 \\rangle^{3/2}$ (asymmetry)")
@@ -294,19 +245,7 @@ def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,
                                    get_plot_style_func=None, apply_plot_style_func=None,
                                    get_palette_func=None, resolve_line_style_func=None,
                                    export_panel_func=None, capture_button_func=None):
-    """
-    Render the Velocity Magnitude PDF tab content
-    
-    Args:
-        data_dir_or_dirs: Path to data directory (Path) or list of directories (list of Path/str)
-        load_velocity_file_func: Function to load velocity files (takes filepath)
-        get_plot_style_func: Optional function to get plot style (plot_name) -> style_dict
-        apply_plot_style_func: Optional function to apply plot style (fig, style_dict) -> fig
-        get_palette_func: Optional function to get color palette (style_dict) -> color_list
-        resolve_line_style_func: Optional function to resolve line style for files
-        export_panel_func: Optional function to show export panel (fig, out_dir, base_name)
-        capture_button_func: Optional function to add capture button (fig, title, source_page)
-    """
+    """Render the Velocity Magnitude PDF tab content"""
     import glob
     from pathlib import Path
     from utils.file_detector import natural_sort_key

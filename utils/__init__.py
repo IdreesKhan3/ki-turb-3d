@@ -3,7 +3,6 @@ Utility functions module
 """
 
 from .file_detector import detect_simulation_files
-from .data_processor import process_time_average
 from .plot_style import (
     PLOTLY_LINE_STYLES,
     PLOTLY_MARKER_STYLES,
@@ -18,7 +17,6 @@ from .plot_style import (
 
 __all__ = [
     'detect_simulation_files',
-    'process_time_average',
     'PLOTLY_LINE_STYLES',
     'PLOTLY_MARKER_STYLES',
     'resolve_line_style',

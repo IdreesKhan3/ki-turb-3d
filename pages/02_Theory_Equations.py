@@ -219,7 +219,7 @@ def main():
             -\frac{1}{\tau} \left(f_\alpha(\mathbf{x}, t) - f_\alpha^{eq}(\mathbf{x}, t)\right) + \mathbf{F}_\alpha^{\text{ext}}
             """)
             st.latex(r"""
-            \nu = c_s^2 \left(\tau - \frac{1}{2}\right) \delta x, \quad \mathbf{F}_\alpha^{\text{ext}} = f_\alpha^{eq,\text{shift}} - f_\alpha^{eq}
+            \nu = c_s^2 \left(\tau - \frac{1}{2}\right) \delta t, \quad \mathbf{F}_\alpha^{\text{ext}} = f_\alpha^{eq,\text{shift}} - f_\alpha^{eq}
             """)
         
         # BGK LES - REFERENCE ONLY, COMPACT
@@ -291,6 +291,9 @@ def main():
             st.markdown("**Bulk Reynolds number:**")
             st.latex(r"""
             \text{Re}_B = \frac{U L}{\nu}
+            """)
+            st.markdown(r"""
+            where $U$ is the characteristic velocity (typically reference or bulk velocity) and $L$ is the characteristic length scale (typically domain size or reference length).
             """)
             st.markdown("**Taylor Reynolds number:**")
             st.latex(r"""
@@ -571,9 +574,28 @@ def main():
             
             # Reset button
             st.markdown("---")
-            if st.button("Reset to Defaults", key="d3q19_reset"):
+            if st.button("♻️ Reset to Defaults", key="d3q19_reset"):
                 st.session_state.d3q19_settings = _default_d3q19_settings()
-                st.toast("Reset.")
+                
+                # Clear widget state so widgets re-read from defaults
+                widget_keys = [
+                    "d3q19_show_vectors", "d3q19_vector_scale", "d3q19_vector_width",
+                    "d3q19_node_style", "d3q19_node_size", "d3q19_node_opacity",
+                    "d3q19_node_edge_color", "d3q19_node_edge_width",
+                    "d3q19_origin_style", "d3q19_origin_size", "d3q19_origin_color",
+                    "d3q19_vector_color", "d3q19_vector_opacity", "d3q19_vector_linestyle",
+                    "d3q19_show_labels", "d3q19_label_prefix", "d3q19_label_font_size",
+                    "d3q19_label_color", "d3q19_show_faces", "d3q19_face_opacity",
+                    "d3q19_show_cube_edges", "d3q19_cube_edge_color", "d3q19_cube_edge_width",
+                    "d3q19_camera_elevation", "d3q19_camera_azimuth", "d3q19_camera_zoom",
+                    "d3q19_show_axes", "d3q19_show_axis_labels", "d3q19_show_origin_marker",
+                    "d3q19_show_grid", "d3q19_background_color"
+                ]
+                for widget_key in widget_keys:
+                    if widget_key in st.session_state:
+                        del st.session_state[widget_key]
+                
+                st.toast("Reset.", icon="♻️")
                 st.rerun()
         
         # Generate and display visualization with theme-aware colors
