@@ -233,4 +233,4 @@ Please use **GitHub Issues** to report bugs, request features, or ask questions 
 
 ---
 ## Acknowledgments
-This project was developed with the help of AI-based tools as part of the development workflow. All scientific logic, analysis, and results were reviewed and curated by the author, who remains fully responsible for the software’s functionality and outputs. 
+This project was developed with the assistance of AI-based tools. While all scientific logic, analysis, and results have been carefully reviewed and curated by the author, please let us know if you encounter any bugs or unexpected behavior.
