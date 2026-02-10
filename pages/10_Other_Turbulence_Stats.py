@@ -758,5 +758,28 @@ def main():
                 
                 st.markdown("---")
 
+    # =========================
+    # Theory & Equations Section
+    # =========================
+    with st.expander("📚 Theory & Equations", expanded=False):
+        st.markdown("**Forcing error check:**")
+        st.latex(r"""
+        \left| \frac{\varepsilon}{-\frac{\mathrm{d}E_k}{\mathrm{d}t} + \langle \mathbf{F} \cdot \mathbf{u} \rangle} - 1 \right|
+        """)
+        st.markdown(r"""
+        where:
+        - $\varepsilon$ is the dissipation rate
+        - $E_k$ is the turbulent kinetic energy
+        - $\mathbf{F}$ is the forcing vector
+        - $\mathbf{u}$ is the velocity field
+        - $\langle \mathbf{F} \cdot \mathbf{u} \rangle$ is the forcing power (spatial or ensemble average)
+        - $\frac{\mathrm{d}E_k}{\mathrm{d}t}$ is the rate of change of kinetic energy
+        """)
+        st.markdown(r"""
+        This equation measures the deviation from perfect energy balance. For a well-balanced simulation, this value should be close to zero.
+        """)
+        st.divider()
+        st.markdown("**Reference:** [Pope (2001)](/Citation#pope2001) — Turbulent flows")
+
 if __name__ == "__main__":
     main()

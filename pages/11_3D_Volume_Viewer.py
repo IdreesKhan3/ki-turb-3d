@@ -121,10 +121,21 @@ def _colormap_options():
         "greys", "ylorrd", "blues", "reds", "greens"
     ]
 
-def _create_slice_surface(x_coords, y_coords, z_coords, field_slice, vmin, vmax, cmap, opacity):
+def _create_slice_surface(x_coords, y_coords, z_coords, field_slice, vmin, vmax, cmap, opacity, showscale=False, field_type=""):
     """Create a surface trace for a slice plane
     Matches ParaView's coordinate system: X horizontal, Y vertical, Z out-of-plane
     """
+    colorbar_config = None
+    if showscale:
+        colorbar_config = dict(
+            title=dict(text=field_type, font=dict(size=14)) if field_type else None,
+            len=0.6,
+            y=0.5,
+            x=1.005,
+            thickness=20,
+            xanchor="left"
+        )
+    
     return go.Surface(
         x=x_coords,
         y=y_coords,
@@ -134,7 +145,8 @@ def _create_slice_surface(x_coords, y_coords, z_coords, field_slice, vmin, vmax,
         cmax=vmax,
         colorscale=cmap,
         opacity=opacity,
-        showscale=False,
+        showscale=showscale,
+        colorbar=colorbar_config,
         hovertemplate="Value: %{surfacecolor:.4f}<extra></extra>",
         connectgaps=False
     )
@@ -692,7 +704,9 @@ def main():
             fig.add_trace(_create_slice_surface(
                 x_coords, y_coords, z_front,
                 field_clip[:, :, 0],
-                vmin, cmax, cmap, surface_opacity
+                vmin, cmax, cmap, surface_opacity,
+                showscale=True,
+                field_type=field_type
             ))
             
             # Back face (z = nz_d-1)
@@ -746,10 +760,14 @@ def main():
             z_plane = np.full((nx_d, ny_d), slice_z)
             x_coords = np.arange(nx_d)[:, None] * np.ones((1, ny_d))
             y_coords = np.ones((nx_d, 1)) * np.arange(ny_d)[None, :]
+            # Show colorbar on first slice if surfaces are not shown
+            show_colorbar_on_slice = not show_surface
             fig.add_trace(_create_slice_surface(
                 x_coords, y_coords, z_plane,
                 field_clip[:, :, slice_z],
-                vmin, cmax, cmap, slice_opacity
+                vmin, cmax, cmap, slice_opacity,
+                showscale=show_colorbar_on_slice,
+                field_type=field_type if show_colorbar_on_slice else ""
             ))
 
             # XZ plane at y = slice_y (ParaView: Y-slice showing X-Z plane)
@@ -926,7 +944,7 @@ def main():
             ),
             margin=dict(
                 l=0, 
-                r=0, 
+                r=80, 
                 t=50 if (ps.get("show_plot_title", False) and ps.get("plot_title")) else 0, 
                 b=0
             ),
