@@ -247,8 +247,8 @@ def main():
     # Load eps_real_validation CSV files from all directories
     eps_files = files.get("spectral_turb_stats", [])
     if not eps_files:
-        # Fallback: search in first directory
-        eps_files = glob.glob(str(data_dir / "eps_real_validation*.csv"))
+        # Fallback: search in first directory (LBM: eps_real_validation, NS: turbulence_validation)
+        eps_files = glob.glob(str(data_dir / "eps_real_validation*.csv")) + glob.glob(str(data_dir / "turbulence_validation*.csv"))
     
     if eps_files:
         if len(data_dirs) > 1:
@@ -757,29 +757,6 @@ def main():
                 capture_button(df=df_stats, title="Time Series Data", source_page="Other Turbulence Stats")
                 
                 st.markdown("---")
-
-    # =========================
-    # Theory & Equations Section
-    # =========================
-    with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown("**Forcing error check:**")
-        st.latex(r"""
-        \left| \frac{\varepsilon}{-\frac{\mathrm{d}E_k}{\mathrm{d}t} + \langle \mathbf{F} \cdot \mathbf{u} \rangle} - 1 \right|
-        """)
-        st.markdown(r"""
-        where:
-        - $\varepsilon$ is the dissipation rate
-        - $E_k$ is the turbulent kinetic energy
-        - $\mathbf{F}$ is the forcing vector
-        - $\mathbf{u}$ is the velocity field
-        - $\langle \mathbf{F} \cdot \mathbf{u} \rangle$ is the forcing power (spatial or ensemble average)
-        - $\frac{\mathrm{d}E_k}{\mathrm{d}t}$ is the rate of change of kinetic energy
-        """)
-        st.markdown(r"""
-        This equation measures the deviation from perfect energy balance. For a well-balanced simulation, this value should be close to zero.
-        """)
-        st.divider()
-        st.markdown("**Reference:** [Pope (2001)](/Citation#pope2001) — Turbulent flows")
 
 if __name__ == "__main__":
     main()

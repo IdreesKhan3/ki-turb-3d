@@ -32,16 +32,19 @@ streamlit run app.py
 ## File Types
 
 Each simulation directory contains:
-- `simulation.input` - Parameters
+- `simulation.input` - Parameters (LBM, Fortran namelist format)
+- `simulation.json` - Parameters (Navier-Stokes, JSON format; alternative to simulation.input)
 - `turbulence_stats*.csv` - Time series
 - `spectrum*.dat` - Energy spectra
 - `norm*.dat` - Normalized spectra
 - `isotropy_coeff*.dat` - Spectral isotropy
 - `flatness*.txt` - Flatness factors
 - `structure_funcs*.bin` - Structure functions (ESS analysis)
-- `eps_real_validation*.csv` - Real-space validation
+- `eps_real_validation*.csv` or `turbulence_validation*.csv` - Real-space validation (u_rms or u_rms_real, frac_x/frac_y/frac_z or E_x/E_y/E_z)
 - `velocity*.vti` / `velocity*.h5` - 3D fields (Git LFS)
-- `tau_analysis*.bin` - Effective tau (LES only, Git LFS)
+- `tau_analysis*.bin` - Effective tau (LBM LES only, Git LFS)
+
+**LBM vs Navier-Stokes:** The Overview page supports both. Use `simulation.input` for LBM (DNS/LES) and `simulation.json` for NS. For NS, include `c_sound` and `L` in simulation.json for Mach and Knudsen validation.
 
 ## Your Data
 

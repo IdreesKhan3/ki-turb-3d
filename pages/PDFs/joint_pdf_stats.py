@@ -8,276 +8,21 @@ import numpy as np
 from pathlib import Path
 import plotly.graph_objects as go
 
-from utils.iso_surfaces import compute_vorticity_vector, compute_rotation_deformation_tensors, compute_q_invariant, compute_r_invariant
+from core_physics import (
+    compute_velocity_dissipation_joint_pdf,
+    compute_velocity_enstrophy_joint_pdf,
+    compute_dissipation_enstrophy_joint_pdf,
+    compute_rq_joint_pdf,
+    compute_discriminant_line,
+)
 from data_readers.parameter_reader import read_parameters
-
-
-def compute_velocity_dissipation_joint_pdf(velocity, nu=1.0, bins=100, dx=1.0, dy=1.0, dz=1.0,
-                                           u_range=None, eps_range=None, normalize=False):
-    """Compute joint PDF P(|u|, ε)"""
-    # Compute velocity magnitude: |u| = √(ux² + uy² + uz²)
-    u_mag = np.sqrt(
-        velocity[:, :, :, 0]**2 + 
-        velocity[:, :, :, 1]**2 + 
-        velocity[:, :, :, 2]**2
-    )
-    
-    # Compute dissipation: ε = 2ν S_ij S_ij
-    _, S = compute_rotation_deformation_tensors(velocity, dx, dy, dz)
-    S_squared_sum = np.einsum('ijklm,ijklm->ijk', S, S)
-    dissipation = 2.0 * nu * S_squared_sum
-    
-    # Flatten
-    u_flat = u_mag.flatten()
-    eps_flat = dissipation.flatten()
-    
-    # Remove NaN/Inf and negative dissipation
-    valid_mask = np.isfinite(u_flat) & np.isfinite(eps_flat) & (eps_flat >= 0)
-    u_flat = u_flat[valid_mask]
-    eps_flat = eps_flat[valid_mask]
-    
-    if len(u_flat) == 0:
-        return np.array([]), np.array([]), np.array([])
-    
-    # Normalize if requested
-    norm_factor_u = 1.0
-    norm_factor_eps = 1.0
-    if normalize:
-        rms_u = np.sqrt(np.mean(u_flat**2))
-        if rms_u > 0:
-            u_flat = u_flat / rms_u
-            norm_factor_u = rms_u
-        mean_eps = np.mean(eps_flat)
-        if mean_eps > 0:
-            eps_flat = eps_flat / mean_eps
-            norm_factor_eps = mean_eps
-    
-    # Determine ranges
-    if u_range is None:
-        u_range = (u_flat.min(), u_flat.max())
-    if eps_range is None:
-        eps_range = (eps_flat.min(), eps_flat.max())
-    
-    # Compute 2D histogram
-    joint_hist, u_edges, eps_edges = np.histogram2d(
-        u_flat, eps_flat,
-        bins=[bins, bins],
-        range=[u_range, eps_range],
-        density=False
-    )
-    
-    # Normalize to joint PDF
-    bin_area = (u_edges[1] - u_edges[0]) * (eps_edges[1] - eps_edges[0])
-    joint_pdf = joint_hist / (len(u_flat) * bin_area)
-    
-    # Normalize Y-axis: multiply by product of normalization factors to preserve area = 1
-    if normalize:
-        joint_pdf = joint_pdf * norm_factor_u * norm_factor_eps
-    
-    # Bin centers
-    u_centers = (u_edges[:-1] + u_edges[1:]) / 2
-    eps_centers = (eps_edges[:-1] + eps_edges[1:]) / 2
-    
-    return u_centers, eps_centers, joint_pdf.T
-
-
-def compute_velocity_enstrophy_joint_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=1.0,
-                                         u_range=None, omega_range=None, normalize=False):
-    """Compute joint PDF P(|u|, |ω|)"""
-    # Compute velocity magnitude: |u| = √(ux² + uy² + uz²)
-    u_mag = np.sqrt(
-        velocity[:, :, :, 0]**2 + 
-        velocity[:, :, :, 1]**2 + 
-        velocity[:, :, :, 2]**2
-    )
-    
-    # Compute vorticity magnitude: |ω| = √(ωx² + ωy² + ωz²)
-    vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
-    omega_mag = np.sqrt(
-        vorticity[:, :, :, 0]**2 + 
-        vorticity[:, :, :, 1]**2 + 
-        vorticity[:, :, :, 2]**2
-    )
-    
-    # Flatten
-    u_flat = u_mag.flatten()
-    omega_flat = omega_mag.flatten()
-    
-    # Remove NaN/Inf
-    valid_mask = np.isfinite(u_flat) & np.isfinite(omega_flat)
-    u_flat = u_flat[valid_mask]
-    omega_flat = omega_flat[valid_mask]
-    
-    if len(u_flat) == 0:
-        return np.array([]), np.array([]), np.array([])
-    
-    # Determine ranges
-    if u_range is None:
-        u_range = (u_flat.min(), u_flat.max())
-    if omega_range is None:
-        omega_range = (omega_flat.min(), omega_flat.max())
-    
-    # Compute 2D histogram
-    joint_hist, u_edges, omega_edges = np.histogram2d(
-        u_flat, omega_flat,
-        bins=[bins, bins],
-        range=[u_range, omega_range],
-        density=False
-    )
-    
-    # Normalize to joint PDF
-    bin_area = (u_edges[1] - u_edges[0]) * (omega_edges[1] - omega_edges[0])
-    joint_pdf = joint_hist / (len(u_flat) * bin_area)
-    
-    # Bin centers
-    u_centers = (u_edges[:-1] + u_edges[1:]) / 2
-    omega_centers = (omega_edges[:-1] + omega_edges[1:]) / 2
-    
-    return u_centers, omega_centers, joint_pdf.T
-
-
-def compute_dissipation_enstrophy_joint_pdf(velocity, nu=1.0, bins=100, dx=1.0, dy=1.0, dz=1.0,
-                                            eps_range=None, omega_range=None, normalize=False):
-    """Compute joint PDF P(ε, |ω|)"""
-    # Compute dissipation: ε = 2ν S_ij S_ij
-    _, S = compute_rotation_deformation_tensors(velocity, dx, dy, dz)
-    S_squared_sum = np.einsum('ijklm,ijklm->ijk', S, S)
-    dissipation = 2.0 * nu * S_squared_sum
-    
-    # Compute vorticity magnitude: |ω| = √(ωx² + ωy² + ωz²)
-    vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
-    omega_mag = np.sqrt(
-        vorticity[:, :, :, 0]**2 + 
-        vorticity[:, :, :, 1]**2 + 
-        vorticity[:, :, :, 2]**2
-    )
-    
-    # Flatten
-    eps_flat = dissipation.flatten()
-    omega_flat = omega_mag.flatten()
-    
-    # Remove NaN/Inf and negative dissipation
-    valid_mask = np.isfinite(eps_flat) & np.isfinite(omega_flat) & (eps_flat >= 0)
-    eps_flat = eps_flat[valid_mask]
-    omega_flat = omega_flat[valid_mask]
-    
-    if len(eps_flat) == 0:
-        return np.array([]), np.array([]), np.array([])
-    
-    # Normalize if requested
-    norm_factor_eps = 1.0
-    norm_factor_omega = 1.0
-    if normalize:
-        mean_eps = np.mean(eps_flat)
-        if mean_eps > 0:
-            eps_flat = eps_flat / mean_eps
-            norm_factor_eps = mean_eps
-        rms_omega = np.sqrt(np.mean(omega_flat**2))
-        if rms_omega > 0:
-            omega_flat = omega_flat / rms_omega
-            norm_factor_omega = rms_omega
-    
-    # Determine ranges
-    if eps_range is None:
-        eps_range = (eps_flat.min(), eps_flat.max())
-    if omega_range is None:
-        omega_range = (omega_flat.min(), omega_flat.max())
-    
-    # Compute 2D histogram
-    joint_hist, eps_edges, omega_edges = np.histogram2d(
-        eps_flat, omega_flat,
-        bins=[bins, bins],
-        range=[eps_range, omega_range],
-        density=False
-    )
-    
-    # Normalize to joint PDF
-    bin_area = (eps_edges[1] - eps_edges[0]) * (omega_edges[1] - omega_edges[0])
-    joint_pdf = joint_hist / (len(eps_flat) * bin_area)
-    
-    # Normalize Y-axis: multiply by product of normalization factors to preserve area = 1
-    if normalize:
-        joint_pdf = joint_pdf * norm_factor_eps * norm_factor_omega
-    
-    # Bin centers
-    eps_centers = (eps_edges[:-1] + eps_edges[1:]) / 2
-    omega_centers = (omega_edges[:-1] + omega_edges[1:]) / 2
-    
-    return eps_centers, omega_centers, joint_pdf.T
-
-
-def compute_rq_joint_pdf(velocity, r_bins=100, q_bins=100, r_range=None, q_range=None):
-    """Compute joint PDF of Q and R invariants, normalized by <S_ij S_ij>"""
-    # Compute Q and R invariants
-    Q = compute_q_invariant(velocity)
-    R = compute_r_invariant(velocity)
-    
-    # Compute normalization factor: <S_ij S_ij> (mean strain rate squared)
-    _, S = compute_rotation_deformation_tensors(velocity)
-    S_squared_sum = np.einsum('ijklm,ijklm->ijk', S, S)
-    # Use all finite values for mean (S_ij S_ij is always non-negative)
-    valid_S = S_squared_sum[np.isfinite(S_squared_sum)]
-    mean_S_squared = np.mean(valid_S) if len(valid_S) > 0 else 1.0
-    
-    # Normalize Q and R by <S_ij S_ij>
-    # Q* = Q / <S_ij S_ij>
-    # R* = R / <S_ij S_ij>^(3/2)
-    # This normalization brings values to typical literature ranges (-30 to 30 for Q)
-    if mean_S_squared > 0:
-        Q_normalized = Q / mean_S_squared
-        R_normalized = R / (mean_S_squared ** 1.5)
-    else:
-        # Fallback: use raw values if normalization fails
-        Q_normalized = Q
-        R_normalized = R
-    
-    # Flatten
-    Q_flat = Q_normalized.flatten()
-    R_flat = R_normalized.flatten()
-    
-    # Remove NaN/Inf
-    valid_mask = np.isfinite(Q_flat) & np.isfinite(R_flat)
-    Q_flat = Q_flat[valid_mask]
-    R_flat = R_flat[valid_mask]
-    
-    if len(Q_flat) == 0:
-        return np.array([]), np.array([]), np.array([])
-    
-    # Determine ranges
-    if r_range is None:
-        r_range = (R_flat.min(), R_flat.max())
-    if q_range is None:
-        q_range = (Q_flat.min(), Q_flat.max())
-    
-    # Compute 2D histogram
-    joint_hist, r_edges, q_edges = np.histogram2d(
-        R_flat, Q_flat,
-        bins=[r_bins, q_bins],
-        range=[r_range, q_range],
-        density=False
-    )
-    
-    # Normalize to joint PDF
-    bin_area = (r_edges[1] - r_edges[0]) * (q_edges[1] - q_edges[0])
-    joint_pdf = joint_hist / (len(R_flat) * bin_area)
-    
-    # Bin centers
-    R_centers = (r_edges[:-1] + r_edges[1:]) / 2
-    Q_centers = (q_edges[:-1] + q_edges[1:]) / 2
-    
-    return R_centers, Q_centers, joint_pdf.T  # Transpose for correct orientation
-
-
-def compute_discriminant_line(r_values):
-    """Compute Q values for D=0 line: Q = -3*(R/2)^(2/3)"""
-    q_values = -3 * np.power(np.abs(r_values) / 2.0, 2.0/3.0)
-    return q_values
 
 
 def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                           get_plot_style_func=None, apply_plot_style_func=None,
                           get_palette_func=None, resolve_line_style_func=None,
-                          export_panel_func=None, capture_button_func=None):
+                          export_panel_func=None, capture_button_func=None,
+                          dx=1.0, dy=1.0, dz=1.0):
     """Render the Joint PDFs tab content"""
     import glob
     from pathlib import Path
@@ -322,29 +67,34 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
     # Physical parameters (show first, always visible)
     st.sidebar.header("⚙️ Physical Parameters")
     
-    # Always try to read viscosity from parameter file first
-    param_file = data_dir / "simulation.input"
+    # Try simulation.input (LBM) first, then simulation.json (NS)
+    param_file = None
     nu_from_file = None
-    if param_file.exists():
-        try:
-            params = read_parameters(str(param_file))
-            if 'nu' in params:
-                nu_from_file = params['nu']
-        except Exception as e:
-            st.sidebar.warning(f"Error reading simulation.input: {e}")
+    param_source = None
+    for candidate in (data_dir / "simulation.input", data_dir / "simulation.json"):
+        if candidate.exists():
+            try:
+                params = read_parameters(str(candidate))
+                if 'nu' in params:
+                    nu_from_file = params['nu']
+                    param_file = candidate
+                    param_source = candidate.name
+                    break
+            except Exception as e:
+                st.sidebar.warning(f"Error reading {candidate.name}: {e}")
     
     # Set default value: use file value if available, otherwise use a reasonable default
     default_nu = nu_from_file if nu_from_file is not None else 0.004
     
     # Show status message
     if nu_from_file is not None:
-        st.sidebar.info(f"📄 Viscosity from simulation.input: {nu_from_file:.6f}")
+        st.sidebar.info(f"📄 Viscosity from {param_source}: {nu_from_file:.6f}")
     else:
-        st.sidebar.warning("Viscosity not found in simulation.input. Please enter manually or check parameter file.")
+        st.sidebar.warning("Viscosity not found in simulation.input or simulation.json. Please enter manually or check parameter file.")
     
     nu_help = "Kinematic viscosity used in dissipation calculation: ε = 2ν S_ij S_ij"
     if nu_from_file is not None:
-        nu_help += f" (loaded from simulation.input, can be overridden)"
+        nu_help += f" (loaded from {param_source}, can be overridden)"
     else:
         nu_help += " (enter manually)"
     
@@ -358,7 +108,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
         help=nu_help,
         key="joint_pdf_nu_input"
     )
-    
+
     if not all_files:
         st.error("No velocity files found. Expected: `*.vti`, `*.h5`, or `*.hdf5`")
         return
@@ -456,18 +206,18 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                     metadata = vti_data.get('metadata', {})
                     file_nu = metadata.get('nu', metadata.get('viscosity', None))
                     if file_nu is None:
-                        # Try parameter file
-                        if param_file.exists():
+                        # Try parameter file (simulation.input or simulation.json)
+                        if param_file is not None and param_file.exists():
                             try:
                                 params = read_parameters(str(param_file))
                                 file_nu = params.get('nu', nu)
-                            except:
+                            except Exception:
                                 file_nu = nu
                         else:
                             file_nu = nu
                     
                     u_centers, eps_centers, joint_pdf = compute_velocity_dissipation_joint_pdf(
-                        velocity, nu=file_nu, bins=pdf_bins, dx=1.0, dy=1.0, dz=1.0, normalize=normalize_pdf
+                        velocity, nu=file_nu, bins=pdf_bins, dx=dx, dy=dy, dz=dz, normalize=normalize_pdf
                     )
                     ud_data[filename] = (u_centers, eps_centers, joint_pdf)
                     
@@ -493,7 +243,7 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                         continue
                     
                     u_centers, omega_centers, joint_pdf = compute_velocity_enstrophy_joint_pdf(
-                        velocity, bins=pdf_bins, dx=1.0, dy=1.0, dz=1.0, normalize=normalize_pdf
+                        velocity, bins=pdf_bins, dx=dx, dy=dy, dz=dz, normalize=normalize_pdf
                     )
                     uo_data[filename] = (u_centers, omega_centers, joint_pdf)
                     
@@ -522,18 +272,18 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                     metadata = vti_data.get('metadata', {})
                     file_nu = metadata.get('nu', metadata.get('viscosity', None))
                     if file_nu is None:
-                        # Try parameter file from first directory
-                        if param_file.exists():
+                        # Try parameter file (simulation.input or simulation.json)
+                        if param_file is not None and param_file.exists():
                             try:
                                 params = read_parameters(str(param_file))
                                 file_nu = params.get('nu', nu)
-                            except:
+                            except Exception:
                                 file_nu = nu
                         else:
                             file_nu = nu
                     
                     eps_centers, omega_centers, joint_pdf = compute_dissipation_enstrophy_joint_pdf(
-                        velocity, nu=file_nu, bins=pdf_bins, dx=1.0, dy=1.0, dz=1.0, normalize=normalize_pdf
+                        velocity, nu=file_nu, bins=pdf_bins, dx=dx, dy=dy, dz=dz, normalize=normalize_pdf
                     )
                     do_data[filename] = (eps_centers, omega_centers, joint_pdf)
                     
@@ -558,8 +308,10 @@ def render_joint_pdf_tab(data_dir_or_dirs, load_velocity_file_func,
                         st.warning(f"{filename}: Invalid velocity shape")
                         continue
                     
-                    # Compute R-Q joint PDF
-                    R_centers, Q_centers, joint_pdf = compute_rq_joint_pdf(velocity, r_bins=rq_bins, q_bins=rq_bins)
+                    # Compute R-Q joint PDF (uses dx for gradient tensor)
+                    R_centers, Q_centers, joint_pdf = compute_rq_joint_pdf(
+                        velocity, r_bins=rq_bins, q_bins=rq_bins, dx=dx, dy=dy, dz=dz
+                    )
                     rq_data[filename] = (R_centers, Q_centers, joint_pdf)
                     
             except Exception as e:

@@ -1,31 +1,16 @@
 """
-Parameter file reader for simulation.input (Fortran namelist format)
-Extracts all parameters from parameters module
+Parameter file reader for simulation.input (LBM Fortran namelist) and simulation.json (NS JSON).
+Supports both LBM and Navier-Stokes FHIT configurations.
 """
 
+import json
 import re
+from pathlib import Path
 from typing import Dict
 
 
-def read_parameters(filepath: str) -> Dict:
-    """
-    Read simulation.input file (Fortran namelist format)
-    
-    Format:
-    &input_params
-    nx = 64
-    ny = 64
-    nz = 64
-    nu = 0.003
-    ...
-    /
-    
-    Args:
-        filepath: Path to simulation.input file
-        
-    Returns:
-        Dictionary of parameters with user-friendly labels
-    """
+def _read_parameters_input(filepath: str) -> Dict:
+    """Read simulation.input (Fortran namelist format)."""
     params = {}
     
     try:
@@ -83,7 +68,59 @@ def read_parameters(filepath: str) -> Dict:
         raise ValueError(f"Error reading parameter file {filepath}: {e}")
 
 
-def format_parameters_for_display(params: Dict) -> Dict:
+def _read_parameters_json(filepath: str) -> Dict:
+    """Read simulation.json (NS JSON format). Supports nx, ny, nz, nu, c_sound, L, Re, etc."""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception as e:
+        raise ValueError(f"Error reading JSON parameter file {filepath}: {e}")
+
+    # Flatten nested dicts and normalize keys
+    params = {}
+
+    def _flatten(d: dict, prefix: str = "") -> None:
+        for k, v in d.items():
+            key = str(k).lower()
+            key = key.replace('n_x', 'nx').replace('n_y', 'ny').replace('n_z', 'nz')
+            if key == 'viscosity':
+                key = 'nu'
+            elif key in ('c_sound', 'c_speed', 'speed_of_sound'):
+                key = 'c_sound'
+            elif key in ('integral_scale', 'length_scale', 'l'):
+                key = 'L'
+            if isinstance(v, dict):
+                _flatten(v, prefix + key + "_")
+            else:
+                params[key] = v
+
+    if isinstance(data, dict):
+        _flatten(data)
+
+    # Ensure L for Knudsen: use domain size if L not given
+    if 'L' not in params and all(k in params for k in ['nx', 'ny', 'nz']):
+        params['L'] = float(min(params['nx'], params['ny'], params['nz']))
+
+    return params
+
+
+def read_parameters(filepath: str) -> Dict:
+    """
+    Read simulation parameters from simulation.input (LBM) or simulation.json (NS).
+    Auto-detects format from file extension.
+    """
+    path = Path(filepath)
+    if path.suffix.lower() == '.json':
+        return _read_parameters_json(filepath)
+    return _read_parameters_input(filepath)
+
+
+def is_lbm_params(filepath: str) -> bool:
+    """Return True if file is LBM format (simulation.input), False for NS (simulation.json)."""
+    return Path(filepath).suffix.lower() != '.json'
+
+
+def format_parameters_for_display(params: Dict, is_lbm: bool = True) -> Dict:
     """
     Format parameters with user-friendly labels and units
     
@@ -106,16 +143,19 @@ def format_parameters_for_display(params: Dict) -> Dict:
         'tag': ('Simulation Tag', ''),
     }
     
-    # Physical parameters
+    # Physical parameters (LBM and NS)
     physical_params = {
-        'nu': ('Viscosity', 'lattice units'),
-        'u0': ('Reference Velocity', 'lattice units'),
+        'nu': ('Viscosity', 'lattice units' if is_lbm else 'm²/s'),
+        'u0': ('Reference Velocity', 'lattice units' if is_lbm else 'm/s'),
         'tau': ('Relaxation Time', 'lattice units'),
         'F_amp': ('Forcing Amplitude', 'lattice units'),
         'perturb_temp': ('Perturbation Scale', 'lattice units'),
+        'c_sound': ('Speed of Sound', 'm/s'),
+        'L': ('Characteristic Length', 'm'),
+        'Re': ('Reynolds Number', ''),
     }
     
-    # LBM parameters
+    # LBM parameters (only shown for LBM)
     lbm_params = {
         'q': ('Lattice Model', 'D3Q19'),
         'Cs': ('Speed of Sound', '1/√3'),
@@ -131,7 +171,10 @@ def format_parameters_for_display(params: Dict) -> Dict:
     }
     
     all_params = {**grid_params, **physical_params, **lbm_params, **filter_params}
-    
+    # For NS, skip LBM-only params
+    if not is_lbm:
+        all_params = {k: v for k, v in all_params.items() if k not in ('tau', 'q', 'Cs', 'Cs2', 'SmogC')}
+
     for key, (label, unit) in all_params.items():
         if key in params:
             formatted[label] = {

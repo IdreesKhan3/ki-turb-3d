@@ -16,13 +16,10 @@ Full user controls (in-memory session state):
 
 import streamlit as st
 import numpy as np
-import glob # module
-import re   # module
+import glob
+import re
 from pathlib import Path
 import sys
-import plotly.graph_objects as go
-import plotly.colors as pc
-from plotly.colors import hex_to_rgb
 
 # --- Project imports ---
 project_root = Path(__file__).parent.parent.resolve()
@@ -35,12 +32,19 @@ from utils.theme_config import inject_theme_css, apply_theme_to_plot_style
 from utils.report_builder import capture_button
 from utils.plot_style import (
     default_plot_style, apply_plot_style as apply_plot_style_base,
-    render_axis_limits_ui, apply_axis_limits, render_figure_size_ui, apply_figure_size,
+    render_axis_limits_ui, render_figure_size_ui,
     render_axis_scale_ui, render_tick_format_ui, render_axis_borders_ui,
-    render_plot_title_ui, _get_palette, _normalize_plot_name,
-    resolve_line_style, render_per_sim_style_ui, convert_superscript
+    render_plot_title_ui, _normalize_plot_name,
+    render_per_sim_style_ui, convert_superscript
 )
 from utils.export_figs import export_panel
+from core_physics import compute_spectrum_time_avg, compute_spectrum_time_avg_norm
+from visualizations.spectra_vis import (
+    create_raw_spectrum_figure,
+    create_normalized_spectrum_figure,
+    create_time_evolution_figure,
+)
+
 st.set_page_config(page_icon="⚫")
 
 
@@ -77,92 +81,14 @@ def _extract_iter(fname: str):
 
 @st.cache_data(show_spinner=False)
 def _compute_time_avg(files: tuple):
-    """Return k, E_avg, E_std using notebook-identical formulas."""
-    energy_accum = None
-    energy_sq_accum = None
-    count = 0
-    k_vals = None
+    data_list = [_read_spectrum_cached(str(f)) for f in files]
+    return compute_spectrum_time_avg(data_list)
 
-    for f in files:
-        k, E = _read_spectrum_cached(str(f))
-        if k_vals is None:
-            k_vals = k
-            energy_accum = np.zeros_like(E)
-            energy_sq_accum = np.zeros_like(E)
-
-        if E.shape != energy_accum.shape:
-            continue
-
-        energy_accum += E
-        energy_sq_accum += E**2
-        count += 1
-
-    if count == 0:
-        return None, None, None
-
-    E_avg = energy_accum / count
-    E_var = (energy_sq_accum / count) - E_avg**2
-    E_std = np.sqrt(np.maximum(E_var, 0.0))
-    return k_vals, E_avg, E_std
 
 @st.cache_data(show_spinner=False)
 def _compute_time_avg_norm(files: tuple):
-    """Average normalized spectra + Pope model over selected files."""
-    keta_vals = None
-    En_accum, En_sq_accum, Ep_accum = None, None, None
-    count = 0
-
-    for f in files:
-        keta, Enorm, Epope = _read_norm_cached(str(f))
-        if keta_vals is None:
-            keta_vals = keta
-            En_accum = np.zeros_like(Enorm)
-            En_sq_accum = np.zeros_like(Enorm)
-            Ep_accum = np.zeros_like(Epope)
-
-        if Enorm.shape != En_accum.shape:
-            continue
-
-        En_accum += Enorm
-        En_sq_accum += Enorm**2
-        Ep_accum += Epope
-        count += 1
-
-    if count == 0:
-        return None, None, None, None
-
-    En_avg = En_accum / count
-    En_var = (En_sq_accum / count) - En_avg**2
-    En_std = np.sqrt(np.maximum(En_var, 0.0))
-    Ep_avg = Ep_accum / count
-    return keta_vals, En_avg, En_std, Ep_avg
-
-
-def _add_kolmogorov_line(fig, k_vals, E_avg, kmin, kmax, ps,
-                         kolm_scale_factor=1.0,
-                         label="Kolmogorov k<sup>-5/3</sup>"):
-    """Add scaled -5/3 reference line on [kmin,kmax]."""
-    mask = (k_vals >= kmin) & (k_vals <= kmax)
-    k_fit = k_vals[mask]
-    if k_fit.size < 3:
-        return fig
-
-    ref = k_fit ** (-5.0 / 3.0)
-    mid_idx = np.argmin(np.abs(k_fit - np.median(k_fit)))
-    scale = E_avg[mask][mid_idx] / ref[mid_idx]
-    ref *= scale
-    ref *= kolm_scale_factor  # Apply the manual scale factor
-
-    fig.add_trace(go.Scatter(
-        x=k_fit, y=ref,
-        mode="lines",
-        name=label,
-        line=dict(color=ps["kolmogorov_color"],
-                  width=ps["line_width"],
-                  dash="dot"),
-        hovertemplate="k=%{x:.3g}<br>ref=%{y:.3g}<extra></extra>"
-    ))
-    return fig
+    data_list = [_read_norm_cached(str(f)) for f in files]
+    return compute_spectrum_time_avg_norm(data_list)
 
 
 # ==========================================================
@@ -981,14 +907,22 @@ def main():
         end_idx = st.sidebar.slider("End file index", start_idx, total_files, total_files)
 
         show_kolm = st.sidebar.checkbox("Show Kolmogorov -5/3 line", value=True)
+        so = st.session_state.setdefault("spectra_options", {
+            "show_std": True, "show_error_bars": True, "pope_scaling_prefix": None,
+            "kmin": 3.0, "kmax": 20.0, "kolm_scale_factor": 1.0,
+        })
+        err_opts = ["Shaded band", "Error bars", "Both", "None"]
+        err_idx = 2 if (so.get("show_std", True) and so.get("show_error_bars", True)) else (
+            0 if so.get("show_std", True) else (1 if so.get("show_error_bars", True) else 3))
         error_display = st.sidebar.radio(
             "Error display",
-            ["Shaded band", "Error bars", "Both", "None"],
-            index=0,
+            err_opts,
+            index=min(err_idx, 3),
             help="Choose how to display ±1σ uncertainty"
         )
         show_std = error_display in ["Shaded band", "Both"]
         show_error_bars = error_display in ["Error bars", "Both"]
+        so["show_std"], so["show_error_bars"] = show_std, show_error_bars
         show_normalized = st.sidebar.checkbox("Show normalized (collapsed) panel with Pope", value=True)
 
         # Pope model selection for normalized spectrum (related to normalized panel)
@@ -1004,12 +938,18 @@ def main():
             }
             
             norm_display_names = list(norm_display_to_prefix.keys())
-            
-            # Use a selectbox to choose which simulation's Pope model to display
+            prefix_to_display = {v: k for k, v in norm_display_to_prefix.items()}
+            saved_pope = so.get("pope_scaling_prefix")
+            pope_idx = 0
+            if saved_pope and saved_pope in prefix_to_display:
+                dn = prefix_to_display[saved_pope]
+                if dn in norm_display_names:
+                    pope_idx = norm_display_names.index(dn) + 1
+            pope_opts = ["None (Default: Use all plotted simulations)"] + norm_display_names
             pope_scaling_name = st.sidebar.selectbox(
                 "Plot Pope Model from Spectra:",
-                ["None (Default: Use all plotted simulations)"] + norm_display_names,
-                index=0,
+                pope_opts,
+                index=min(pope_idx, len(pope_opts) - 1),
                 help="If set, only the Pope model corresponding to this selected simulation will be plotted. Otherwise, every plotted simulation's Pope model will be shown."
             )
             
@@ -1017,19 +957,20 @@ def main():
                 pope_scaling_prefix = norm_display_to_prefix[pope_scaling_name]
             else:
                 pope_scaling_prefix = None
+            so["pope_scaling_prefix"] = pope_scaling_prefix
         else:
             pope_scaling_prefix = None
 
-        kmin = st.sidebar.number_input("Inertial range k_min", min_value=1.0, value=3.0)
-        kmax = st.sidebar.number_input("Inertial range k_max", min_value=kmin + 1e-6, value=20.0)
-        
+        kmin = st.sidebar.number_input("Inertial range k_min", min_value=1.0, value=float(so.get("kmin", 3.0)))
+        kmax = st.sidebar.number_input("Inertial range k_max", min_value=kmin + 1e-6, value=float(so.get("kmax", 20.0)))
         kolm_scale_factor = st.sidebar.slider(
             "Kolmogorov Line Scale Factor",
             0.1, 5.0,
-            1.0,
+            float(so.get("kolm_scale_factor", 1.0)),
             step=0.05,
             help="Manually scale the k^(-5/3) line up (> 1.0) or down (< 1.0) for better visual fit."
         )
+        so["kmin"], so["kmax"], so["kolm_scale_factor"] = kmin, kmax, kolm_scale_factor
 
         # Compute average data for the selected scaling simulation (for Kolmogorov line)
         k_scale, E_avg_scale = None, None
@@ -1041,170 +982,70 @@ def main():
         # Get plot-specific style
         plot_name_raw = "Raw Energy Spectrum"
         ps_raw = get_plot_style(plot_name_raw)
-        colors_raw = _get_palette(ps_raw)
 
-        fig_raw = go.Figure()
-        plotted_any = False
-
-        for idx, (sim_prefix, files) in enumerate(sorted(sim_groups.items())):
+        datasets_raw = []
+        for sim_prefix, files in sorted(sim_groups.items()):
             selected_files = tuple(files[start_idx-1:end_idx])
             if not selected_files:
                 continue
-
             k_vals, E_avg, E_std = _compute_time_avg(selected_files)
             if k_vals is None:
                 continue
+            datasets_raw.append({
+                "sim_prefix": sim_prefix,
+                "x": k_vals, "y": E_avg, "y_std": E_std,
+            })
 
-            color, lw, dash, marker, msize, override_on = resolve_line_style(
-                sim_prefix, idx, colors_raw, ps_raw, 
-                style_key="per_sim_style_raw",
-                include_marker=True,
-                default_marker="circle"
-            )
-            legend_name = st.session_state.spectrum_legend_names.get(sim_prefix, _default_labelify(sim_prefix))
-            plotted_any = True
-
-            mode = "lines+markers" if (override_on and marker and msize > 0) else "lines"
-            trace_kwargs = dict(
-                x=k_vals, y=E_avg,
-                mode=mode,
-                name=legend_name,
-                line=dict(color=color, width=lw, dash=dash),
-            )
-            if override_on and marker and msize > 0:
-                trace_kwargs["marker"] = dict(symbol=marker, size=msize)
-            if show_error_bars and E_std is not None:
-                trace_kwargs["error_y"] = dict(
-                    type="data",
-                    array=E_std,
-                    visible=True,
-                    thickness=1,
-                    color=color
-                )
-            fig_raw.add_trace(go.Scatter(**trace_kwargs))
-
-            if show_std:
-                rgb = hex_to_rgb(color)
-                fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps_raw['std_alpha']})"
-                fig_raw.add_trace(go.Scatter(
-                    x=np.concatenate([k_vals, k_vals[::-1]]),
-                    y=np.concatenate([E_avg - E_std, (E_avg + E_std)[::-1]]),
-                    fill="toself",
-                    fillcolor=fill_rgba,
-                    line=dict(width=0),
-                    showlegend=False,
-                    hoverinfo="skip"
-                ))
-
-        # Add Kolmogorov line using the selected scaling data (after all traces are added)
-        if show_kolm and k_scale is not None and E_avg_scale is not None:
-            fig_raw = _add_kolmogorov_line(fig_raw, k_scale, E_avg_scale, kmin, kmax, ps_raw,
-                                           kolm_scale_factor=kolm_scale_factor)
-
-        if not plotted_any:
+        if not datasets_raw:
             st.info("No valid spectra could be plotted from selected range.")
             return
 
-        layout_kwargs_raw = dict(
-            xaxis_title=st.session_state.axis_labels_raw["x"],
-            yaxis_title=st.session_state.axis_labels_raw["y"],
-            xaxis_type="log",
-            yaxis_type="log",
-            legend_title="Simulation",
-            height=400,  # Default, will be overridden if custom size is enabled
+        kolm_scale_data = {"x": k_scale, "y": E_avg_scale} if (show_kolm and k_scale is not None and E_avg_scale is not None) else None
+
+        fig_raw = create_raw_spectrum_figure(
+            datasets_raw,
+            ps_raw,
+            show_std=show_std,
+            show_error_bars=show_error_bars,
+            show_kolmogorov=show_kolm and kolm_scale_data is not None,
+            kmin=kmin,
+            kmax=kmax,
+            kolm_scale_factor=kolm_scale_factor,
+            kolm_scale_data=kolm_scale_data,
+            axis_labels=st.session_state.axis_labels_raw,
+            legend_names=st.session_state.spectrum_legend_names,
+            apply_style=False,
         )
-        layout_kwargs_raw = apply_axis_limits(layout_kwargs_raw, ps_raw)
-        layout_kwargs_raw = apply_figure_size(layout_kwargs_raw, ps_raw)
-        fig_raw.update_layout(**layout_kwargs_raw)
         fig_raw = apply_plot_style(fig_raw, ps_raw)
 
         fig_norm = None
         if show_normalized and norm_groups:
-            # Get plot-specific style
             plot_name_norm = "Normalized Spectrum"
             ps_norm = get_plot_style(plot_name_norm)
-            colors_norm = _get_palette(ps_norm)
-            
-            fig_norm = go.Figure()
 
-            for idx, (norm_prefix, files) in enumerate(sorted(norm_groups.items())):
+            datasets_norm = []
+            for norm_prefix, files in sorted(norm_groups.items()):
                 selected_files = tuple(files[start_idx-1:end_idx])
                 if not selected_files:
                     continue
-
                 keta, En_avg, En_std, Ep_avg = _compute_time_avg_norm(selected_files)
                 if keta is None:
                     continue
+                datasets_norm.append({
+                    "sim_prefix": norm_prefix,
+                    "x": keta, "y": En_avg, "y_std": En_std, "y_pope": Ep_avg,
+                })
 
-                color, lw, dash, marker, msize, override_on = resolve_line_style(
-                    norm_prefix, idx, colors_norm, ps_norm, 
-                    style_key="per_sim_style_norm",
-                    include_marker=True,
-                    default_marker="circle"
-                )
-                legend_name = st.session_state.norm_legend_names.get(norm_prefix, _default_labelify(norm_prefix))
-
-                mode = "lines+markers" if (override_on and marker and msize > 0) else "lines"
-                trace_kwargs = dict(
-                    x=keta, y=En_avg,
-                    mode=mode,
-                    name=legend_name,
-                    line=dict(color=color, width=lw, dash=dash),
-                )
-                if override_on and marker and msize > 0:
-                    trace_kwargs["marker"] = dict(symbol=marker, size=msize)
-                if show_error_bars and En_std is not None:
-                    trace_kwargs["error_y"] = dict(
-                        type="data",
-                        array=En_std,
-                        visible=True,
-                        thickness=1,
-                        color=color
-                    )
-                fig_norm.add_trace(go.Scatter(**trace_kwargs))
-
-                if show_std:
-                    rgb = hex_to_rgb(color)
-                    fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps_norm['std_alpha']})"
-                    fig_norm.add_trace(go.Scatter(
-                        x=np.concatenate([keta, keta[::-1]]),
-                        y=np.concatenate([En_avg - En_std, (En_avg + En_std)[::-1]]),
-                        fill="toself",
-                        fillcolor=fill_rgba,
-                        line=dict(width=0),
-                        showlegend=False,
-                        hoverinfo="skip"
-                    ))
-
-                # Plot the Pope model trace only if:
-                # 1. No specific prefix was selected (pope_scaling_prefix is None) OR
-                # 2. The current norm_prefix matches the selected scaling prefix
-                if pope_scaling_prefix is None or norm_prefix == pope_scaling_prefix:
-                    # If we only plot a single selected Pope model, improve its legend name
-                    if pope_scaling_prefix is not None:
-                        pope_legend_name = f"{legend_name} Pope Model"
-                    else:
-                        pope_legend_name = f"{legend_name} Pope"
-                    
-                    fig_norm.add_trace(go.Scatter(
-                        x=keta, y=Ep_avg,
-                        mode="lines",
-                        name=pope_legend_name,
-                        line=dict(color=ps_norm["pope_color"], width=ps_norm["line_width"], dash="dash"),
-                    ))
-
-            layout_kwargs = dict(
-                xaxis_title=st.session_state.axis_labels_norm["x"],
-                yaxis_title=st.session_state.axis_labels_norm["y"],
-                xaxis_type="log",
-                yaxis_type="log",
-                legend_title="Simulation",
-                width=550,  # Narrower than raw spectrum
-                height=600,  # Taller than raw spectrum
+            fig_norm = create_normalized_spectrum_figure(
+                datasets_norm,
+                ps_norm,
+                show_std=show_std,
+                show_error_bars=show_error_bars,
+                pope_scaling_prefix=pope_scaling_prefix,
+                axis_labels=st.session_state.axis_labels_norm,
+                legend_names=st.session_state.norm_legend_names,
+                apply_style=False,
             )
-            layout_kwargs = apply_axis_limits(layout_kwargs, ps_norm)
-            layout_kwargs = apply_figure_size(layout_kwargs, ps_norm)
-            fig_norm.update_layout(**layout_kwargs)
             fig_norm = apply_plot_style(fig_norm, ps_norm)
 
         if fig_norm is not None:
@@ -1267,48 +1108,31 @@ def main():
         highlight_file = thin_files[sel_pos]
         highlight_iter = thin_iters[sel_pos]
 
-        # Get plot-specific style
         plot_name_evol = "Time Evolution"
         ps_evol = get_plot_style(plot_name_evol)
 
-        figE = go.Figure()
-
+        thin_curves = []
         for f, it in zip(thin_files, thin_iters):
             try:
                 k, E = _read_spectrum_cached(str(f))
+                thin_curves.append({"x": k, "y": E})
             except Exception:
                 continue
-            figE.add_trace(go.Scatter(
-                x=k, y=E,
-                mode="lines",
-                line=dict(width=max(1.0, ps_evol["line_width"] * 0.6)),
-                opacity=0.25,
-                showlegend=False,
-            ))
 
+        highlight_curve = None
         try:
             kH, EH = _read_spectrum_cached(str(highlight_file))
-            figE.add_trace(go.Scatter(
-                x=kH, y=EH,
-                mode="lines",
-                name=f"Highlighted iter {highlight_iter}",
-                line=dict(width=ps_evol["line_width"] * 1.2, color=ps_evol.get("highlight_color", "#E41A1C")),
-                opacity=1.0
-            ))
+            highlight_curve = {"x": kH, "y": EH, "label": f"Highlighted iter {highlight_iter}"}
         except Exception as e:
             st.warning(f"Highlight read failed: {e}")
 
-        layout_kwargs_evol = dict(
-            xaxis_title=st.session_state.axis_labels_raw["x"],
-            yaxis_title=st.session_state.axis_labels_raw["y"],
-            xaxis_type="log",
-            yaxis_type="log",
-            width=850,  # Width less than height
-            height=550,  # Reduced for time evolution figure
+        figE = create_time_evolution_figure(
+            thin_curves,
+            highlight_curve,
+            ps_evol,
+            axis_labels=st.session_state.axis_labels_raw,
+            apply_style=False,
         )
-        layout_kwargs_evol = apply_axis_limits(layout_kwargs_evol, ps_evol)
-        # Don't apply figure size override for time evolution to keep fixed width
-        figE.update_layout(**layout_kwargs_evol)
         figE = apply_plot_style(figE, ps_evol)
 
         st.plotly_chart(figE, width='content')

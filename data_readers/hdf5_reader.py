@@ -38,7 +38,7 @@ def read_hdf5_file(filepath: str) -> Dict:
             elif 'u' in f:
                 velocity = np.array(f['u'])
             else:
-                # Try to find any 4D dataset (nx, ny, nz, 3) or (3, nx, ny, nz)
+                # Fallback: find any 4D dataset (nx,ny,nz,3) or (3,nx,ny,nz)
                 for key in f.keys():
                     if isinstance(f[key], h5py.Dataset):
                         data = np.array(f[key])
@@ -48,14 +48,12 @@ def read_hdf5_file(filepath: str) -> Dict:
                 else:
                     raise ValueError("Could not find velocity data in HDF5 file")
             
-            # Get dimensions - handle both (nx, ny, nz, 3) and (3, nx, ny, nz) formats
+            # Handle (nx,ny,nz,3) and (3,nx,ny,nz) layouts
             if len(velocity.shape) == 4:
                 if velocity.shape[0] == 3:
-                    # Format: (3, nx, ny, nz) - transpose to (nx, ny, nz, 3)
                     ncomp, nx, ny, nz = velocity.shape
                     velocity = np.transpose(velocity, (1, 2, 3, 0))
                 elif velocity.shape[3] == 3:
-                    # Format: (nx, ny, nz, 3)
                     nx, ny, nz, ncomp = velocity.shape
                 else:
                     raise ValueError(f"Expected 3 velocity components, got shape {velocity.shape}")
@@ -64,33 +62,25 @@ def read_hdf5_file(filepath: str) -> Dict:
             else:
                 raise ValueError(f"Expected 4D velocity array, got shape {velocity.shape}")
             
-            # Try to read explicit dimensions (optional)
+            # Optional: override dimensions from file
             if 'dimensions' in f:
                 dims = np.array(f['dimensions'])
                 if len(dims) == 3:
                     nx, ny, nz = int(dims[0]), int(dims[1]), int(dims[2])
             
-            # Read metadata if available
+            # Read metadata (group + root attributes)
             metadata = {}
             if 'metadata' in f:
                 metadata_group = f['metadata']
                 for key in metadata_group.attrs:
                     metadata[key] = metadata_group.attrs[key]
-            
-            # Also check root-level attributes
             for key in f.attrs:
                 if key not in metadata:
                     metadata[key] = f.attrs[key]
             
             varname = metadata.get('varname', metadata.get('name', 'Velocity'))
             
-            # Fortran writes velocity data in column-major order
-            # When h5py reads (3, l, m, n) format, after transpose to (l, m, n, 3),
-            # the spatial dimensions need reordering to match VTI format, 
-            # cus vti is in the correct order for plotting data.
-            # Based on direct comparison with VTI files, permutation (2, 1, 0, 3) gives
-            # the best match (diff ~2.9e-06, essentially identical within numerical precision)
-            # This reorders spatial dimensions to (z, y, x, 3) to match how VTI data is interpreted
+            # Fortran col-major (1st idx fastest) vs HDF5 row-major (last fastest) → h5py reads (n,m,l,3). Transpose (2,1,0,3) → (nx,ny,nz,3). # change accordingly
             velocity = np.transpose(velocity, (2, 1, 0, 3))
             
             return {
@@ -108,24 +98,8 @@ def read_hdf5_file(filepath: str) -> Dict:
 
 
 def read_hdf5_file_fortran_order(filepath: str) -> Dict:
-    """
-    Read HDF5 file where velocity is stored in Fortran order (column-major)
-    Fortran writes velocity(l, m, n, 3) in column-major order
-    h5py reads in row-major (C order) by default, so we need to handle the order difference
-    
-    Args:
-        filepath: Path to .h5 or .hdf5 file
-        
-    Returns:
-        Same as read_hdf5_file, but properly handling Fortran order
-    """
-    # Read the file (which already handles basic transposition)
-    data = read_hdf5_file(filepath)
-    
-    # The standard read already does the x-y swap transpose
-    # For Fortran order, we might need additional handling, but for now
-    # the single transpose in read_hdf5_file should be sufficient
-    return data
+    """Read HDF5 file (Fortran-written). Same as read_hdf5_file."""
+    return read_hdf5_file(filepath)
 
 
 def compute_velocity_magnitude(velocity: np.ndarray) -> np.ndarray:

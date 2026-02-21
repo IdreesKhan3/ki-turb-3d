@@ -2,9 +2,9 @@
 Isotropy Validation (Real Space) Page — Streamlit
 
 High-standard features:
-- Reads real-space isotropy files:
-    * eps_real_validation.csv (required)
-    * reynolds_stress_validation.csv (optional)
+- Reads real-space isotropy files (LBM/NS):
+    * eps_real_validation*.csv or turbulence_validation*.csv (required)
+    * reynolds_stress_validation*.csv (optional)
 - Computes anisotropy tensor b_ij and Pope/Lumley invariants
 - Produces 6 interactive subplots like your simple script:
     (a) Energy fractions vs t/t0 + moving averages + tolerance bands
@@ -28,7 +28,6 @@ import plotly.colors as pc
 from plotly.colors import hex_to_rgb
 from pathlib import Path
 import sys
-import matplotlib
 
 
 # --- Project imports ---
@@ -36,7 +35,15 @@ project_root = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(project_root))
 
 from utils.file_detector import detect_simulation_files
+from core_physics import (
+    load_turbulence_data,
+    load_reynolds_stress,
+    compute_reynolds_from_fractions,
+    anisotropy_tensor,
+    invariants,
+)
 from utils.theme_config import inject_theme_css, apply_theme_to_plot_style
+from content.real_isotropy_theory_content import get_real_isotropy_theory_markdown
 from utils.report_builder import capture_button
 from utils.plot_style import (
     default_plot_style, apply_plot_style as apply_plot_style_base,
@@ -45,6 +52,8 @@ from utils.plot_style import (
     render_plot_title_ui, _get_palette, convert_superscript
 )
 from utils.export_figs import export_panel
+from visualizations.real_isotropy_vis import create_energy_fractions_figure, create_lumley_triangle_figure, create_diagonal_bii_figure, create_cross_correlations_figure, create_deviations_figure, create_convergence_figure
+
 st.set_page_config(page_icon="⚫")
 
 
@@ -575,129 +584,10 @@ def plot_style_sidebar(data_dir: Path, curves, plot_names: list):
         st.session_state.plot_styles[selected_plot] = ps
 
 def _resolve_curve_style(curve, idx, colors, ps, plot_name: str):
-    default_color = colors[idx % len(colors)]
-    default_width = ps["line_width"]
-    default_dash = "solid"
-    default_marker = "circle"
-    default_msize = ps["marker_size"]
-
-    if not ps.get("enable_per_curve_style", False):
-        return default_color, default_width, default_dash, default_marker, default_msize
-
-    # Use plot-specific style key
+    """Delegate to utils.plot_style.resolve_curve_style (shared with vis and agents)."""
+    from utils.plot_style import resolve_curve_style
     plot_key = _normalize_plot_name(plot_name)
-    style_key = f"per_curve_style_{plot_key}"
-    s = ps.get(style_key, {}).get(curve, {})
-    if not s.get("enabled", False):
-        return default_color, default_width, default_dash, default_marker, default_msize
-
-    return (
-        s.get("color") or default_color,
-        float(s.get("width") or default_width),
-        s.get("dash") or default_dash,
-        s.get("marker") or default_marker,
-        int(s.get("msize") or default_msize),
-    )
-
-
-# ==========================================================
-# Physics / isotropy computations
-# ==========================================================
-def load_turbulence_data(csv_path: Path):
-    df = pd.read_csv(csv_path)
-
-    # robust numeric parse
-    for col in ["iter", "iter_norm", "TKE_real", "u_rms_real", "eps_real",
-                "frac_x", "frac_y", "frac_z"]:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    # fallback mapping if columns are different
-    # user's eps_real_validation.csv mapping:
-    # iter,iter_norm,eps_real,eps_spectral,TKE_real,u_rms_real,...,frac_x,frac_y,frac_z
-    cols = df.columns.tolist()
-    if "frac_x" not in cols and len(cols) >= 20:
-        df["frac_x"] = pd.to_numeric(df.iloc[:, 17], errors="coerce")
-        df["frac_y"] = pd.to_numeric(df.iloc[:, 18], errors="coerce")
-        df["frac_z"] = pd.to_numeric(df.iloc[:, 19], errors="coerce")
-
-    data = {
-        "iter": df["iter"].to_numpy(),
-        "iter_norm": df.get("iter_norm", df["iter"]).to_numpy(),
-        "TKE": df.get("TKE_real", df.iloc[:, 4]).to_numpy(),
-        "u_rms": df.get("u_rms_real", df.iloc[:, 5]).to_numpy(),
-        "eps0": df.get("eps_real", df.iloc[:, 2]).to_numpy(),
-        "frac_x": df["frac_x"].to_numpy(),
-        "frac_y": df["frac_y"].to_numpy(),
-        "frac_z": df["frac_z"].to_numpy(),
-    }
-    return data
-
-def load_reynolds_stress(stress_path: Path, turb):
-    if not stress_path.exists():
-        return compute_reynolds_from_fractions(turb)
-
-    df = pd.read_csv(stress_path)
-
-    for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    df = df.dropna()
-    n = min(len(df), len(turb["iter"]))
-
-    R11, R22, R33 = df.iloc[:n, 1], df.iloc[:n, 2], df.iloc[:n, 3]
-    R12, R13, R23 = df.iloc[:n, 4], df.iloc[:n, 5], df.iloc[:n, 6]
-    TKE_from_R = 0.5 * (R11 + R22 + R33)
-
-    return {
-        "R11": R11.to_numpy(),
-        "R22": R22.to_numpy(),
-        "R33": R33.to_numpy(),
-        "R12": R12.to_numpy(),
-        "R13": R13.to_numpy(),
-        "R23": R23.to_numpy(),
-        "TKE": TKE_from_R.to_numpy(),
-    }
-
-def compute_reynolds_from_fractions(turb):
-    TKE = turb["TKE"]
-    R11 = turb["frac_x"] * 2 * TKE
-    R22 = turb["frac_y"] * 2 * TKE
-    R33 = turb["frac_z"] * 2 * TKE
-    n = len(TKE)
-    return dict(R11=R11, R22=R22, R33=R33,
-                R12=np.zeros(n), R13=np.zeros(n), R23=np.zeros(n),
-                TKE=TKE)
-
-def anisotropy_tensor(R):
-    k = R["TKE"]
-    k_safe = np.where(k > 1e-10, k, 1e-10)
-
-    b11 = R["R11"]/(2*k_safe) - 1/3
-    b22 = R["R22"]/(2*k_safe) - 1/3
-    b33 = R["R33"]/(2*k_safe) - 1/3
-    b12 = R["R12"]/(2*k_safe)
-    b13 = R["R13"]/(2*k_safe)
-    b23 = R["R23"]/(2*k_safe)
-
-    return dict(b11=b11, b22=b22, b33=b33, b12=b12, b13=b13, b23=b23)
-
-def invariants(b):
-    II_b = -0.5 * (
-        b["b11"]**2 + b["b22"]**2 + b["b33"]**2 +
-        2*(b["b12"]**2 + b["b13"]**2 + b["b23"]**2)
-    )
-    III_b = (1/3) * (
-        b["b11"]**3 + b["b22"]**3 + b["b33"]**3 +
-        3*b["b11"]*(b["b12"]**2 + b["b13"]**2) +
-        3*b["b22"]*(b["b12"]**2 + b["b23"]**2) +
-        3*b["b33"]*(b["b13"]**2 + b["b23"]**2) +
-        6*b["b12"]*b["b13"]*b["b23"]
-    )
-    anis_index = np.sqrt(-2*II_b)
-    eta = np.sqrt(-II_b/3)
-    xi = np.cbrt(III_b/2)
-    return dict(II_b=II_b, III_b=III_b, anis_index=anis_index, xi=xi, eta=eta)
+    return resolve_curve_style(curve, idx, colors, ps, plot_key)
 
 
 # ==========================================================
@@ -734,6 +624,7 @@ def main():
         "bij": "Anisotropy tensor b<sub>ij</sub>",
         "cross": "Cross-correlations / Anisotropy index",
         "dev": "Absolute deviation",
+        "convergence": "Running standard deviation",
         "lumley_x": "ξ = (III<sub>b</sub>/2)<sup>1/3</sup>",
         "lumley_y": "η = (-II<sub>b</sub>/3)<sup>1/2</sup>",
     }
@@ -771,29 +662,33 @@ def main():
     files = detect_simulation_files(str(data_dir))
     eps_file = None
     
-    # First, check files detected by file_detector (spectral_turb_stats key)
+    # First, check files detected by file_detector (spectral_turb_stats: eps_real_validation or turbulence_validation)
     for f in files.get("spectral_turb_stats", []):
-        if Path(f).name == "eps_real_validation.csv" or Path(f).name.startswith("eps_real_validation"):
+        name = Path(f).name
+        if name.startswith("eps_real_validation") or name.startswith("turbulence_validation"):
             eps_file = Path(f)
             break
-    
-    # If not found, check for exact filename in directory
+
+    # If not found, check for exact filenames in directory
     if eps_file is None:
-        exact_file = data_dir / "eps_real_validation.csv"
-        if exact_file.exists():
-            eps_file = exact_file
-    
-    # If still not found, check for any eps_real_validation*.csv file (generalized for data1, data2, etc.)
+        for candidate in ("eps_real_validation.csv", "turbulence_validation.csv"):
+            exact_file = data_dir / candidate
+            if exact_file.exists():
+                eps_file = exact_file
+                break
+
+    # If still not found, check for glob patterns (LBM/NS)
     if eps_file is None:
         import glob
-        pattern = str(data_dir / "eps_real_validation*.csv")
-        matches = glob.glob(pattern)
-        if matches:
-            eps_file = Path(matches[0])  # Use first match
-    
+        for pattern in ("eps_real_validation*.csv", "turbulence_validation*.csv"):
+            matches = glob.glob(str(data_dir / pattern))
+            if matches:
+                eps_file = Path(matches[0])
+                break
+
     if eps_file is None or not eps_file.exists():
-        st.error(f"eps_real_validation.csv not found in dataset folder: {data_dir}")
-        st.info(f"Looking for files matching: eps_real_validation*.csv")
+        st.error("Validation CSV not found in dataset folder (eps_real_validation*.csv or turbulence_validation*.csv)")
+        st.info(f"Looking for: eps_real_validation*.csv, turbulence_validation*.csv")
         st.info(f"📂 Current directory: {data_dir}")
         # Show what files are actually in the directory
         csv_files = list(data_dir.glob("*.csv"))
@@ -858,6 +753,7 @@ def main():
         st.caption("• bij → Y-axis for plot C")
         st.caption("• cross → Y-axis for plot D")
         st.caption("• dev → Y-axis for plot E")
+        st.caption("• convergence → Y-axis for plot F")
         st.markdown("")
         for k in st.session_state.axis_labels_real_iso:
             st.session_state.axis_labels_real_iso[k] = st.text_input(
@@ -942,106 +838,28 @@ def main():
     # Tab 1: Energy Fractions (A) + Lumley Triangle (B)
     # ======================================================
     with tab1:
-        # (a) Temporal energy fractions
+        # (a) Temporal energy fractions — shared vis (agent-controlled ma_win)
         plot_name_a = "Energy Fractions (A)"
         ps_a = get_plot_style(plot_name_a)
-        
-        # Use exact colors from original script (not palette) to avoid dimming
-        colors_orig = {
-            'primary': '#1f77b4',   # Blue
-            'secondary': '#ff7f0e', # Orange
-            'tertiary': '#2ca02c'   # Green
+        # Use palette from ps (matches spectra; sidebar palette selector applies)
+        cols_a = _get_palette(ps_a)
+        colors_orig = {'primary': cols_a[0 % len(cols_a)], 'secondary': cols_a[1 % len(cols_a)], 'tertiary': cols_a[2 % len(cols_a)]}
+        legend_names_a = {
+            "frac_x": st.session_state.real_iso_legends["Ex"],
+            "frac_y": st.session_state.real_iso_legends["Ey"],
+            "frac_z": st.session_state.real_iso_legends["Ez"],
         }
-        color_list = [colors_orig['primary'], colors_orig['secondary'], colors_orig['tertiary']]
-        
-        fig_a = go.Figure()
-
-        # Raw data with markers (matching original script: opacity 0.4, markersize 1.5)
-        # Also add lines for better visibility
-        markers = ["circle", "square", "triangle-up"]
-        for i, ((curve, arr), marker) in enumerate(zip([("Ex",E_x),("Ey",E_y),("Ez",E_z)], markers)):
-            c = color_list[i]  # Use original script colors directly
-            # Raw data: clearly visible fluctuations behind the MA curves
-            rgb = hex_to_rgb(c)
-            # Use configurable opacity from plot style
-            raw_opacity = ps_a.get("raw_data_opacity", 0.5)
-            line_color_rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {raw_opacity})"
-            # Use plot style line width - reasonable width (0.8x) for visibility
-            raw_line_width = ps_a.get("line_width", 1.6) * 0.8
-            # Use plot style marker size scaled appropriately
-            raw_marker_size = max(2, ps_a.get("marker_size", 6) * 0.4)
-            fig_a.add_trace(go.Scatter(
-                x=time_norm, y=arr, mode="lines+markers",
-                line=dict(color=line_color_rgba, width=raw_line_width),
-                marker=dict(symbol=marker, size=raw_marker_size, color=c, opacity=raw_opacity, line=dict(width=0)),
-                name=f"{st.session_state.real_iso_legends[curve]} (raw)",
-                showlegend=True,
-            ))
-
-        # Moving average (optional)
-        # alpha=0.7-0.9 for moving averages, so use full color (opacity=1.0)
-        if ma_win and ma_win > 1 and len(E_x) > ma_win:
-            def _ma(x):
-                k = np.ones(ma_win)/ma_win
-                return np.convolve(x, k, mode="valid")
-            t_ma = time_norm[ma_win//2: ma_win//2 + len(_ma(E_x))]
-
-            for i, (curve, arr) in enumerate([("Ex",E_x),("Ey",E_y),("Ez",E_z)]):
-                c = color_list[i]  # Use my other python script colors method directly
-                # Use plot style line width for moving average lines
-                ma_line_width = ps_a.get("line_width", 1.6) * 1.1  # Slightly thicker than default
-                # Full color for moving average lines - explicitly set opacity=1.0
-                fig_a.add_trace(go.Scatter(
-                    x=t_ma, y=_ma(arr), mode="lines",
-                    name=f"{st.session_state.real_iso_legends[curve]} (MA-{ma_win})",
-                    line=dict(color=c, width=ma_line_width),
-                    marker=dict(opacity=1.0),  # Ensure full opacity
-                    opacity=1.0,  # Explicitly set trace opacity to 1.0
-                ))
-
-        # Isotropic reference line (no annotation - label in legend only)
-        iso_color = ps_a.get("isotropic_1_3_color", "#ff0000")
-        fig_a.add_hline(y=1/3, line_dash="dash", line_color=iso_color, line_width=1.5, 
-                       opacity=0.8, annotation_text="", showlegend=False)
-        # Add as trace for legend
-        fig_a.add_trace(go.Scatter(
-            x=[None], y=[None],
-            mode="lines",
-            line=dict(color=iso_color, width=1.5, dash="dash"),
-            name="Isotropic (1/3)",
-            showlegend=True,
-        ))
-        
-        # Tolerance bands (matching original: ±0.005, ±0.01, ±0.02)
-        # Add as shapes first, then add legend entries
-        tol_colors = ["lightcoral", "lightpink", "mistyrose"]
-        tol_values_a = [0.005, 0.01, 0.02]
-        for tol, color in zip(tol_values_a, tol_colors):
-            if tol in tol_list_a:
-                # Add tolerance band as shape (layer="below" so it's behind curves)
-                fig_a.add_hrect(y0=1/3-tol, y1=1/3+tol, fillcolor=color, opacity=0.3, 
-                               line_width=0, layer="below")
-                # Add invisible trace for legend entry
-                fig_a.add_trace(go.Scatter(
-                    x=[None], y=[None],
-                    mode="markers",
-                    marker=dict(size=10, color=color, opacity=0.3),
-                    name=f"±{tol:.1%} tolerance",
-                    showlegend=True,
-                ))
-
-        # Statistical stationarity line (no annotation - label in legend only)
-        stat_color = ps_a.get("stationary_line_color", "#800080")
-        fig_a.add_vline(x=stationary_t, line_dash="dash", line_color=stat_color, line_width=1.5, 
-                       opacity=0.8, annotation_text="", showlegend=False)
-        # Add as trace for legend
-        fig_a.add_trace(go.Scatter(
-            x=[None], y=[None],
-            mode="lines",
-            line=dict(color=stat_color, width=1.5, dash="dash"),
-            name="Statistical stationarity",
-            showlegend=True,
-        ))
+        axis_labels_a = {"x": st.session_state.axis_labels_real_iso["time"], "y": st.session_state.axis_labels_real_iso["energy_frac"]}
+        fig_a = create_energy_fractions_figure(
+            time_norm, E_x, E_y, E_z, ps_a,
+            axis_labels=axis_labels_a,
+            legend_names=legend_names_a,
+            apply_style=False,
+            ma_win=ma_win if ma_win and ma_win > 1 else None,
+            add_raw_suffix=True,
+            tol_list=tol_list_a,
+            stationary_t=stationary_t,
+        )
 
         layout_kwargs_a = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
@@ -1053,41 +871,40 @@ def main():
         fig_a.update_layout(**layout_kwargs_a)
         fig_a = apply_plot_style(fig_a, ps_a)
         
-        # Re-apply colors after plot style to prevent dimming
-        # Update moving average traces to ensure full color and use plot style line width
-        ma_line_width = ps_a.get("line_width", 2.2) * 1.1  # Slightly thicker than default
-        raw_opacity = ps_a.get("raw_data_opacity", 0.5)  # Get opacity from plot style
-        raw_marker_size = max(2, ps_a.get("marker_size", 6) * 0.4)  # Scaled marker size for raw data
-        for trace in fig_a.data:
-            if trace.name and "(MA-" in trace.name:
-                # Restore original colors and full opacity
-                if "Ex" in trace.name or "E<sub>x</sub>" in trace.name:
-                    trace.line.color = colors_orig['primary']
-                elif "Ey" in trace.name or "E<sub>y</sub>" in trace.name:
-                    trace.line.color = colors_orig['secondary']
-                elif "Ez" in trace.name or "E<sub>z</sub>" in trace.name:
-                    trace.line.color = colors_orig['tertiary']
-                trace.line.width = ma_line_width  # Use plot style line width
-                trace.opacity = 1.0
-            elif trace.name and "(raw)" in trace.name:
-                # Update opacity and marker size based on plot style settings
-                if "Ex" in trace.name or "E<sub>x</sub>" in trace.name:
-                    rgb = hex_to_rgb(colors_orig['primary'])
-                    trace.line.color = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {raw_opacity})"
-                    trace.marker.color = colors_orig['primary']
-                elif "Ey" in trace.name or "E<sub>y</sub>" in trace.name:
-                    rgb = hex_to_rgb(colors_orig['secondary'])
-                    trace.line.color = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {raw_opacity})"
-                    trace.marker.color = colors_orig['secondary']
-                elif "Ez" in trace.name or "E<sub>z</sub>" in trace.name:
-                    rgb = hex_to_rgb(colors_orig['tertiary'])
-                    trace.line.color = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {raw_opacity})"
-                    trace.marker.color = colors_orig['tertiary']
-                if hasattr(trace, 'marker') and trace.marker:
-                    trace.marker.size = raw_marker_size  # Use plot style marker size
-                    trace.marker.opacity = raw_opacity  # Use plot style opacity
-                trace.opacity = 1.0  # Trace-level opacity = 1.0, marker/line opacity controlled separately
-        
+        # Re-apply colors after plot style to prevent dimming (vis sets raw opacity; restore MA)
+        # Skip when per-curve overrides are enabled — vis already applied them
+        if not ps_a.get("enable_per_curve_style", False):
+            ma_line_width = ps_a.get("line_width", 2.2) * 1.1
+            raw_opacity = ps_a.get("raw_data_opacity", 0.5)
+            raw_marker_size = max(2, ps_a.get("marker_size", 6) * 0.4)
+            for trace in fig_a.data:
+                if trace.name and "(MA-" in trace.name:
+                    if "Ex" in trace.name or "E<sub>x</sub>" in trace.name:
+                        trace.line.color = colors_orig['primary']
+                    elif "Ey" in trace.name or "E<sub>y</sub>" in trace.name:
+                        trace.line.color = colors_orig['secondary']
+                    elif "Ez" in trace.name or "E<sub>z</sub>" in trace.name:
+                        trace.line.color = colors_orig['tertiary']
+                    trace.line.width = ma_line_width
+                    trace.opacity = 1.0
+                elif trace.name and "(raw)" in trace.name:
+                    if "Ex" in trace.name or "E<sub>x</sub>" in trace.name:
+                        rgb = hex_to_rgb(colors_orig['primary'])
+                        trace.line.color = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {raw_opacity})"
+                        trace.marker.color = colors_orig['primary']
+                    elif "Ey" in trace.name or "E<sub>y</sub>" in trace.name:
+                        rgb = hex_to_rgb(colors_orig['secondary'])
+                        trace.line.color = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {raw_opacity})"
+                        trace.marker.color = colors_orig['secondary']
+                    elif "Ez" in trace.name or "E<sub>z</sub>" in trace.name:
+                        rgb = hex_to_rgb(colors_orig['tertiary'])
+                        trace.line.color = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {raw_opacity})"
+                        trace.marker.color = colors_orig['tertiary']
+                    if hasattr(trace, 'marker') and trace.marker:
+                        trace.marker.size = raw_marker_size
+                        trace.marker.opacity = raw_opacity
+                    trace.opacity = 1.0
+
         st.plotly_chart(fig_a, width='stretch')
         capture_button(fig_a, title="Real-Space Isotropy Analysis (Part A)", source_page="Real Isotropy")
 
@@ -1096,149 +913,10 @@ def main():
         # (b) Lumley triangle
         plot_name_b = "Lumley Triangle (B)"
         ps_b = get_plot_style(plot_name_b)
-        
-        fig_b = go.Figure()
         xi, eta = inv["xi"], inv["eta"]
-
-        # Realizability boundaries (matching original code exactly)
-        xi_vals = np.linspace(-1/6, 1/3, 300)
-        eta_two_comp = np.sqrt(1/27 + 2*xi_vals**3)
-        # Axisymmetric boundaries
-        eta_axi_exp = -xi_vals[xi_vals <= 0]  # Expansion (ξ ≤ 0): η = -ξ
-        eta_axi_con = xi_vals[xi_vals >= 0]    # Contraction (ξ ≥ 0): η = ξ
-        
-        # Theme-aware colors for boundary lines
-        current_theme = st.session_state.get("theme", "Light Scientific")
-        is_dark = "Dark" in current_theme
-        boundary_color = "#d4d4d4" if is_dark else "black"
-        
-        # Plot boundaries (matching original: 3 boundary lines)
-        fig_b.add_trace(go.Scatter(
-            x=xi_vals[xi_vals <= 0], y=eta_axi_exp, mode="lines",
-            line=dict(color=boundary_color, width=1.5),
-            name="Axisymmetric expansion",
-            showlegend=True
-        ))
-        fig_b.add_trace(go.Scatter(
-            x=xi_vals[xi_vals >= 0], y=eta_axi_con, mode="lines",
-            line=dict(color=boundary_color, width=1.5),
-            name="Axisymmetric contraction",
-            showlegend=True
-        ))
-        fig_b.add_trace(go.Scatter(
-            x=xi_vals, y=eta_two_comp, mode="lines",
-            line=dict(color="red", width=1.5),
-            name="Two-component limit",
-            showlegend=True
-        ))
-        
-        # Fill realizability region (matching original)
-        eta_lower = np.where(xi_vals < 0, -xi_vals, xi_vals)
-        # Add lower boundary as invisible trace for fill
-        fig_b.add_trace(go.Scatter(
-            x=xi_vals, y=eta_lower, mode="lines",
-            line=dict(width=0),
-            showlegend=False,
-            hoverinfo="skip"
-        ))
-        # Add filled area (fills between lower boundary and two-component limit)
-        # Note: Original code (I mean my auxiliary script which uses matplotlib) uses fill_between without label, so not in legend
-        # Theme-aware fill color for dark theme
-        if is_dark:
-            # Use transparent dark gray for dark theme
-            fill_color = "rgba(62, 62, 66, 0.3)"  # #3e3e42 with 30% opacity
-        else:
-            # Use light gray for light theme
-            fill_color = "rgba(211, 211, 211, 0.3)"  # lightgray with 30% opacity
-        
-        fig_b.add_trace(go.Scatter(
-            x=xi_vals, y=eta_two_comp, mode="lines",
-            fill="tonexty", fillcolor=fill_color,
-            line=dict(width=0),
-            showlegend=False,  # Not in legend (matching original fill_between behavior)
-            hoverinfo="skip"
-        ))
-        
-        # Plot DNS trajectory with time-coloring (matching original: wire-like appearance)
-        # Original plots line segments between consecutive points, each colored by time
-        # This creates a "wire" effect where the trajectory follows different paths
-        n = len(xi)
-        viridis = matplotlib.colormaps.get_cmap('viridis')
-        # Plot line segments between consecutive points (wire-like appearance)
-        # Each segment is colored according to time using viridis colormap (alpha=0.8 matching original)
-        for i in range(1, n):
-            # Color each segment by time (viridis colormap)
-            color_val = i / n
-            rgba = viridis(color_val)
-            color_rgb = f"rgba({int(rgba[0]*255)}, {int(rgba[1]*255)}, {int(rgba[2]*255)}, 0.8)"
-            fig_b.add_trace(go.Scatter(
-                x=xi[i-1:i+1], y=eta[i-1:i+1], mode="lines",
-                line=dict(color=color_rgb, width=1.5),
-                showlegend=False,
-                hoverinfo="skip"
-            ))
-        
-        # Add scatter points for visibility with time-coloring (matching original)
-        # Original: s=8, edgecolor='k', linewidth=0.6, alpha=0.9
-        # Note: Matplotlib s=8 appears smaller than Plotly size=8, so using smaller size
-        fig_b.add_trace(go.Scatter(
-            x=xi, y=eta, mode="markers",
-            marker=dict(
-                size=3,  # Reduced to match matplotlib s=8 visual appearance
-                color=np.linspace(0, 1, len(xi)),
-                colorscale="Viridis",
-                line=dict(width=0.5, color="black"),  # Also reduced linewidth slightly
-                opacity=0.9
-            ),
-            name="DNS trajectory",
-            showlegend=True
-        ))
-        
-        # Mark start and end points (matching original)
-        fig_b.add_trace(go.Scatter(
-            x=[xi[0]], y=[eta[0]], mode="markers",
-            marker=dict(size=12, color="red", symbol="circle", 
-                       line=dict(width=2, color="black")),
-            name="Start",
-            showlegend=True
-        ))
-        fig_b.add_trace(go.Scatter(
-            x=[xi[-1]], y=[eta[-1]], mode="markers",
-            marker=dict(size=12, color="green", symbol="circle",
-                       line=dict(width=2, color="black")),
-            name="End",
-            showlegend=True
-        ))
-        
-        # Mark special points (matching original: Table 11.1)
-        fig_b.add_trace(go.Scatter(
-            x=[0], y=[0], mode="markers",
-            marker=dict(size=12, color="yellow", symbol="star",
-                       line=dict(width=1.5, color="black")),
-            name="Isotropic",
-            showlegend=True
-        ))
-        fig_b.add_trace(go.Scatter(
-            x=[-1/6], y=[1/6], mode="markers",
-            marker=dict(size=10, color="magenta", symbol="circle",
-                       line=dict(width=1.5, color="black")),
-            name="2-component axisym",
-            showlegend=True
-        ))
-        fig_b.add_trace(go.Scatter(
-            x=[1/3], y=[1/3], mode="markers",
-            marker=dict(size=10, color="blue", symbol="circle",
-                       line=dict(width=1.5, color="black")),
-            name="1-component",
-            showlegend=True
-        ))
-
-        layout_kwargs_b = dict(
-            xaxis_title=st.session_state.axis_labels_real_iso["lumley_x"],
-            yaxis_title=st.session_state.axis_labels_real_iso["lumley_y"],
-            height=420,
-            showlegend=True,  # Show all 9 legends (matching original)
-        )
+        axis_labels_b = {"x": st.session_state.axis_labels_real_iso["lumley_x"], "y": st.session_state.axis_labels_real_iso["lumley_y"]}
+        fig_b = create_lumley_triangle_figure(xi, eta, ps_b, axis_labels=axis_labels_b, apply_style=True)
+        layout_kwargs_b = dict(height=420, showlegend=True)
         layout_kwargs_b = apply_axis_limits(layout_kwargs_b, ps_b)
         layout_kwargs_b = apply_figure_size(layout_kwargs_b, ps_b)
         fig_b.update_layout(**layout_kwargs_b)
@@ -1251,48 +929,22 @@ def main():
     # Tab 2: Diagonal b_ii (C) + Cross-correlations (D)
     # ======================================================
     with tab2:
-        # (c) Diagonal b_ii
+        # (c) Diagonal b_ii — shared vis (agent-controlled tol_list)
         plot_name_c = "Diagonal b_ii (C)"
         ps_c = get_plot_style(plot_name_c)
-        colors_c = _get_palette(ps_c)
-        
-        fig_c = go.Figure()
-        for i, curve in enumerate(["b11","b22","b33"]):
-            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_c, ps_c, plot_name_c)
-            fig_c.add_trace(go.Scatter(
-                x=time_norm, y=b[curve], mode="lines",
-                name=st.session_state.real_iso_legends[curve],
-                line=dict(color=c, width=lw, dash=dash),
-            ))
-        # Isotropic reference line (no annotation - label in legend only)
-        iso_0_color = ps_c.get("isotropic_0_color", "#000000")
-        fig_c.add_hline(y=0, line_dash="dash", line_color=iso_0_color, line_width=1.5,
-                       annotation_text="", showlegend=False)
-        # Add as trace for legend
-        fig_c.add_trace(go.Scatter(
-            x=[None], y=[None],
-            mode="lines",
-            line=dict(color=iso_0_color, width=1.5, dash="dash"),
-            name="Isotropic value (0)",
-            showlegend=True,
-        ))
-        
-        # Tolerance bands (using sidebar tol_list_c)
-        tol_colors_c = ["lightcoral", "lightpink", "mistyrose"]
-        tol_values_c = [0.005, 0.01, 0.02]
-        for tol, color in zip(tol_values_c, tol_colors_c):
-            if tol in tol_list_c:
-                # Add tolerance band as shape (layer="below" so it's behind curves)
-                fig_c.add_hrect(y0=-tol, y1=tol, fillcolor=color, opacity=0.3, 
-                               line_width=0, layer="below")
-                # Add invisible trace for legend entry
-                fig_c.add_trace(go.Scatter(
-                    x=[None], y=[None],
-                    mode="markers",
-                    marker=dict(size=10, color=color, opacity=0.3),
-                    name=f"±{tol:.1%} tolerance",
-                    showlegend=True,
-                ))
+        legend_names_c = {
+            "b11": st.session_state.real_iso_legends["b11"],
+            "b22": st.session_state.real_iso_legends["b22"],
+            "b33": st.session_state.real_iso_legends["b33"],
+        }
+        axis_labels_c = {"x": st.session_state.axis_labels_real_iso["time"], "y": st.session_state.axis_labels_real_iso["bij"]}
+        fig_c = create_diagonal_bii_figure(
+            time_norm, b["b11"], b["b22"], b["b33"], ps_c,
+            axis_labels=axis_labels_c,
+            legend_names=legend_names_c,
+            apply_style=False,
+            tol_list=tol_list_c,
+        )
         layout_kwargs_c = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["bij"],
@@ -1302,44 +954,37 @@ def main():
         layout_kwargs_c = apply_figure_size(layout_kwargs_c, ps_c)
         fig_c.update_layout(**layout_kwargs_c)
         fig_c = apply_plot_style(fig_c, ps_c)
+        # Apply per-curve overrides (consistency with subplots D, E)
+        colors_c = _get_palette(ps_c)
+        for i, curve in enumerate(["b11", "b22", "b33"]):
+            if i < len(fig_c.data):
+                c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_c, ps_c, plot_name_c)
+                fig_c.data[i].line.color = c
+                fig_c.data[i].line.width = lw
+                fig_c.data[i].line.dash = dash
         st.plotly_chart(fig_c, width='stretch')
         export_panel(fig_c, data_dir, "real_iso_bii_diag")
 
-        # (d) Cross-correlations
+        # (d) Cross-correlations — shared vis (agent-controlled tol_list)
         plot_name_d = "Cross-correlations (D)"
         ps_d = get_plot_style(plot_name_d)
-        colors_d = _get_palette(ps_d)
-        
-        fig_d = go.Figure()
-        for i, curve in enumerate(["b12","b13","b23"]):
-            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_d, ps_d, plot_name_d)
-            fig_d.add_trace(go.Scatter(
-                x=time_norm, y=np.abs(b[curve]), mode="lines",
-                name=st.session_state.real_iso_legends[curve],
-                line=dict(color=c, width=lw, dash=dash),
-            ))
-        c, lw, dash, mk, ms = _resolve_curve_style("anis", 3, colors_d, ps_d, plot_name_d)
-        fig_d.add_trace(go.Scatter(
-            x=time_norm, y=inv["anis_index"], mode="lines",
-            name=st.session_state.real_iso_legends["anis"],
-            line=dict(color="black", width=2.2),
-        ))
-        # Tolerance lines (using sidebar tol_list_d)
-        tol_colors_d = ["lightcoral", "lightpink", "mistyrose"]
-        tol_values_d = [0.001, 0.005, 0.01]
-        for tol, color in zip(tol_values_d, tol_colors_d):
-            if tol in tol_list_d:
-                # Add tolerance line as shape
-                fig_d.add_hline(y=tol, line_dash="dot", line_color=color, line_width=1.5,
-                               annotation_text="", showlegend=False)
-                # Add invisible trace for legend entry
-                fig_d.add_trace(go.Scatter(
-                    x=[None], y=[None],
-                    mode="lines",
-                    line=dict(color=color, width=1.5, dash="dot"),
-                    name=f"{tol:.1%} tolerance",
-                    showlegend=True,
-                ))
+        legend_names_d = {
+            "b12": st.session_state.real_iso_legends["b12"],
+            "b13": st.session_state.real_iso_legends["b13"],
+            "b23": st.session_state.real_iso_legends["b23"],
+            "anis": st.session_state.real_iso_legends["anis"],
+        }
+        axis_labels_d = {"x": st.session_state.axis_labels_real_iso["time"], "y": st.session_state.axis_labels_real_iso["cross"]}
+        fig_d = create_cross_correlations_figure(
+            time_norm,
+            b["b12"], b["b13"], b["b23"],
+            inv["anis_index"],
+            ps_d,
+            axis_labels=axis_labels_d,
+            legend_names=legend_names_d,
+            tol_list=tol_list_d,
+            apply_style=False,
+        )
         layout_kwargs_d = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["cross"],
@@ -1349,6 +994,14 @@ def main():
         layout_kwargs_d = apply_figure_size(layout_kwargs_d, ps_d)
         fig_d.update_layout(**layout_kwargs_d)
         fig_d = apply_plot_style(fig_d, ps_d)
+        # Apply per-curve overrides (consistency with subplots C, E)
+        colors_d = _get_palette(ps_d)
+        for i, curve in enumerate(["b12", "b13", "b23", "anis"]):
+            if i < len(fig_d.data):
+                c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_d, ps_d, plot_name_d)
+                fig_d.data[i].line.color = c
+                fig_d.data[i].line.width = lw
+                fig_d.data[i].line.dash = dash
         st.plotly_chart(fig_d, width='stretch')
         export_panel(fig_d, data_dir, "real_iso_cross_corr")
 
@@ -1356,62 +1009,23 @@ def main():
     # Tab 3: Deviations (E) + Convergence (F)
     # ======================================================
     with tab3:
-        # (e) Deviations
+        # (e) Deviations — shared vis (agent-controlled tol_list, stationary_t)
         plot_name_e = "Deviations (E)"
         ps_e = get_plot_style(plot_name_e)
-        colors_e = _get_palette(ps_e)
-        
-        fig_e = go.Figure()
-        devx = np.abs(E_x - 1/3)
-        devy = np.abs(E_y - 1/3)
-        devz = np.abs(E_z - 1/3)
+        devx = np.abs(E_x - 1 / 3)
+        devy = np.abs(E_y - 1 / 3)
+        devz = np.abs(E_z - 1 / 3)
         maxdev = np.maximum(np.maximum(devx, devy), devz)
-
-        for i,(curve,arr) in enumerate([("devx",devx),("devy",devy),("devz",devz)]):
-            c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_e, ps_e, plot_name_e)
-            fig_e.add_trace(go.Scatter(
-                x=time_norm, y=arr, mode="lines",
-                name=curve,
-                line=dict(color=c, width=lw, dash=dash)
-            ))
-
-        c, lw, dash, mk, ms = _resolve_curve_style("maxdev", 3, colors_e, ps_e, plot_name_e)
-        fig_e.add_trace(go.Scatter(
-            x=time_norm, y=maxdev, mode="lines",
-            name="Max deviation",
-            line=dict(color="black", width=1.5)
-        ))
-
-        # Tolerance lines (using sidebar tol_list_e)
-        tol_colors_e = ["lightcoral", "lightpink", "mistyrose"]
-        tol_values_e = [0.005, 0.01, 0.02]
-        for tol, color in zip(tol_values_e, tol_colors_e):
-            if tol in tol_list_e:
-                # Add tolerance line as shape
-                fig_e.add_hline(y=tol, line_dash="dot", line_color=color, line_width=1.5,
-                               annotation_text="", showlegend=False)
-                # Add invisible trace for legend entry
-                fig_e.add_trace(go.Scatter(
-                    x=[None], y=[None],
-                    mode="lines",
-                    line=dict(color=color, width=1.5, dash="dot"),
-                    name=f"{tol:.1%} tolerance",
-                    showlegend=True,
-                ))
-        
-        # Statistical stationarity line (no annotation - label in legend only)
-        stat_color_e = ps_e.get("stationary_line_color", "#800080")
-        fig_e.add_vline(x=stationary_t, line_dash="dash", line_color=stat_color_e, line_width=1.5,
-                       annotation_text="", showlegend=False)
-        # Add as trace for legend
-        fig_e.add_trace(go.Scatter(
-            x=[None], y=[None],
-            mode="lines",
-            line=dict(color=stat_color_e, width=1.5, dash="dash"),
-            name="Statistical stationarity",
-            showlegend=True,
-        ))
-
+        legend_names_e = {"devx": "devx", "devy": "devy", "devz": "devz", "maxdev": "Max deviation"}
+        axis_labels_e = {"x": st.session_state.axis_labels_real_iso["time"], "y": st.session_state.axis_labels_real_iso["dev"]}
+        fig_e = create_deviations_figure(
+            time_norm, devx, devy, devz, maxdev, ps_e,
+            axis_labels=axis_labels_e,
+            legend_names=legend_names_e,
+            tol_list=tol_list_e,
+            stationary_t=stationary_t,
+            apply_style=False,
+        )
         layout_kwargs_e = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso["dev"],
@@ -1421,41 +1035,29 @@ def main():
         layout_kwargs_e = apply_figure_size(layout_kwargs_e, ps_e)
         fig_e.update_layout(**layout_kwargs_e)
         fig_e = apply_plot_style(fig_e, ps_e)
+        # Apply per-curve overrides (consistency with subplots C, D)
+        colors_e = _get_palette(ps_e)
+        for i, curve in enumerate(["devx", "devy", "devz", "maxdev"]):
+            if i < len(fig_e.data):
+                c, lw, dash, mk, ms = _resolve_curve_style(curve, i, colors_e, ps_e, plot_name_e)
+                fig_e.data[i].line.color = c
+                fig_e.data[i].line.width = lw
+                fig_e.data[i].line.dash = dash
         st.plotly_chart(fig_e, width='stretch')
         export_panel(fig_e, data_dir, "real_iso_deviation")
 
-        # (f) Convergence - matching original code exactly
+        # (f) Convergence — shared vis (agent-controlled conv_windows)
         plot_name_f = "Convergence (F)"
         ps_f = get_plot_style(plot_name_f)
-        
-        fig_f = go.Figure()
         min_len = len(E_x)
-        if min_len > 20:
-            # Original code: conv_windows = [max(10, min_len // 10), max(20, min_len // 5)]
-            conv_windows = [max(10, min_len // 10), max(20, min_len // 5)]
-            # Use matplotlib default color cycle: first curve blue, second orange
-            colors_conv = ['#1f77b4', '#ff7f0e']  # Blue, Orange (matplotlib default cycle)
-            
-            for idx, window in enumerate(conv_windows):
-                if window < min_len:
-                    # Calculate running standard deviation (matching original exactly)
-                    running_stds = []
-                    for i in range(window, min_len + 1):
-                        std_x = np.std(E_x[i-window:i])
-                        std_y = np.std(E_y[i-window:i])
-                        std_z = np.std(E_z[i-window:i])
-                        avg_std = (std_x + std_y + std_z) / 3
-                        running_stds.append(avg_std)
-                    
-                    conv_time = time_norm[window-1:window-1+len(running_stds)]
-                    # Original: ax4.semilogy(conv_time, running_stds, '-', linewidth=2, label=f'Running σ (window={window})')
-                    # Matplotlib uses default color cycle, so each curve gets different color
-                    fig_f.add_trace(go.Scatter(
-                        x=conv_time, y=running_stds, mode="lines",
-                        name=f"Running std (window={window})",
-                        line=dict(color=colors_conv[idx % len(colors_conv)], width=1.5)
-                    ))
-
+        conv_windows = [max(10, min_len // 10), max(20, min_len // 5)] if min_len > 20 else None
+        axis_labels_f = {"x": st.session_state.axis_labels_real_iso["time"], "y": st.session_state.axis_labels_real_iso.get("convergence", "Running standard deviation")}
+        fig_f = create_convergence_figure(
+            time_norm, E_x, E_y, E_z, ps_f,
+            axis_labels=axis_labels_f,
+            conv_windows=conv_windows,
+            apply_style=False,
+        )
         layout_kwargs_f = dict(
             xaxis_title=st.session_state.axis_labels_real_iso["time"],
             yaxis_title=st.session_state.axis_labels_real_iso.get("convergence", "Running standard deviation"),
@@ -1489,42 +1091,7 @@ def main():
     )
 
     with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown("**Reynolds stress tensor:**")
-        st.latex(r"R_{ij} = \langle u'_i u'_j \rangle")
-        st.markdown(r"""
-        where $u'_i = u_i - \langle u_i \rangle$ are velocity fluctuations and $\langle \cdot \rangle$ denotes ensemble or spatial average.
-        """)
-        
-        st.markdown("**Turbulent kinetic energy:**")
-        st.latex(r"k = \frac{1}{2}\langle u'_i u'_i \rangle = \frac{1}{2}(R_{11} + R_{22} + R_{33})")
-        
-        st.markdown("**Energy fractions:**")
-        st.latex(r"\frac{E_x}{E_{\text{tot}}} = \frac{R_{11}}{2k}, \quad \frac{E_y}{E_{\text{tot}}} = \frac{R_{22}}{2k}, \quad \frac{E_z}{E_{\text{tot}}} = \frac{R_{33}}{2k}")
-        st.markdown("Isotropy implies each approaches $1/3$.")
-        
-        st.markdown("**Reynolds stress anisotropy tensor:**")
-        st.latex(r"b_{ij} = \frac{R_{ij}}{2k} - \frac{1}{3}\delta_{ij}")
-        st.markdown("**Component form:**")
-        st.latex(r"""
-        \begin{aligned}
-        b_{ii} &= \frac{R_{ii}}{2k} - \frac{1}{3}, \quad i = 1,2,3 \\
-        b_{ij} &= \frac{R_{ij}}{2k}, \quad i \neq j
-        \end{aligned}
-        """)
-        
-        st.markdown("**Invariants:**")
-        st.latex(r"""
-        \text{II}_b = -\frac{1}{2}\mathrm{tr}(b^2), \qquad \text{III}_b = \frac{1}{3}\mathrm{tr}(b^3)
-        """)
-        
-        st.markdown("**Lumley coordinates:**")
-        st.latex(r"\eta = \left(-\frac{\text{II}_b}{3}\right)^{1/2}, \quad \xi = \left(\frac{\text{III}_b}{2}\right)^{1/3}")
-        
-        st.markdown("**Anisotropy index:**")
-        st.latex(r"A = \sqrt{-2 \text{II}_b}")
-        
-        st.divider()
-        st.markdown("**Reference:** [Pope (2001)](/Citation#pope2001) — Turbulent flows")
+        st.markdown(get_real_isotropy_theory_markdown())
 
 
 if __name__ == "__main__":

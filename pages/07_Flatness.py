@@ -45,6 +45,8 @@ from utils.plot_style import (
     resolve_line_style, render_per_sim_style_ui, ensure_per_sim_defaults, convert_superscript
 )
 from utils.export_figs import export_panel
+from core_physics import compute_flatness_time_avg
+
 st.set_page_config(page_icon="⚫")
 
 
@@ -62,44 +64,8 @@ def _read_flatness_cached(fname: str):
 # ==========================================================
 @st.cache_data(show_spinner=False)
 def _compute_time_avg_flatness(files: tuple, num_errorbars: int = 20):
-    """
-    Time-average flatness data and select log-spaced r values for error bars.
-    Returns (r_plot, F_mean, F_std) on selected r indices.
-    """
-    all_r = []
-    all_flatness = []
-
-    for f in files:
-        r, F = _read_flatness_cached(str(f))
-        if r is None or F is None or len(r) == 0 or len(F) == 0:
-            continue
-        all_r.append(r)
-        all_flatness.append(F)
-
-    if not all_r:
-        return None, None, None
-
-    r_full = all_r[0]
-    flatness_array = np.array(all_flatness)
-
-    # Guard shape mismatches
-    if flatness_array.ndim != 2 or flatness_array.shape[1] != r_full.shape[0]:
-        return None, None, None
-
-    flatness_mean = np.mean(flatness_array, axis=0)
-    flatness_std = np.std(flatness_array, axis=0)
-
-    r_pos = r_full[r_full > 0]
-    if r_pos.size < 2:
-        return None, None, None
-
-    log_r_vals = np.logspace(np.log10(r_pos[0]), np.log10(r_pos[-1]), num=num_errorbars)
-    log_indices = sorted(set([int(np.argmin(np.abs(r_full - val))) for val in log_r_vals]))
-
-    r_plot = r_full[log_indices]
-    F_mean = flatness_mean[log_indices]
-    F_std = flatness_std[log_indices]
-    return r_plot, F_mean, F_std
+    data_list = [_read_flatness_cached(str(f)) for f in files]
+    return compute_flatness_time_avg(data_list, num_errorbars)
 
 
 def _format_legend_name(prefix: str) -> str:

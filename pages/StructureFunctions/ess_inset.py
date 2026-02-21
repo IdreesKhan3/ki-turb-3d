@@ -1,14 +1,7 @@
 import plotly.graph_objects as go
 import numpy as np
 from utils.plot_style import resolve_line_style, _default_labelify, _axis_title_font, _tick_font, hex_to_rgb
-
-# --- Theory Constants & Functions ---
-TABLE_P = [2, 3, 4, 5, 6]
-EXP_ZETA = [0.71, 1.00, 1.28, 1.53, 1.78]
-
-def zeta_p_she_leveque(p):
-    """Computes She-Leveque scaling exponent."""
-    return p/9 + 2*(1 - (2/3)**(p/3))
+from core_physics import zeta_p_she_leveque, TABLE_P, EXP_ZETA
 
 def add_ess_inset(
     fig: go.Figure,

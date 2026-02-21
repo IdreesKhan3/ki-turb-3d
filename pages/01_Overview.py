@@ -14,11 +14,16 @@ project_root = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(project_root))
 
 from data_readers.csv_reader import read_eps_validation_csv
-from data_readers.parameter_reader import read_parameters, format_parameters_for_display
+from data_readers.parameter_reader import (
+    read_parameters,
+    format_parameters_for_display,
+    is_lbm_params,
+)
 from data_readers.binary_reader import read_tau_analysis_file
 from data_readers.hdf5_reader import read_hdf5_file, compute_compressibility_metrics as compute_compressibility_h5
 from utils.file_detector import detect_simulation_files
 from utils.theme_config import inject_theme_css
+from content.overview_theory_content import get_overview_theory_markdown
 
 st.set_page_config(page_icon="⚫")
 
@@ -26,13 +31,7 @@ st.set_page_config(page_icon="⚫")
 def read_parameters_cached(filepath: str, mtime: float):
     """
     Cached parameter reader keyed by file path + modification time.
-    
-    Args:
-        filepath: Path to simulation.input file
-        mtime: File modification time (for cache invalidation)
-    
-    Returns:
-        Dictionary of parameters
+    Supports simulation.input (LBM) and simulation.json (NS).
     """
     return read_parameters(filepath)
 
@@ -208,22 +207,25 @@ def main():
             'mach_number': None,
             'knudsen_number': None,
             'is_les': False,
+            'is_lbm': None,
         }
     
-        # Load parameters and cache in sim_data to avoid re-reading
+        # Load parameters (try simulation.input then simulation.json)
         params = None
         if files['parameters']:
-            param_file = str(files['parameters'][0])
-            try:
-                mtime = Path(param_file).stat().st_mtime
-                params = read_parameters_cached(param_file, mtime)
-            except Exception:
-                params = None
-            
-            if params:
-                formatted_params = format_parameters_for_display(params)
-                sim_data['params'] = formatted_params
-                sim_data['raw_params'] = params  # Store raw params for later use
+            for param_file in files['parameters']:
+                try:
+                    mtime = Path(param_file).stat().st_mtime
+                    params = read_parameters_cached(str(param_file), mtime)
+                    if params:
+                        sim_data['is_lbm'] = is_lbm_params(str(param_file))
+                        sim_data['params'] = format_parameters_for_display(
+                            params, is_lbm=sim_data['is_lbm']
+                        )
+                        sim_data['raw_params'] = params
+                        break
+                except Exception:
+                    continue
         
         # Strict path-based LES detection: only examples/LES/* directories
         sim_data['is_les'] = is_examples_les_dir(data_dir, project_root)
@@ -278,14 +280,17 @@ def main():
                     if 'Lattice' in label or 'Speed' in label or 'Length' in label or 'Smagorinsky' in label:
                         st.text(f"{label}: {info['value']} {info['unit']}")
     
-    # Compute Mach and Knudsen numbers for each simulation
+    # Compute Mach and Knudsen numbers for each simulation (LBM or NS)
     for sim in all_simulations_data:
         files = sim['files']
         mach_number = None
         knudsen_number = None
         is_les = sim['is_les']
-        
-        # Improved Mach computation: iterate over all candidate CSVs, prefer newest
+        is_lbm = sim.get('is_lbm', True)
+        params = sim.get('raw_params', None)
+
+        # Get u_rms from eps_real_validation (u_rms_real or u_rms)
+        u_rms = None
         if files.get('spectral_turb_stats'):
             candidates = sorted(
                 [Path(p) for p in files['spectral_turb_stats']],
@@ -295,54 +300,55 @@ def main():
             for csv_path in candidates:
                 try:
                     df = read_eps_validation_csv(str(csv_path))
-                    if 'u_rms_real' in df.columns and len(df) > 0:
-                        u_rms_latest = df['u_rms_real'].iloc[-1]
-                        c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
-                        mach_number = u_rms_latest / c_s
+                    u_col = 'u_rms_real' if 'u_rms_real' in df.columns else 'u_rms'
+                    if u_col in df.columns and len(df) > 0:
+                        u_rms = float(df[u_col].iloc[-1])
                         break
                 except Exception:
                     continue
-        
-        # Compute Knudsen number
-        # Always compute molecular Kn if nu exists
-        # Only if is_les is True, attempt turbulent and override
-        params = sim.get('raw_params', None)
-        if params is None and files['parameters']:
-            # Fallback: read if not cached (shouldn't happen, but safe)
-            param_file = str(files['parameters'][0])
-            try:
-                mtime = Path(param_file).stat().st_mtime
-                params = read_parameters_cached(param_file, mtime)
-                sim['raw_params'] = params  # Cache for future use
-            except Exception:
-                params = None
-        
-        if params:
-            nu = params.get('nu', None)
-            if nu is not None:
+
+        # Mach: LBM Ma = u_rms/c_s, NS Ma = u_rms/c_sound
+        if u_rms is not None and params:
+            if is_lbm:
+                c_s = 1.0 / np.sqrt(3.0)
+                mach_number = u_rms / c_s
+                sim['mach_method'] = 'LBM'
+            else:
+                c_sound = params.get('c_sound') or params.get('c_speed')
+                if c_sound is not None and float(c_sound) > 0:
+                    mach_number = u_rms / float(c_sound)
+                    sim['mach_method'] = 'NS'
+
+        # Knudsen: LBM Kn = c_s(tau-0.5), NS Kn = nu/(c_sound*L)
+        if params and params.get('nu') is not None:
+            nu = float(params['nu'])
+            if is_lbm:
                 c_s2 = 1.0 / 3.0
-                c_s = 1.0 / np.sqrt(3.0)  # Lattice sound speed
-                dx = 1.0  # Grid spacing in lattice units (Δx)
-                
-                # Always compute molecular Kn first
-                tau_0 = nu / c_s2 + 0.5  # Molecular tau from viscosity in input file
-                knudsen_number = (c_s * (tau_0 - 0.5) * dx) / dx
-                
-                # Only override with turbulent Kn if this is a strict LES directory
-                if is_les and files['tau_analysis']:
-                    nx = params.get('nx', None)
-                    ny = params.get('ny', None)
-                    nz = params.get('nz', None)
-                    
+                c_s = 1.0 / np.sqrt(3.0)
+                tau_0 = nu / c_s2 + 0.5
+                knudsen_number = c_s * (tau_0 - 0.5)
+                sim['kn_method'] = 'LBM'
+                if is_les and files.get('tau_analysis'):
+                    nx, ny, nz = params.get('nx'), params.get('ny'), params.get('nz')
                     if nx and ny and nz:
-                        tau_file = str(files['tau_analysis'][-1])
                         try:
-                            tau_e = read_tau_analysis_file(tau_file, nx, ny, nz)  # Effective tau
-                            sqrt3 = np.sqrt(3.0)
-                            knudsen_number = ((tau_e - 0.5) * sqrt3 * dx) / dx
+                            tau_e = read_tau_analysis_file(
+                                str(files['tau_analysis'][-1]), nx, ny, nz
+                            )
+                            knudsen_number = (tau_e - 0.5) * np.sqrt(3.0)
+                            sim['kn_method'] = 'LBM (turbulent)'
                         except Exception:
-                            pass  # Keep molecular Kn if turbulent computation fails
-        
+                            pass
+            else:
+                c_sound = params.get('c_sound') or params.get('c_speed')
+                L = params.get('L')
+                if c_sound is not None and L is not None:
+                    c_sound_f = float(c_sound)
+                    L_f = float(L)
+                    if c_sound_f > 0 and L_f > 0:
+                        knudsen_number = nu / (c_sound_f * L_f)
+                        sim['kn_method'] = 'NS'
+
         sim['mach_number'] = mach_number
         sim['knudsen_number'] = knudsen_number
         
@@ -373,20 +379,25 @@ def main():
                 
                 # Mach Number with reason if N/A
                 if sim['mach_number'] is not None:
-                    row['Mach Number'] = f"{sim['mach_number']:.4f}"
+                    method = sim.get('mach_method', '')
+                    row['Mach Number'] = f"{sim['mach_number']:.4f}" + (f" ({method})" if method else "")
                 else:
                     if not files['spectral_turb_stats']:
                         row['Mach Number'] = "N/A (no eps_real_validation*.csv)"
+                    elif not files['parameters']:
+                        row['Mach Number'] = "N/A (no simulation.input or simulation.json)"
                     else:
-                        row['Mach Number'] = "N/A (missing u_rms_real)"
+                        row['Mach Number'] = "N/A (missing u_rms or c_sound for NS)"
                 
                 # Knudsen Number with reason if N/A
                 if sim['knudsen_number'] is not None:
-                    kn_label = " (turbulent)" if sim['is_les'] else " (molecular)"
-                    row['Knudsen Number'] = f"{sim['knudsen_number']:.6f}{kn_label}"
+                    kn_label = sim.get('kn_method', 'turbulent' if sim['is_les'] else 'molecular')
+                    row['Knudsen Number'] = f"{sim['knudsen_number']:.6f} ({kn_label})"
                 else:
                     if not files['parameters']:
-                        row['Knudsen Number'] = "N/A (no simulation.input)"
+                        row['Knudsen Number'] = "N/A (no simulation.input or simulation.json)"
+                    elif sim.get('is_lbm') is False and (not sim.get('raw_params', {}).get('c_sound') or not sim.get('raw_params', {}).get('L')):
+                        row['Knudsen Number'] = "N/A (NS: need c_sound and L in simulation.json)"
                     elif sim['is_les'] and not files['tau_analysis']:
                         row['Knudsen Number'] = "N/A (LES: no tau_analysis*.bin)"
                     else:
@@ -546,56 +557,11 @@ def main():
             status = "Yes" if available else "No"
             st.markdown(f"{status} {item}")
     
-    # Theory Equations Section
+    # Theory Equations Section — single source of truth from content/
     st.markdown("---")
     st.header("📚 Theory Equations")
-    
     with st.expander("**Physics Validation Equations**", expanded=False):
-        st.markdown("**Mach Number:**")
-        st.latex(r"""
-        \text{Ma} = \frac{u_{\text{rms}}}{c_s}
-        """)
-        st.markdown(r"""
-        where $u_{\text{rms}} = \sqrt{\langle u_x^2 + u_y^2 + u_z^2 \rangle}$ is the root-mean-square velocity and $c_s = 1/\sqrt{3}$ is the lattice sound speed. For incompressible flow: $\text{Ma} < 0.1$
-        """)
-        
-        st.markdown("---")
-        st.markdown("**Knudsen Number (DNS/Continuum Regime):**")
-        st.latex(r"""
-        \text{Kn} = \frac{c_s (\tau_0 - 1/2) \Delta x}{\Delta x} = c_s \left(\tau_0 - \frac{1}{2}\right)
-        """)
-        st.markdown(r"""
-        where $\tau_0 = \nu_0/c_s^2 + 1/2$ is the molecular relaxation time from the input parameters, $\nu_0$ is the molecular viscosity, and $c_s = 1/\sqrt{3}$ is the lattice sound speed. Continuum regime: $\text{Kn} < 0.01$
-        """)
-        
-        st.markdown("---")
-        st.markdown("**Knudsen Number (LES/Turbulent Regime):**")
-        st.latex(r"""
-        \text{Kn}_t = \frac{(\tau_e - 1/2) \sqrt{3} \Delta x}{\Delta x} = \sqrt{3} \left(\tau_e - \frac{1}{2}\right)
-        """)
-        st.markdown(r"""
-        where $\tau_e$ is the effective relaxation time computed from the turbulent viscosity analysis. For LES simulations, this uses the effective tau from tau_analysis files. Continuum regime: $\text{Kn}_t < 0.01$
-        """)
-        
-        st.markdown("---")
-        st.markdown("**Velocity Divergence (Compressibility Check):**")
-        st.latex(r"""
-        \nabla \cdot \mathbf{u} = \frac{\partial u_x}{\partial x} + \frac{\partial u_y}{\partial y} + \frac{\partial u_z}{\partial z}
-        """)
-        st.markdown(r"""
-        For incompressible flow, the divergence should be zero: $\nabla \cdot \mathbf{u} = 0$. The maximum absolute divergence $|\nabla \cdot \mathbf{u}|_{\max}$ is used to validate incompressibility.
-        """)
-        
-        st.markdown("**Compressibility Metrics:**")
-        st.latex(r"""
-        \begin{align}
-        |\nabla \cdot \mathbf{u}|_{\max} &= \max_{x,y,z} |\nabla \cdot \mathbf{u}| \\
-        \text{RMS}(\nabla \cdot \mathbf{u}) &= \sqrt{\frac{1}{V} \int_V (\nabla \cdot \mathbf{u})^2 \, dV}
-        \end{align}
-        """)
-        st.markdown(r"""
-        Validation thresholds: $|\nabla \cdot \mathbf{u}|_{\max} < 10^{-5}$ (valid), $10^{-5} < |\nabla \cdot \mathbf{u}|_{\max} < 10^{-3}$ (warning), $|\nabla \cdot \mathbf{u}|_{\max} > 10^{-3}$ (invalid)
-        """)
+        st.markdown(get_overview_theory_markdown())
 
 if __name__ == "__main__":
     main()

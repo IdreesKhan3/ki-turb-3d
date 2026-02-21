@@ -56,6 +56,12 @@ from utils.plot_style import (
     resolve_line_style, render_per_sim_style_ui, ensure_per_sim_defaults, convert_superscript
 )
 from pages.StructureFunctions.ess_inset import add_ess_inset
+from core_physics import (
+    zeta_p_she_leveque,
+    TABLE_P,
+    EXP_ZETA,
+    compute_structure_time_avg,
+)
 
 # Binary/text readers (binary is required by plan, text is optional)
 from data_readers.binary_reader import read_structure_function_file
@@ -64,16 +70,6 @@ try:
     from data_readers.text_reader import read_structure_function_txt
 except Exception:
     read_structure_function_txt = None
-
-
-# ==========================================================
-# Theory curves
-# ==========================================================
-def zeta_p_she_leveque(p):
-    return p/9 + 2*(1 - (2/3)**(p/3))
-
-TABLE_P = [2, 3, 4, 5, 6]
-EXP_ZETA = [0.71, 1.00, 1.28, 1.53, 1.78]
 
 
 # ==========================================================
@@ -96,81 +92,18 @@ def _extract_iter(fname: str):
 
 @st.cache_data(show_spinner=False)
 def _compute_time_avg_structure(files: tuple, kind: str):
-    """
-    Time-average structure functions over selected files.
-    Matches auxiliary script approach: sum S_p, r, u_rms then divide by num_files.
-    Assumes all files from same simulation have same r grid (physically correct).
-    kind: "bin" or "txt".
-    Returns r, S_p_mean dict, S_p_std dict, u_rms_mean, ps(list)
-    """
-    sum_sp = None
-    sum_r = None
-    total_u_rms = 0.0
-    num_files = 0
-    ps = None
-    max_dr = None
-
+    data_list = []
     for f in files:
         try:
             data = _read_structure_bin_cached(str(f)) if kind == "bin" else _read_structure_txt_cached(str(f))
-        except Exception as e:
-            # Silently skip files that can't be read (may be corrupted or wrong format)
-            continue
-
-        r = np.asarray(data.get("r", []), float)
-        S_p = data.get("S_p", {})
-        if r.size == 0 or not S_p:
-            continue
-
-        # Initialize on first file (assumes all files have same structure)
-        if sum_sp is None:
-            max_dr = len(r)
-            ps = sorted(S_p.keys())
-            sum_sp = {p: np.zeros(max_dr, dtype=float) for p in ps}
-            sum_r = np.zeros(max_dr, dtype=float)
-
-        # Sum S_p and r (matching auxiliary script approach)
-        for p in ps:
-            if p in S_p:
-                sp_arr = np.asarray(S_p[p], float)
-                min_len = min(len(sum_sp[p]), len(sp_arr))
-                sum_sp[p][:min_len] += sp_arr[:min_len]
-        
-        min_r_len = min(len(sum_r), len(r))
-        sum_r[:min_r_len] += r[:min_r_len]
-        total_u_rms += float(data.get("u_rms", 0.0))
-        num_files += 1
-
-    if num_files == 0 or sum_sp is None:
-        return None, None, None, None, None
-
-    # Average by dividing by num_files (matching auxiliary script)
-    r_mean = sum_r / num_files
-    Sp_mean_dict = {p: sum_sp[p] / num_files for p in ps}
-    u_rms_mean = total_u_rms / num_files
-
-    # Compute std for error bars (not in auxiliary script, but useful for Streamlit)
-    # Re-read files to compute std
-    Sp_list = []
-    for f in files:
-        try:
-            data = _read_structure_bin_cached(str(f)) if kind == "bin" else _read_structure_txt_cached(str(f))
-            S_p = data.get("S_p", {})
-            if S_p:
-                Sp_mat = np.vstack([np.asarray(S_p[p], float)[:max_dr] for p in ps])
-                Sp_list.append(Sp_mat)
+            data_list.append(data)
         except Exception:
             continue
-    
-    if Sp_list:
-        Sp_arr = np.stack(Sp_list, axis=0)
-        Sp_std = np.std(Sp_arr, axis=0)
-        # Map p values to their index in ps (not p-1, which assumes consecutive 1,2,3,...)
-        Sp_std_dict = {p: Sp_std[idx, :] for idx, p in enumerate(ps)}
-    else:
-        Sp_std_dict = {p: np.zeros(max_dr) for p in ps}
-
-    return r_mean, Sp_mean_dict, Sp_std_dict, u_rms_mean, list(ps)
+    result = compute_structure_time_avg(data_list)
+    r_mean, Sp_mean_dict, Sp_std_dict, u_rms_mean, ps = result
+    if r_mean is None:
+        return None, None, None, None, None
+    return r_mean, Sp_mean_dict, Sp_std_dict, u_rms_mean, ps
 
 
 # ==========================================================

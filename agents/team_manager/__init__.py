@@ -1,0 +1,708 @@
+"""
+Team Manager — 5 LLM-driven agents (Orchestrator, Steward, Analyst, Visualizer, Reviewer).
+"""
+
+import glob
+import json
+import re
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from ..base_agent import LLMAgent
+from ..data_steward import DataStewardAgent
+from ..orchestrator import OrchestratorAgent
+from ..analyst import AnalystAgent
+from ..visualizer import VisualizerAgent
+from ..reviewer import ReviewerAgent
+from ..writer import WriterAgent
+from ..routing import route
+from ..shared.llm_provider import get_llm_provider
+
+from .prompts import (
+    ORCHESTRATOR_PROMPT,
+    STEWARD_PROMPT,
+    ANALYST_PROMPT,
+    VISUALIZER_PROMPT,
+    REVIEWER_PROMPT,
+)
+from ..intent_detection import get_plot_routing
+from utils.image_processor import (
+    convert_to_provider_format,
+    plotly_figure_to_image_dict,
+    extract_figure_data_for_agent,
+    figure_fingerprint,
+)
+from ..tools import get_tools_for_agent
+from ..tools.status_messages import friendly_delegation
+
+
+def _parse_plan_steps(plan: str) -> List[str]:
+    """Parse numbered plan into list of step descriptions. E.g. '1. Find files\\n2. Plot' -> ['Find files', 'Plot']."""
+    if not plan or not plan.strip():
+        return []
+    steps = []
+    for line in plan.strip().split("\n"):
+        line = line.strip()
+        # Match "1. Step text" or "1) Step text"
+        m = re.match(r"^\d+[.)]\s*(.+)$", line)
+        if m:
+            steps.append(m.group(1).strip())
+    return steps if steps else [plan.strip()]
+
+
+def _respond_inline(
+    user_input: str,
+    context: Optional[Dict[str, Any]],
+    log_func,
+    mode: str = "converse",
+) -> str:
+    """Inline LLM response for explain/converse (no ConversationalAgent)."""
+    log_func("Orchestrator", f"Responding ({mode})...")
+    context_str = ""
+    if context and context.get("chat_history"):
+        recent = context["chat_history"][-5:] if mode == "converse" else context["chat_history"][-3:]
+        context_str = "\n\nRecent conversation:\n"
+        for msg in recent:
+            context_str += f"{msg.get('role', 'user').title()}: {msg.get('content', '')}\n"
+    prompt = f"{context_str}\n\nUser Question: {user_input}\n\nProvide a helpful, accurate response."
+    system = (
+        "You are the AI assistant for KI-TURB 3D. Provide clear, accurate explanations. "
+        "Do not perform file operations unless explicitly requested."
+        if mode == "explain"
+        else "You are the AI assistant for KI-TURB 3D. Provide clear, helpful answers about turbulence, the platform, or general questions."
+    )
+    try:
+        llm = get_llm_provider()
+        images = context.get("images") if context and isinstance(context, dict) else None
+        kwargs = {"temperature": 0.7}
+        if images:
+            kwargs["images"] = images
+        return llm.generate(prompt, system_prompt=system, **kwargs) or ""
+    except Exception as e:
+        log_func("Orchestrator", f"Error: {e}")
+        return f"Error: {str(e)}"
+
+
+class ResearchTeam:
+    """Main class that initializes and coordinates the agent team."""
+
+    def __init__(self, log_callback, project_root: Optional[Path] = None):
+        self.log_callback = log_callback
+        self.project_root = project_root or Path.cwd()
+
+        def log(agent: str, msg: str):
+            self.log_callback(f"**[{agent.upper()}]** {msg}")
+
+        self.log = log
+        self.orchestrator = OrchestratorAgent(log)
+        self.steward = DataStewardAgent(log, self.project_root)
+        self.analyst = AnalystAgent(log)
+        self.visualizer = VisualizerAgent(log)
+        self.reviewer = ReviewerAgent(log)
+        self.writer = WriterAgent(log)
+
+    def run_mission(
+        self,
+        user_prompt: str,
+        context: Optional[Dict[str, Any]] = None,
+        data_directory: Optional[Path] = None,
+        use_plan: bool = True,
+    ) -> Tuple[Optional[Any], str]:
+        """
+        Run the full research mission.
+
+        Args:
+            user_prompt: User request (e.g. "Analyze spectra")
+            context: Optional context for orchestrator (file_tree, chat_history)
+            data_directory: Optional path to data dir (spectrum*.dat, norm*.dat)
+            use_plan: If True, call orchestrator to generate plan first
+
+        Returns:
+            (fig, status) where status is APPROVED | CONDITIONAL | REJECTED
+        """
+        self.log("Orchestrator", f"Mission started: {user_prompt}")
+
+        # 1. Optional: Generate plan
+        plan = None
+        if use_plan:
+            plan = self.orchestrator.plan(user_prompt, context)
+            if plan:
+                self.log("Orchestrator", f"Plan: {plan[:200]}...")
+
+        # 2. Steward: Get data (files)
+        spectrum_files: List[str] = []
+        norm_files: List[str] = []
+
+        if data_directory and Path(data_directory).exists():
+            data_dir = Path(data_directory)
+            spectrum_files = sorted(glob.glob(str(data_dir / "spectrum*.dat")))
+            norm_files = sorted(glob.glob(str(data_dir / "norm*.dat")))
+
+        # 3. Analyst: Compute spectra and isotropy
+        spec_data = spectrum_files if spectrum_files else None
+        results = self.analyst.compute("spectra", spec_data)
+        if "error" in results:
+            self.log("Orchestrator", f"Spectra: {results['error']}")
+
+        iso_results = self.analyst.compute("isotropy", None)
+        results.update(iso_results)
+
+        # 4. Visualizer: Plot
+        fig = self.visualizer.plot("spectrum", results)
+        if fig is None:
+            return None, "REJECTED"
+
+        # 5. Reviewer: Validate
+        status = self.reviewer.review(results, fig.layout)
+
+        if status == "REJECTED":
+            return None, status
+
+        return fig, status
+
+    def handle(
+        self,
+        user_input: str,
+        context: Optional[Dict[str, Any]] = None,
+        data_directory: Optional[Path] = None,
+        mode: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Unified entry point: route user input to the right agent(s).
+
+        Args:
+            user_input: User's message
+            context: Optional (chat_history, file_tree, images)
+            data_directory: Optional path for analysis
+            mode: Override auto-routing: "analysis" | "writing" | "converse" | "explain" | "tools"
+
+        Returns:
+            Dict with:
+                - "type": "analysis" | "writing" | "converse" | "explain" | "tools"
+                - "content": str (for writing/converse/explain)
+                - "fig": Plotly Figure or None (for analysis)
+                - "status": str (for analysis: APPROVED/CONDITIONAL/REJECTED)
+        """
+        routed = mode or route(user_input)
+
+        if routed == "analysis":
+            fig, status = self.run_mission(user_input, context, data_directory)
+            return {"type": "analysis", "fig": fig, "status": status, "content": None}
+
+        if routed == "writing":
+            content = self.writer.write(user_input, context)
+            return {"type": "writing", "content": content, "fig": None, "status": None}
+
+        if routed == "explain":
+            content = _respond_inline(user_input, context, self.log, mode="explain")
+            return {"type": "explain", "content": content, "fig": None, "status": None}
+
+        if routed == "converse":
+            content = _respond_inline(user_input, context, self.log, mode="converse")
+            return {"type": "converse", "content": content, "fig": None, "status": None}
+
+        # "tools" → caller should use agent_loop (Data Steward + parser + executor)
+        return {
+            "type": "tools",
+            "content": "Route to agent loop (tools mode).",
+            "fig": None,
+            "status": None,
+        }
+
+
+class UnifiedTeam:
+    """Five LLM-driven agents: each thinks and uses tools. Strong agentic design: Plan → Act → Reflect."""
+
+    def __init__(
+        self,
+        log_callback=None,
+        project_root: Optional[Path] = None,
+        provider_name: Optional[str] = None,
+    ):
+        self.project_root = project_root or Path.cwd()
+        self.log_callback = log_callback or (lambda x: None)
+
+        def log(agent: str, msg: str):
+            self.log_callback(f"**[{agent.upper()}]** {msg}")
+
+        from ..shared.llm_provider import get_llm_provider
+        self.provider_name = provider_name or "ollama"
+        llm = get_llm_provider(self.provider_name)
+        self.planner = OrchestratorAgent(log, llm_provider=llm)
+        self.orchestrator = LLMAgent(
+            "Orchestrator", ORCHESTRATOR_PROMPT, llm, self.project_root, log,
+            tools=get_tools_for_agent("orchestrator"),
+        )
+        self.steward = LLMAgent(
+            "Data Steward", STEWARD_PROMPT, llm, self.project_root, log,
+            tools=get_tools_for_agent("steward"),
+        )
+        self.analyst = LLMAgent(
+            "Analyst", ANALYST_PROMPT, llm, self.project_root, log,
+            tools=get_tools_for_agent("analyst"),
+        )
+        self.visualizer = LLMAgent(
+            "Visualizer", VISUALIZER_PROMPT, llm, self.project_root, log,
+            tools=get_tools_for_agent("visualizer"),
+        )
+        self.reviewer = LLMAgent(
+            "Reviewer", REVIEWER_PROMPT, llm, self.project_root, log,
+            tools=get_tools_for_agent("reviewer"),
+        )
+
+    def _parse_delegation(self, response: str) -> Optional[Tuple[str, str]]:
+        """Parse orchestrator response for delegation. Returns (agent_name, task) or None."""
+        text = response.strip()
+        if not text:
+            return None
+        for m in re.finditer(r"```(?:json)?\s*([\s\S]*?)\s*```", text):
+            text = m.group(1).strip()
+            break
+        start = text.find("{")
+        if start < 0:
+            return None
+        depth = 0
+        for i, c in enumerate(text[start:], start):
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        obj = json.loads(text[start : i + 1])
+                        if isinstance(obj, dict) and "delegate" in obj and "task" in obj:
+                            agent = str(obj["delegate"]).strip().lower()
+                            task = str(obj["task"]).strip()
+                            if agent in ("steward", "analyst", "visualizer", "reviewer"):
+                                return (agent, task)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                    break
+        return None
+
+    def _get_agent(self, name: str):
+        """Return agent by name."""
+        return {
+            "steward": self.steward,
+            "analyst": self.analyst,
+            "visualizer": self.visualizer,
+            "reviewer": self.reviewer,
+        }.get(name)
+
+    def run_chat_loop(
+        self,
+        user_message: str,
+        chat_history: Optional[List[Dict[str, Any]]] = None,
+        session_context: Optional[Dict[str, Any]] = None,
+        max_delegate_rounds: int = 12,
+        use_plan: bool = True,
+        resume_state: Optional[Dict[str, Any]] = None,
+        stream_callback: Optional[Any] = None,
+        stream_reset_callback: Optional[Any] = None,
+        tool_result_callback: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """
+        Strong agentic loop: Plan → Act → Reflect.
+        Orchestrator plans first, then delegates with step context. Reviewer validates artifacts.
+        chat_history: list of {"role": "user"|"assistant", "content": str}.
+        session_context: optional dict with data_directory, all_loaded_files (current loaded data).
+        use_plan: If True, generate execution plan before delegation (strong agentic mode).
+        """
+        context_parts: List[str] = []
+        last_artifact: Optional[Dict[str, Any]] = None
+        collected_artifacts: List[Dict[str, Any]] = []  # Multi-task: accumulate all figures/tables in one response
+        final_text: Optional[str] = None  # When last step is "explain", keep that text for the response
+        max_artifacts_per_turn = 10  # Cap to avoid runaway
+        plan = ""
+        plan_steps: List[str] = []
+        current_step_index = 0
+        rejection_count = 0  # Prevent infinite loop when Reviewer keeps rejecting
+        last_rejection_reason = ""  # Reflection: inject into next orchestrator turn so it changes course
+
+        def _format_history(history: List[Dict[str, Any]]) -> str:
+            lines = []
+            for m in history:
+                role = "User" if m.get("role") == "user" else "Assistant"
+                content = m.get("content", "")
+                if content:
+                    lines.append(f"{role}: {content}")
+            return "\n".join(lines[-20:]) if lines else ""
+
+        def _format_artifact_history(artifact_history: List[Dict[str, Any]]) -> str:
+            """Format artifact history so agents can refer to any previous figure/table/image."""
+            if not artifact_history:
+                return ""
+            lines = [
+                "RECENT ARTIFACTS (most recent = 1; user can ask to explain any of these):",
+                "When the user says 'explain the first figure', 'what about the table above', 'interpret that plot', use the artifact with that number.",
+                "When the user asks to modify/add functionality to a figure, use source_file and tool_name to find the code.",
+                "",
+            ]
+            for idx, art in enumerate(reversed(artifact_history), start=1):
+                kind = art.get("type", "figure")
+                caption = (art.get("caption") or "")[:120]
+                if kind == "figure":
+                    src = art.get("source_file")
+                    tool = art.get("tool_name")
+                    src_info = f" [source: {src}, tool: {tool}]" if (src or tool) else ""
+                    lines.append(f"--- Artifact {idx} (figure){src_info}" + (f": {caption}" if caption else "") + " ---")
+                    if art.get("figure_data"):
+                        lines.append(art["figure_data"])
+                elif kind == "table":
+                    lines.append(f"--- Artifact {idx} (table)" + (f": {caption}" if caption else "") + " ---")
+                    if art.get("table_md"):
+                        lines.append(art["table_md"])
+                elif kind == "image":
+                    lines.append(f"--- Artifact {idx} (user-uploaded image)" + (f": {caption}" if caption else "") + " ---")
+                lines.append("")
+            return "\n".join(lines).strip()
+
+        def _format_session(sess: Optional[Dict[str, Any]]) -> str:
+            if not sess:
+                return ""
+            parts = []
+            if sess.get("data_directory"):
+                parts.append(
+                    f"SESSION DATA PATH (use for ALL requests when user doesn't specify a different path): {sess['data_directory']}\n"
+                    "When user says 'now plot X', 'also show Y', or switches topic without a path, use this path."
+                )
+            if sess.get("data_directories"):
+                parts.append(f"Loaded directories: {', '.join(str(d) for d in sess['data_directories'][:5])}")
+            if sess.get("all_loaded_files"):
+                fl = sess["all_loaded_files"]
+                summary = []
+                for ft, lst in fl.items():
+                    if lst and isinstance(lst, list):
+                        n = len(lst)
+                        summary.append(f"{ft}: {n} file(s)")
+                if summary:
+                    parts.append("Available file types: " + "; ".join(summary[:10]))
+            if sess.get("style_config") or sess.get("spectra_style"):
+                parts.append("User's plot style available for plot_spectrum—only pass when user explicitly requests custom style.")
+            if sess.get("axis_labels_raw") or sess.get("axis_labels_norm"):
+                parts.append("Axis labels available for plot_spectrum—only pass when user explicitly requests custom labels.")
+            artifact_hist = sess.get("artifact_history") or []
+            if artifact_hist:
+                parts.append(_format_artifact_history(artifact_hist))
+            return "\n".join(parts) if parts else ""
+
+        history_str = _format_history(chat_history or [])
+        session_str = _format_session(session_context or {})
+
+        # Build images for vision: all recent figures and user-uploaded images (so agents can explain any)
+        images = []
+        artifact_history = (session_context or {}).get("artifact_history") or []
+        img_list = []
+        for art in reversed(artifact_history):
+            if art.get("figure_image") and art.get("figure_image").get("data"):
+                img_list.append(art["figure_image"])
+        # Limit to last 5 images to avoid token/API limits
+        img_list = img_list[:5]
+        if img_list:
+            images = convert_to_provider_format(img_list, self.provider_name)
+
+        # Intent override: use turbulence intent parser (like extra/chatbot_agent/intent_detection)
+        routing = get_plot_routing(user_message)
+        intent_override = routing.get("intent_override_text") or ""
+
+        # Step 1: Planning phase (Strong Agentic — deliberate before acting)
+        if use_plan:
+            try:
+                planning_context = {
+                    "session_str": session_str,
+                    "chat_history": chat_history or [],
+                }
+                plan = self.planner.plan(user_message, planning_context)
+                plan_steps = _parse_plan_steps(plan)
+                if plan:
+                    self.log_callback("**[ORCHESTRATOR]** Ready to proceed.")
+                    context_parts.append(f"[EXECUTION PLAN]\n{plan}")
+            except Exception as e:
+                self.log_callback(f"**[ORCHESTRATOR]** Skipping plan, proceeding directly: {e}")
+                plan = "1. Process the user's request"
+                plan_steps = [plan]
+
+        # Resume from pending tool confirmation (user clicked Accept/Reject)
+        if resume_state:
+            response = self.orchestrator.think_and_act(
+                "", session_context=session_context, resume_state=resume_state,
+                stream_callback=stream_callback, stream_reset_callback=stream_reset_callback,
+                tool_result_callback=tool_result_callback,
+                images=images,
+            )
+            if isinstance(response, dict) and response.get("status") == "pending_confirmation":
+                return response
+            response_text = response.get("text", response) if isinstance(response, dict) else response
+            if isinstance(response, dict) and response.get("artifact"):
+                return response
+            delegation = self._parse_delegation(response_text)
+            if delegation is None:
+                return {"text": response_text, "artifact": response.get("artifact") if isinstance(response, dict) else None}
+            agent_name, task = delegation
+            agent = self._get_agent(agent_name)
+            if agent is None:
+                return {"text": response_text, "artifact": None}
+            self.log_callback(f"**[ORCHESTRATOR]** {friendly_delegation(agent_name, task)}")
+            agent_context = []
+            if intent_override:
+                agent_context.append(intent_override.strip())
+            if session_str:
+                agent_context.append("Session (current loaded data):\n" + session_str)
+            if history_str:
+                agent_context.append("Previous conversation:\n" + history_str)
+            if context_parts:
+                agent_context.append("Context from previous steps:\n" + "\n".join(context_parts))
+            result = agent.think_and_act(
+                task,
+                context="\n\n".join(agent_context) if agent_context else "",
+                session_context=session_context,
+                stream_callback=stream_callback, stream_reset_callback=stream_reset_callback,
+                tool_result_callback=tool_result_callback,
+                images=images,
+            )
+            if isinstance(result, dict) and result.get("status") == "pending_confirmation":
+                return result
+            result_text = result.get("text", result) if isinstance(result, dict) else result
+            return {"text": result_text, "artifact": result.get("artifact") if isinstance(result, dict) else None}
+
+        for _ in range(max_delegate_rounds):
+            full_input = intent_override + user_message
+            if last_rejection_reason:
+                full_input += f"\n\n[WARNING] Previous attempt failed: {last_rejection_reason}\nYOU MUST CHANGE YOUR PLAN. Delegate to a different agent or fix the approach."
+            if session_str:
+                full_input = "Session (current loaded data):\n" + session_str + "\n\n" + full_input
+            if history_str:
+                full_input = "Previous conversation:\n" + history_str + "\n\nCurrent request: " + full_input
+            if plan and plan_steps:
+                step_hint = ""
+                if current_step_index < len(plan_steps):
+                    step_hint = f"\nCurrent step: {current_step_index + 1} of {len(plan_steps)} — {plan_steps[current_step_index]}\n"
+                full_input = f"EXECUTION PLAN:\n{plan}{step_hint}\nWork through the plan step by step.\n\n" + full_input
+            if collected_artifacts:
+                n = len(collected_artifacts)
+                hint = (
+                    f"\n[Collected {n} artifact(s) so far. "
+                    "If the plan is complete (every requested item produced), respond with plain text and STOP. "
+                    "Otherwise delegate ONLY the NEXT unfulfilled step. Never re-delegate for a step that already produced an artifact.]\n\n"
+                )
+                full_input = hint + full_input
+            if context_parts:
+                full_input = full_input + "\n\nContext from previous steps:\n" + "\n\n".join(context_parts)
+
+            response = self.orchestrator.think_and_act(
+                full_input, session_context=session_context,
+                stream_callback=stream_callback, stream_reset_callback=stream_reset_callback,
+                tool_result_callback=tool_result_callback,
+                images=images,
+            )
+            if isinstance(response, dict) and response.get("status") == "pending_confirmation":
+                return response
+            response_text = response.get("text", response) if isinstance(response, dict) else response
+            if isinstance(response, dict) and response.get("artifact"):
+                last_artifact = response["artifact"]
+
+            delegation = self._parse_delegation(response_text)
+            if delegation is None:
+                # If we already collected multiple artifacts, return them (use final_text if last step was explain)
+                if collected_artifacts:
+                    text = final_text if final_text else f"Produced {len(collected_artifacts)} artifact(s) as requested."
+                    return {"text": text, "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
+                # Reflection: before returning final answer, verify we achieved the goal (Strong Agentic)
+                if use_plan and plan_steps and not last_artifact:
+                    reflect_prompt = (
+                        f"Your response: {response_text[:400]}...\n\n"
+                        f"User requested: {user_message}\n\n"
+                        "Reflect: Did we FULLY achieve the user's goal? If something is missing, delegate to the right agent. "
+                        "If we're done, respond with plain text (no JSON) to the user."
+                    )
+                    try:
+                        reflect_response = self.orchestrator.think_and_act(
+                            reflect_prompt,
+                            context="\n\n".join(context_parts),
+                            session_context=session_context,
+                            stream_callback=stream_callback, stream_reset_callback=stream_reset_callback,
+                            tool_result_callback=tool_result_callback,
+                            images=images,
+                        )
+                        reflect_text = reflect_response.get("text", reflect_response) if isinstance(reflect_response, dict) else str(reflect_response)
+                        reflect_delegation = self._parse_delegation(reflect_text)
+                        if reflect_delegation is not None:
+                            delegation = reflect_delegation
+                            response_text = reflect_text
+                            self.log_callback("**[ORCHESTRATOR]** Continuing with another step.")
+                    except Exception:
+                        pass
+                if delegation is None:
+                    return {"text": response_text, "artifact": last_artifact}
+
+            agent_name, task = delegation
+            agent = self._get_agent(agent_name)
+            if agent is None:
+                context_parts.append(f"Error: unknown agent '{agent_name}'. Reply to the user.")
+                continue
+
+            self.log_callback(f"**[ORCHESTRATOR]** {friendly_delegation(agent_name, task)}")
+            agent_context = []
+            if intent_override:
+                agent_context.append(intent_override.strip())
+            if session_str:
+                agent_context.append("Session (current loaded data):\n" + session_str)
+            if history_str:
+                agent_context.append("Previous conversation:\n" + history_str)
+            if context_parts:
+                agent_context.append("Context from previous steps:\n" + "\n".join(context_parts))
+
+            # When analyst needs to explain or answer: inject collected_artifacts from this turn (not yet in session)
+            agent_images = images
+            if agent_name == "analyst" and collected_artifacts:
+                try:
+                    import plotly.io as pio
+                    lines = [
+                        "ARTIFACTS PRODUCED THIS TURN (explain these—they are not yet in session history):",
+                        "Artifacts are numbered 1 (first) to N (last). Use these when the user asks to explain.",
+                        "",
+                    ]
+                    img_list = []
+                    for idx, art in enumerate(collected_artifacts, start=1):
+                        atype = art.get("artifact_type", "")
+                        if atype == "markdown_table":
+                            lines.append(f"--- Artifact {idx} (table) ---")
+                            lines.append(art.get("artifact_content") or "")
+                            lines.append("")
+                        elif atype == "plotly_figure":
+                            lines.append(f"--- Artifact {idx} (figure) ---")
+                            content = art.get("artifact_content")
+                            if content:
+                                try:
+                                    fig = pio.from_json(content if isinstance(content, str) else json.dumps(content))
+                                    lines.append(extract_figure_data_for_agent(fig))
+                                    img_dict = plotly_figure_to_image_dict(fig)
+                                    if img_dict and img_dict.get("data"):
+                                        img_list.append(img_dict)
+                                except Exception:
+                                    lines.append("(Figure data available as image)")
+                            lines.append("")
+                    if lines:
+                        agent_context.append("\n".join(lines))
+                    if img_list:
+                        agent_images = convert_to_provider_format(img_list[:5], self.provider_name)
+                except Exception as e:
+                    self.log_callback(f"**[TEAM]** Could not inject artifacts for analyst: {e}")
+
+            result = agent.think_and_act(
+                task,
+                context="\n\n".join(agent_context) if agent_context else "",
+                session_context=session_context,
+                stream_callback=stream_callback, stream_reset_callback=stream_reset_callback,
+                tool_result_callback=tool_result_callback,
+                images=agent_images,
+            )
+            if isinstance(result, dict) and result.get("status") == "pending_confirmation":
+                return result
+            result_text = result.get("text", result) if isinstance(result, dict) else result
+            if isinstance(result, dict) and result.get("artifact"):
+                last_artifact = result["artifact"]
+            else:
+                # No artifact (e.g. analyst explaining): keep as final text if we have collected artifacts
+                if result_text and collected_artifacts:
+                    final_text = result_text
+            context_parts.append(f"[{agent_name} result]\n{result_text}")
+
+            # Analyst text-only (Q&A or compute status): do NOT return early—let orchestrator decide.
+            # If done (Q&A): orchestrator will respond with plain text, delegation=None, we return.
+            # If not done (compute→plot): orchestrator will delegate to Visualizer. No heuristic needed.
+
+            # Advance step when we complete an agent task (plan-driven progress)
+            if plan_steps and current_step_index < len(plan_steps) - 1:
+                current_step_index += 1
+
+            # Table: collect and continue to next step (multi-task)
+            if last_artifact and last_artifact.get("artifact_type") == "markdown_table":
+                collected_artifacts.append(last_artifact)
+                last_artifact = None
+                rejection_count = 0
+                context_parts.append(f"[Collected artifact {len(collected_artifacts)}: table]. Continue with next step in plan.")
+                if len(collected_artifacts) >= max_artifacts_per_turn:
+                    return {"text": f"Produced {len(collected_artifacts)} artifact(s).", "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
+                continue
+
+            # Figure/file: Reviewer validates, then collect and continue (multi-task) or return single
+            if last_artifact and last_artifact.get("artifact_type") in ("plotly_figure", "downloadable_file"):
+                if rejection_count >= 2:
+                    self.log_callback("**[REVIEWER]** Max rejections reached, returning artifact(s).")
+                    if collected_artifacts:
+                        collected_artifacts.append(last_artifact)
+                        return {"text": f"Produced {len(collected_artifacts)} artifact(s).", "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
+                    return {"text": result_text, "artifact": last_artifact}
+                skip_reviewer = last_artifact.get("artifact_type") == "downloadable_file"
+                if not skip_reviewer:
+                    validation_prompt = (
+                        f"User requested: {user_message}\n\n"
+                        f"The {agent_name} produced: {result_text[:400]}...\n"
+                        f"Artifact type: {last_artifact.get('artifact_type', 'unknown')}.\n\n"
+                        "Does this artifact match what the user asked for? "
+                        "Reply: APPROVED or REJECTED: [reason]."
+                    )
+                    try:
+                        validation = self.reviewer.think_and_act(
+                            validation_prompt,
+                            context="You are validating whether the produced output matches the user request. No tools.",
+                            session_context=session_context,
+                        )
+                        val_text = validation.get("text", validation) if isinstance(validation, dict) else str(validation)
+                        val_upper = val_text.upper().strip()
+                        if val_upper.startswith("REJECTED"):
+                            rejection_count += 1
+                            last_rejection_reason = val_text[:500]
+                            hint = (
+                                "Path is ALREADY known from steward. Delegate directly to VISUALIZER—do NOT re-delegate to steward. "
+                                "Retry the SAME plot tool with correct parameters. Do not switch to a different page or plot type."
+                            )
+                            context_parts.append(f"[REVIEWER REJECTED]\n{val_text}\n{hint}\nFix and try again.")
+                            self.log_callback("**[REVIEWER]** Rejected artifact, continuing...")
+                            last_artifact = None
+                            continue
+                    except Exception as e:
+                        self.log_callback(f"**[REVIEWER]** Validation skipped: {e}")
+                # Deduplicate: skip if we already have same figure or same export file
+                is_duplicate = False
+                if last_artifact.get("artifact_type") == "plotly_figure":
+                    new_fp = figure_fingerprint(last_artifact.get("artifact_content"))
+                    for prev in collected_artifacts:
+                        if prev.get("artifact_type") != "plotly_figure":
+                            continue
+                        prev_fp = figure_fingerprint(prev.get("artifact_content"))
+                        if new_fp and prev_fp and new_fp == prev_fp:
+                            is_duplicate = True
+                            self.log_callback("**[REVIEWER]** Skipping duplicate figure (same content already collected).")
+                            break
+                elif last_artifact.get("artifact_type") == "downloadable_file":
+                    new_fname = last_artifact.get("filename") or ""
+                    for prev in collected_artifacts:
+                        if prev.get("artifact_type") == "downloadable_file" and (prev.get("filename") == new_fname or not new_fname):
+                            is_duplicate = True
+                            self.log_callback("**[REVIEWER]** Skipping duplicate export (same file already collected).")
+                            break
+                if is_duplicate:
+                    # We already have this figure—user's request is satisfied. Return immediately.
+                    last_artifact = None
+                    text = final_text if final_text else f"Produced {len(collected_artifacts)} artifact(s)."
+                    return {"text": text, "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
+                # Approved: collect and continue to next step (multi-task)
+                collected_artifacts.append(last_artifact)
+                last_artifact = None
+                rejection_count = 0
+                art_kind = "exported file" if collected_artifacts[-1].get("artifact_type") == "downloadable_file" else "figure"
+                if len(collected_artifacts) >= max_artifacts_per_turn:
+                    return {"text": f"Produced {len(collected_artifacts)} artifact(s).", "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
+                context_parts.append(f"[Collected artifact {len(collected_artifacts)}: {art_kind}]. Continue with next step in plan or respond to user.")
+                continue
+
+        last_part = context_parts[-1] if context_parts else response_text
+        if collected_artifacts:
+            text = final_text if final_text else f"Produced {len(collected_artifacts)} artifact(s)."
+            return {"text": text, "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
+        if last_artifact:
+            return {"text": result_text if last_artifact else "Here is the plot.", "artifact": last_artifact}
+        fallback_text = "Max delegation rounds reached. " + (str(last_part)[:500] if last_part else str(response_text))
+        return {"text": fallback_text, "artifact": last_artifact}

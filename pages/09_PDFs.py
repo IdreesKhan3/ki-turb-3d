@@ -16,6 +16,7 @@ from pages.PDFs.vorticity_stats import render_vorticity_stats_tab
 from pages.PDFs.velocity_magnitude_stats import render_velocity_magnitude_tab
 from pages.PDFs.dissipation_stats import render_dissipation_tab
 from pages.PDFs.joint_pdf_stats import render_joint_pdf_tab
+from pages.PDFs.pdf_params import get_grid_spacing_options
 from utils.plot_style import resolve_line_style, apply_axis_limits, apply_figure_size
 from pages.PDFs.pdfs_plot_style import (
     get_plot_style, apply_plot_style,
@@ -116,6 +117,38 @@ def main():
     plot_names = ["Velocity PDF", "R-Q Topological Space", "Vorticity PDF", "Enstrophy PDF", "Velocity Magnitude PDF", "Dissipation PDF", "Velocity-Dissipation Joint PDF", "Velocity-Enstrophy Joint PDF", "Dissipation-Enstrophy Joint PDF"]
     if all_files:
         plot_style_sidebar(data_dir, all_files, plot_names, include_label_panel=True)
+
+    # Grid spacing (shared by all gradient-based PDF tabs) — read both files, user chooses
+    spacing_options = get_grid_spacing_options(data_dir)
+    with st.sidebar.expander("🔧 Advanced (grid spacing)", expanded=False):
+        choice_labels = list(spacing_options.keys())
+        default_idx = 1 if len(choice_labels) > 1 else 0  # Prefer NS when both exist
+        spacing_choice = st.radio(
+            "Grid spacing source",
+            choice_labels,
+            index=min(default_idx, len(choice_labels) - 1),
+            help="LBM: dx=1 (lattice units). NS: dx=L/nx from simulation.json. Choose based on your data.",
+            key="pdfs_spacing_choice"
+        )
+        dx_selected, dy_selected, dz_selected = spacing_options[spacing_choice]
+        st.caption("Used for gradients, strain rates, dissipation, vorticity (periodic BCs).")
+        manual_dx = st.number_input(
+            "Or override dx (=dy=dz)",
+            value=dx_selected,
+            min_value=1e-6,
+            step=0.001,
+            format="%.6f",
+            help="Optional: type a custom dx to override the selection above.",
+            key="pdfs_dx_override"
+        )
+        # The number box remembers its last value when you switch LBM↔NS. So we trust
+        # the radio choice unless you typed something different from both presets.
+        use_override = not any(
+            abs(manual_dx - v[0]) < 1e-9
+            for v in spacing_options.values()
+        )
+        dx, dy, dz = (manual_dx, manual_dx, manual_dx) if use_override else (dx_selected, dy_selected, dz_selected)
+        st.caption(f"Using dx = {dx:.6f}")
     
     # Create tabs
     tabs = st.tabs([
@@ -132,6 +165,7 @@ def main():
         render_vorticity_stats_tab(
             data_dirs,  # Pass all directories
             _load_velocity_file,
+            dx=dx, dy=dy, dz=dz,
             get_plot_style_func=get_plot_style,
             apply_plot_style_func=apply_plot_style,
             get_palette_func=_get_palette,
@@ -162,6 +196,7 @@ def main():
         render_dissipation_tab(
             data_dirs,  # Pass all directories
             _load_velocity_file,
+            dx=dx, dy=dy, dz=dz,
             get_plot_style_func=get_plot_style,
             apply_plot_style_func=apply_plot_style,
             get_palette_func=_get_palette,
@@ -177,6 +212,7 @@ def main():
         render_joint_pdf_tab(
             data_dirs,  # Pass all directories
             _load_velocity_file,
+            dx=dx, dy=dy, dz=dz,
             get_plot_style_func=get_plot_style,
             apply_plot_style_func=apply_plot_style,
             get_palette_func=_get_palette,
