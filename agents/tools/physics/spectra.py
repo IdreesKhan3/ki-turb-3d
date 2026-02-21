@@ -90,6 +90,11 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                 },
             },
         },
+        {
+            "name": "get_energy_spectra_theory",
+            "description": "Show Energy Spectra page Theory & Equations: E(k), TKE, Kolmogorov scaling, Pope model, spectral dissipation, normalized spectrum. Use when user asks for 'spectra theory', 'energy spectra theory', 'theory for spectra', 'equations for spectra', 'e(k) theory', 'kolmogorov theory'.",
+            "parameters": {"type": "object", "properties": {}},
+        },
     ]
 
 
@@ -101,6 +106,17 @@ def execute_tool(
 ) -> str:
     """Execute spectra tool. Returns result string or dict (for plot artifact)."""
     session_context = session_context or {}
+
+    if name == "get_energy_spectra_theory":
+        from content.energy_spectra_theory_content import get_energy_spectra_theory_markdown
+        content = get_energy_spectra_theory_markdown()
+        return {
+            "status": "success",
+            "message": "Energy spectra theory equations created.",
+            "artifact_type": "markdown",
+            "artifact_content": content,
+            "artifact_title": "Energy Spectra — Theory & Equations",
+        }
 
     if name == "compute_spectra":
         mode = args.get("mode", "raw")

@@ -101,10 +101,10 @@ PAGE_SCHEMA: Dict[str, Dict[str, Any]] = {
     "energy_spectra": {
         "file_patterns": ["spectrum*.dat", "norm*.dat"],
         "compute_tool": "compute_spectra",
-        "plot_tools": ["plot_spectrum"],
+        "plot_tools": ["plot_spectrum", "get_energy_spectra_theory"],
         "summary_tool": None,
         "skip_analyst": False,
-        "keywords": ["spectra", "spectrum", "e(k)", "evolution", "kolmogorov", "spectra page", "from spectra", "time evolution"],
+        "keywords": ["spectra", "spectrum", "e(k)", "evolution", "kolmogorov", "spectra page", "from spectra", "time evolution", "spectra theory", "energy spectra theory", "theory for spectra", "equations for spectra", "e(k) theory", "kolmogorov theory"],
         "data_refs": {"raw": "current_spectra_data", "normalized": "current_spectra_norm", "evolution": "current_spectra_evolution"},
         "page_type": "analysis",
     },
@@ -221,6 +221,7 @@ INTENT_COMPONENT_SPECTRA = "component_spectra"
 
 # --- PAGE 06 — Energy Spectra ---
 INTENT_ENERGY_SPECTRA = "energy_spectra"
+INTENT_ENERGY_SPECTRA_THEORY = "energy_spectra_theory"
 
 # --- PAGES 07-09 — Flatness, Structure Functions, PDFs ---
 INTENT_FLATNESS = "flatness"
@@ -477,6 +478,15 @@ INTENT_ROUTING: Dict[str, Dict[str, Any]] = {
             "STOP after producing the plot. Do not delegate plot_spectrum again."
         ),
     },
+    INTENT_ENERGY_SPECTRA_THEORY: {
+        "page_id": "energy_spectra",
+        "primary_tool": "get_energy_spectra_theory",
+        "prevent_tools": ["compute_spectra", "plot_spectrum"],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested ENERGY SPECTRA THEORY/EQUATIONS (Page 06): E(k), Kolmogorov, Pope model, normalized spectrum. "
+            "Use get_energy_spectra_theory ONLY. Delegate: visualizer (get_energy_spectra_theory()). No data needed. Skip steward and analyst. STOP after the markdown.\n\n"
+        ),
+    },
 
     # -------------------------------------------------------------------------
     # PAGES 07-09 — Flatness, Structure Functions, PDFs
@@ -642,6 +652,8 @@ def get_tool_for_request(page_id: str, request_type: str) -> Optional[str]:
             return "plot_component_spectra"
         return "plot_spectral_isotropy"
     if page_id == "energy_spectra":
+        if request_type in ("theory", "equations"):
+            return "get_energy_spectra_theory"
         return "plot_spectrum"
     if page_id == "theory_equations":
         if request_type in ("ns_equations", "navier-stokes", "ns"):

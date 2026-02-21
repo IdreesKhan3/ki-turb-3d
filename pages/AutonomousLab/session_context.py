@@ -91,4 +91,8 @@ def build_session_context(
     artifact_history = getattr(st.session_state, "lab_artifact_history", [])
     if artifact_history:
         ctx["artifact_history"] = artifact_history[-ARTIFACT_HISTORY_MAX:]
+
+    # LLM provider for generation tools (generate_content, generate_code)
+    ctx["llm_provider_name"] = getattr(st.session_state, "lab_llm_provider", "gemini")
+
     return ctx

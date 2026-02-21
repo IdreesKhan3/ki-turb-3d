@@ -44,7 +44,7 @@ def init_session_state():
     if "lab_chat_history" not in st.session_state:
         st.session_state.lab_chat_history = []
     if "lab_llm_provider" not in st.session_state:
-        st.session_state.lab_llm_provider = "ollama"
+        st.session_state.lab_llm_provider = "gemini"
     if "lab_artifact_history" not in st.session_state:
         st.session_state.lab_artifact_history = []
     if "lab_agent_data_cache" not in st.session_state:
@@ -63,21 +63,19 @@ def render_sidebar():
     provider_options = []
     provider_status = {}
 
-    for provider in ["ollama", "gemini"]:
-        is_available = available_providers.get(provider, False)
-        status_icon = "Ready" if is_available else "Not Available"
-        status_text = "Available" if is_available else "Not configured"
-        provider_options.append(f"{status_icon} {provider.title()}")
-        provider_status[provider] = is_available
+    provider_order = ["gemini", "ollama"]
+    provider_labels = ["Gemini", "Ollama"]
+    for provider in provider_order:
+        provider_status[provider] = available_providers.get(provider, False)
 
-    selected_provider_display = st.selectbox(
+    selected_label = st.radio(
         "Select Provider",
-        options=provider_options,
-        index=["ollama", "gemini"].index(provider_name) if provider_name in ["ollama", "gemini"] else 0,
-        help="Ollama is free and unlimited. Gemini has a free tier.",
+        options=provider_labels,
+        index=provider_order.index(provider_name) if provider_name in provider_order else 0,
+        key="lab_llm_provider_radio",
+        help="Gemini (cloud). Ollama (local).",
     )
-
-    selected_provider = selected_provider_display.split()[-1].lower()
+    selected_provider = provider_order[provider_labels.index(selected_label)]
 
     if selected_provider != provider_name:
         st.session_state.lab_llm_provider = selected_provider
@@ -86,7 +84,7 @@ def render_sidebar():
         st.info(f"Switched to {selected_provider.title()}.")
 
     if provider_status.get(selected_provider, False):
-        st.success(f"{selected_provider.title()} is ready")
+        st.success("Ready")
         if selected_provider == "ollama":
             try:
                 llm = get_llm_provider("ollama")

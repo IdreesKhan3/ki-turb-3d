@@ -8,7 +8,7 @@ Per-agent tool sets prevent scope creep (e.g. Steward cannot plot).
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 
-from . import app_control, core, execution, search, physics
+from . import app_control, core, execution, search, physics, generation
 
 STEWARD_TOOL_NAMES = frozenset({
     "list_directory", "find_file", "read_file",
@@ -23,9 +23,10 @@ ANALYST_TOOL_NAMES = frozenset({
     "web_search", "search_research_papers", "browse_web", "download_file",
     "semantic_search", "find_symbol_definitions", "find_symbol_references",
     "write_file",
+    "generate_content", "generate_code", "compile_latex",
 })
 VISUALIZER_TOOL_NAMES = frozenset({
-    "plot_spectrum", "plot_spectral_isotropy", "plot_component_spectra", "get_spectral_isotropy_summary", "get_spectral_isotropy_theory",
+    "plot_spectrum", "get_energy_spectra_theory", "plot_spectral_isotropy", "plot_component_spectra", "get_spectral_isotropy_summary", "get_spectral_isotropy_theory",
     "plot_real_isotropy", "plot_lumley_triangle", "plot_diagonal_bii", "plot_cross_correlations", "plot_deviations",
     "plot_convergence", "get_real_isotropy_summary", "get_real_isotropy_theory", "export_figure", "export_data", "export_isotropy_data",
     "get_overview_summary", "get_overview_theory",
@@ -67,6 +68,7 @@ def get_tools_definition() -> List[Dict[str, Any]]:
     tools.extend(execution.get_tool_definitions())
     tools.extend(search.get_tool_definitions())
     tools.extend(physics.get_tool_definitions())
+    tools.extend(generation.get_tool_definitions())
     return tools
 
 
@@ -126,6 +128,8 @@ def execute_tool(
             return physics.execute_tool(name, args, project_root, session_context)
         if name in app_control.APP_CONTROL_TOOL_NAMES:
             return app_control.execute_tool(name, args, project_root, session_context)
+        if name in generation.GENERATION_TOOL_NAMES:
+            return generation.execute_tool(name, args, project_root, session_context)
         return f"Error: Unknown tool '{name}'"
     except Exception as e:
         return f"Tool error: {type(e).__name__}: {e}"

@@ -2,20 +2,13 @@
 Team Manager — 5 LLM-driven agents (Orchestrator, Steward, Analyst, Visualizer, Reviewer).
 """
 
-import glob
 import json
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..base_agent import LLMAgent
-from ..data_steward import DataStewardAgent
 from ..orchestrator import OrchestratorAgent
-from ..analyst import AnalystAgent
-from ..visualizer import VisualizerAgent
-from ..reviewer import ReviewerAgent
-from ..writer import WriterAgent
-from ..routing import route
 from ..shared.llm_provider import get_llm_provider
 
 from .prompts import (
@@ -48,166 +41,6 @@ def _parse_plan_steps(plan: str) -> List[str]:
         if m:
             steps.append(m.group(1).strip())
     return steps if steps else [plan.strip()]
-
-
-def _respond_inline(
-    user_input: str,
-    context: Optional[Dict[str, Any]],
-    log_func,
-    mode: str = "converse",
-) -> str:
-    """Inline LLM response for explain/converse (no ConversationalAgent)."""
-    log_func("Orchestrator", f"Responding ({mode})...")
-    context_str = ""
-    if context and context.get("chat_history"):
-        recent = context["chat_history"][-5:] if mode == "converse" else context["chat_history"][-3:]
-        context_str = "\n\nRecent conversation:\n"
-        for msg in recent:
-            context_str += f"{msg.get('role', 'user').title()}: {msg.get('content', '')}\n"
-    prompt = f"{context_str}\n\nUser Question: {user_input}\n\nProvide a helpful, accurate response."
-    system = (
-        "You are the AI assistant for KI-TURB 3D. Provide clear, accurate explanations. "
-        "Do not perform file operations unless explicitly requested."
-        if mode == "explain"
-        else "You are the AI assistant for KI-TURB 3D. Provide clear, helpful answers about turbulence, the platform, or general questions."
-    )
-    try:
-        llm = get_llm_provider()
-        images = context.get("images") if context and isinstance(context, dict) else None
-        kwargs = {"temperature": 0.7}
-        if images:
-            kwargs["images"] = images
-        return llm.generate(prompt, system_prompt=system, **kwargs) or ""
-    except Exception as e:
-        log_func("Orchestrator", f"Error: {e}")
-        return f"Error: {str(e)}"
-
-
-class ResearchTeam:
-    """Main class that initializes and coordinates the agent team."""
-
-    def __init__(self, log_callback, project_root: Optional[Path] = None):
-        self.log_callback = log_callback
-        self.project_root = project_root or Path.cwd()
-
-        def log(agent: str, msg: str):
-            self.log_callback(f"**[{agent.upper()}]** {msg}")
-
-        self.log = log
-        self.orchestrator = OrchestratorAgent(log)
-        self.steward = DataStewardAgent(log, self.project_root)
-        self.analyst = AnalystAgent(log)
-        self.visualizer = VisualizerAgent(log)
-        self.reviewer = ReviewerAgent(log)
-        self.writer = WriterAgent(log)
-
-    def run_mission(
-        self,
-        user_prompt: str,
-        context: Optional[Dict[str, Any]] = None,
-        data_directory: Optional[Path] = None,
-        use_plan: bool = True,
-    ) -> Tuple[Optional[Any], str]:
-        """
-        Run the full research mission.
-
-        Args:
-            user_prompt: User request (e.g. "Analyze spectra")
-            context: Optional context for orchestrator (file_tree, chat_history)
-            data_directory: Optional path to data dir (spectrum*.dat, norm*.dat)
-            use_plan: If True, call orchestrator to generate plan first
-
-        Returns:
-            (fig, status) where status is APPROVED | CONDITIONAL | REJECTED
-        """
-        self.log("Orchestrator", f"Mission started: {user_prompt}")
-
-        # 1. Optional: Generate plan
-        plan = None
-        if use_plan:
-            plan = self.orchestrator.plan(user_prompt, context)
-            if plan:
-                self.log("Orchestrator", f"Plan: {plan[:200]}...")
-
-        # 2. Steward: Get data (files)
-        spectrum_files: List[str] = []
-        norm_files: List[str] = []
-
-        if data_directory and Path(data_directory).exists():
-            data_dir = Path(data_directory)
-            spectrum_files = sorted(glob.glob(str(data_dir / "spectrum*.dat")))
-            norm_files = sorted(glob.glob(str(data_dir / "norm*.dat")))
-
-        # 3. Analyst: Compute spectra and isotropy
-        spec_data = spectrum_files if spectrum_files else None
-        results = self.analyst.compute("spectra", spec_data)
-        if "error" in results:
-            self.log("Orchestrator", f"Spectra: {results['error']}")
-
-        iso_results = self.analyst.compute("isotropy", None)
-        results.update(iso_results)
-
-        # 4. Visualizer: Plot
-        fig = self.visualizer.plot("spectrum", results)
-        if fig is None:
-            return None, "REJECTED"
-
-        # 5. Reviewer: Validate
-        status = self.reviewer.review(results, fig.layout)
-
-        if status == "REJECTED":
-            return None, status
-
-        return fig, status
-
-    def handle(
-        self,
-        user_input: str,
-        context: Optional[Dict[str, Any]] = None,
-        data_directory: Optional[Path] = None,
-        mode: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Unified entry point: route user input to the right agent(s).
-
-        Args:
-            user_input: User's message
-            context: Optional (chat_history, file_tree, images)
-            data_directory: Optional path for analysis
-            mode: Override auto-routing: "analysis" | "writing" | "converse" | "explain" | "tools"
-
-        Returns:
-            Dict with:
-                - "type": "analysis" | "writing" | "converse" | "explain" | "tools"
-                - "content": str (for writing/converse/explain)
-                - "fig": Plotly Figure or None (for analysis)
-                - "status": str (for analysis: APPROVED/CONDITIONAL/REJECTED)
-        """
-        routed = mode or route(user_input)
-
-        if routed == "analysis":
-            fig, status = self.run_mission(user_input, context, data_directory)
-            return {"type": "analysis", "fig": fig, "status": status, "content": None}
-
-        if routed == "writing":
-            content = self.writer.write(user_input, context)
-            return {"type": "writing", "content": content, "fig": None, "status": None}
-
-        if routed == "explain":
-            content = _respond_inline(user_input, context, self.log, mode="explain")
-            return {"type": "explain", "content": content, "fig": None, "status": None}
-
-        if routed == "converse":
-            content = _respond_inline(user_input, context, self.log, mode="converse")
-            return {"type": "converse", "content": content, "fig": None, "status": None}
-
-        # "tools" → caller should use agent_loop (Data Steward + parser + executor)
-        return {
-            "type": "tools",
-            "content": "Route to agent loop (tools mode).",
-            "fig": None,
-            "status": None,
-        }
 
 
 class UnifiedTeam:

@@ -9,7 +9,7 @@ from . import spectra, real_isotropy, spectral_isotropy, overview, theory_equati
 
 
 PHYSICS_TOOL_NAMES = frozenset({
-    "compute_spectra", "plot_spectrum", "export_figure", "export_data",
+    "compute_spectra", "plot_spectrum", "export_figure", "export_data", "get_energy_spectra_theory",
     "compute_isotropy", "compute_spectral_isotropy", "plot_spectral_isotropy", "plot_component_spectra",
     "get_spectral_isotropy_summary", "get_spectral_isotropy_theory", "plot_real_isotropy", "plot_lumley_triangle", "plot_diagonal_bii",
     "plot_cross_correlations", "plot_deviations", "plot_convergence", "get_real_isotropy_summary",
@@ -37,7 +37,7 @@ def execute_tool(
     session_context: Optional[Dict[str, Any]] = None,
 ) -> Union[str, Dict[str, Any]]:
     """Execute a physics tool."""
-    if name in ("compute_spectra", "plot_spectrum", "export_figure", "export_data"):
+    if name in ("compute_spectra", "plot_spectrum", "export_figure", "export_data", "get_energy_spectra_theory"):
         return spectra.execute_tool(name, args, project_root, session_context or {})
     if name in ("compute_isotropy", "plot_real_isotropy", "plot_lumley_triangle", "plot_diagonal_bii", "plot_cross_correlations", "plot_deviations", "plot_convergence", "get_real_isotropy_summary", "get_real_isotropy_theory"):
         return real_isotropy.execute_tool(name, args, project_root, session_context or {})

@@ -94,6 +94,8 @@ def get_tool_status_before(tool_name: str, args: Dict[str, Any]) -> str:
         return _msg("Fetching Overview Physics Validation Equations...")
     if tool == "get_spectral_isotropy_theory":
         return _msg("Fetching Spectral Isotropy Theory & Equations...")
+    if tool == "get_energy_spectra_theory":
+        return _msg("Fetching Energy Spectra Theory & Equations...")
     if tool == "export_figure":
         return _msg("Exporting figure...")
     if tool == "execute_code":

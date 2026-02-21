@@ -25,6 +25,7 @@ from .page_schema import (
     INTENT_REAL_ISOTROPY_SUMMARY,
     INTENT_REAL_ISOTROPY_THEORY,
     INTENT_ENERGY_SPECTRA,
+    INTENT_ENERGY_SPECTRA_THEORY,
     INTENT_FLATNESS,
     INTENT_LUMLEY_TRIANGLE,
     INTENT_PDF,
@@ -297,6 +298,14 @@ def _check_p05_spectral_isotropy(t: str) -> Optional[str]:
 
 def _check_p06_energy_spectra(t: str, has_spectrum: bool) -> Optional[str]:
     """Check Page 06 (Energy Spectra) intents. Returns intent or None."""
+    # Theory/equations — check before plot; exclude "spectral" so "spectral isotropy theory" stays in P05
+    theory_only = ("theory" in t or "equations" in t or "formulas" in t) and "plot" not in t and "chart" not in t
+    if theory_only and "spectral" not in t:
+        if "spectra theory" in t or "energy spectra theory" in t or "theory for spectra" in t:
+            return INTENT_ENERGY_SPECTRA_THEORY
+        if ("e(k)" in t or "kolmogorov" in t or "spectra" in t or "spectrum" in t) and ("theory" in t or "equations" in t):
+            return INTENT_ENERGY_SPECTRA_THEORY
+
     if has_spectrum or "kolmogorov" in t or "e(k)" in t:
         return INTENT_ENERGY_SPECTRA
     return None

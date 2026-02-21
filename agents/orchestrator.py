@@ -85,6 +85,11 @@ Plan:
 4. Delegate to analyst: explain the physics of all artifacts
 5. Delegate to visualizer: export_figure for artifact 2
 
+User: "Write a complete research paper in LaTeX, save it, then compile to PDF"
+Plan:
+1. Delegate to analyst: generate_content (content_type=paper, output_format=latex), then write_file to save (e.g. exports/paper.tex)
+2. Delegate to analyst: compile_latex(filepath=exports/paper.tex) to produce PDF
+
 Remember: Infer from the user's words. Include every item they asked for; add nothing they did not ask for."""
 
     def plan(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> str:
