@@ -4,7 +4,7 @@ Contains all file parsing functions
 """
 
 from .csv_reader import read_csv_data, read_eps_validation_csv
-from .parameter_reader import read_parameters, format_parameters_for_display
+from .parameter_reader import read_parameters, format_parameters_for_display, is_lbm_params
 from .spectrum_reader import read_spectrum_file
 from .binary_reader import read_structure_function_file, read_tau_analysis_file
 from .text_reader import read_structure_function_txt, read_flatness_file
@@ -17,6 +17,7 @@ __all__ = [
     'read_eps_validation_csv',
     'read_parameters',
     'format_parameters_for_display',
+    'is_lbm_params',
     'read_spectrum_file',
     'read_structure_function_file',
     'read_tau_analysis_file',

@@ -233,8 +233,8 @@ def execute_tool(
 
         simulation_legend_names = args.get("simulation_legend_names") or {}
         if isinstance(simulation_legend_names, dict):
-            session_context.setdefault("flatness_sim_legend_names", {}).update(simulation_legend_names)
-        sim_legends = session_context.get("flatness_sim_legend_names") or {}
+            session_context.setdefault("flatness_legend_names", {}).update(simulation_legend_names)
+        sim_legends = session_context.get("flatness_legend_names") or {}
 
         style_updates = args.get("style_updates") or {}
         style_config = session_context.get("flatness_style_config")
@@ -248,10 +248,10 @@ def execute_tool(
                 "std_alpha": 0.18, "reference_dash": "dot", "reference_color": "#000000",
                 "reference_width": 1.5, "per_sim_style_flatness": {},
             })
-            session_context.setdefault("plot_styles", {})["Flatness"] = style_config
+            session_context.setdefault("plot_styles", {})["Flatness Factors"] = style_config
             session_context["flatness_style_config"] = style_config
         if style_updates:
-            for _name, ref in [("Flatness", style_config)]:
+            for _name, ref in [("Flatness Factors", style_config)]:
                 if isinstance(ref, dict):
                     ref.update(style_updates)
                     if "custom_colors" in style_updates:
@@ -334,8 +334,8 @@ def execute_tool(
 
         simulation_legend_names = args.get("simulation_legend_names") or {}
         if isinstance(simulation_legend_names, dict):
-            session_context.setdefault("flatness_sim_legend_names", {}).update(simulation_legend_names)
-        sim_legends = session_context.get("flatness_sim_legend_names") or {}
+            session_context.setdefault("flatness_legend_names", {}).update(simulation_legend_names)
+        sim_legends = session_context.get("flatness_legend_names") or {}
 
         table_data = []
         headers = ["Simulation", "Snapshots Used", "Mean F(r)", "Std(F(r))", "Min F(r)", "Max F(r)"]

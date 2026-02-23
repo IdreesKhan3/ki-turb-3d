@@ -98,6 +98,14 @@ def build_session_context(
     ctx["deviations_style_config"] = plot_styles.get("Deviations (E)")
     ctx["convergence_style_config"] = plot_styles.get("Convergence (F)")
 
+    # --- PAGE 07 — Flatness ---
+    ctx["axis_labels_flatness"] = st.session_state.setdefault("axis_labels_flatness", {
+        "x": "Separation distance r",
+        "y": "Longitudinal flatness F<sub>L</sub>(r)",
+    })
+    ctx["flatness_legend_names"] = st.session_state.setdefault("flatness_legend_names", {})
+    ctx["flatness_style_config"] = plot_styles.get("Flatness Factors")
+
     # --- PAGE 09 — PDFs ---
     ctx["axis_labels_pdfs"] = st.session_state.setdefault("axis_labels_pdfs", {})
     ctx["legend_titles_pdfs"] = st.session_state.setdefault("legend_titles_pdfs", {})

@@ -57,7 +57,10 @@ SYNC_PAGE_SPECTRA: List[Tuple[str, str]] = [
 ]
 
 # --- PAGE 07 — Flatness ---
-# (add: axis_labels_flatness, flatness_sim_legend_names, etc.)
+SYNC_PAGE_FLATNESS: List[Tuple[str, str]] = [
+    ("axis_labels_flatness", "axis_labels_flatness"),
+    ("flatness_legend_names", "flatness_legend_names"),
+]
 
 # --- PAGE 08 — Structure Functions ---
 # (add: axis_labels_structure, structure_sim_legend_names, etc.)
@@ -114,6 +117,7 @@ def _all_mappings() -> List[Tuple[str, str]]:
     mappings.extend(SYNC_APP_LEVEL)
     mappings.extend(SYNC_PAGE_REAL_ISOTROPY)
     mappings.extend(SYNC_PAGE_SPECTRA)
+    mappings.extend(SYNC_PAGE_FLATNESS)
     mappings.extend(SYNC_PAGE_PDFS)
     mappings.extend(SYNC_PAGE_REPORT)
     return mappings

@@ -46,12 +46,16 @@ def read_eps_validation_csv(filepath: str) -> pd.DataFrame:
     try:
         df = pd.read_csv(filepath, encoding='utf-8')
         # Clean numeric columns
-        numeric_cols = ['iter', 'iter_norm', 'eps_real', 'eps_spectral', 'TKE_real', 
-                       'u_rms_real', 'energy_balance_ratio', 'frac_x', 'frac_y', 'frac_z']
+        numeric_cols = ['iter', 'iter_norm', 'eps_real', 'eps_spectral', 'TKE_real',
+                       'u_rms_real', 'u_rms', 'energy_balance_ratio', 'frac_x', 'frac_y', 'frac_z']
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
-        df = df.dropna(subset=['iter', 'energy_balance_ratio'])
+        # Alias: u_rms -> u_rms_real for NS data
+        if 'u_rms_real' not in df.columns and 'u_rms' in df.columns:
+            df['u_rms_real'] = df['u_rms']
+        # Drop rows with missing iter; energy_balance_ratio optional (decay/NS may not have it)
+        df = df.dropna(subset=['iter'])
         return df
     except Exception as e:
         raise ValueError(f"Error reading validation CSV file {filepath}: {e}")

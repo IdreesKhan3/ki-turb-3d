@@ -13,12 +13,14 @@ import h5py
 from typing import Dict
 
 
-def read_hdf5_file(filepath: str) -> Dict:
+def read_hdf5_file(filepath: str, fortran_order: bool = True) -> Dict:
     """
     Read HDF5 file containing 3D velocity field
     
     Args:
         filepath: Path to .h5 or .hdf5 file
+        fortran_order: If True, apply transpose for Fortran-written HDF5 (h5py reads
+            reversed dims). If False, use data as-is (Python/default layout).
         
     Returns:
         Dictionary with:
@@ -38,7 +40,7 @@ def read_hdf5_file(filepath: str) -> Dict:
             elif 'u' in f:
                 velocity = np.array(f['u'])
             else:
-                # Try to find any 4D dataset (nx, ny, nz, 3) or (3, nx, ny, nz)
+                # Fallback: find any 4D dataset (nx,ny,nz,3) or (3,nx,ny,nz)
                 for key in f.keys():
                     if isinstance(f[key], h5py.Dataset):
                         data = np.array(f[key])
@@ -48,14 +50,12 @@ def read_hdf5_file(filepath: str) -> Dict:
                 else:
                     raise ValueError("Could not find velocity data in HDF5 file")
             
-            # Get dimensions - handle both (nx, ny, nz, 3) and (3, nx, ny, nz) formats
+            # Handle (nx,ny,nz,3) and (3,nx,ny,nz) layouts
             if len(velocity.shape) == 4:
                 if velocity.shape[0] == 3:
-                    # Format: (3, nx, ny, nz) - transpose to (nx, ny, nz, 3)
                     ncomp, nx, ny, nz = velocity.shape
                     velocity = np.transpose(velocity, (1, 2, 3, 0))
                 elif velocity.shape[3] == 3:
-                    # Format: (nx, ny, nz, 3)
                     nx, ny, nz, ncomp = velocity.shape
                 else:
                     raise ValueError(f"Expected 3 velocity components, got shape {velocity.shape}")
@@ -64,34 +64,29 @@ def read_hdf5_file(filepath: str) -> Dict:
             else:
                 raise ValueError(f"Expected 4D velocity array, got shape {velocity.shape}")
             
-            # Try to read explicit dimensions (optional)
+            # Optional: override dimensions from file
             if 'dimensions' in f:
                 dims = np.array(f['dimensions'])
                 if len(dims) == 3:
                     nx, ny, nz = int(dims[0]), int(dims[1]), int(dims[2])
             
-            # Read metadata if available
+            # Read metadata (group + root attributes)
             metadata = {}
             if 'metadata' in f:
                 metadata_group = f['metadata']
                 for key in metadata_group.attrs:
                     metadata[key] = metadata_group.attrs[key]
-            
-            # Also check root-level attributes
             for key in f.attrs:
                 if key not in metadata:
                     metadata[key] = f.attrs[key]
             
             varname = metadata.get('varname', metadata.get('name', 'Velocity'))
             
-            # Fortran writes velocity data in column-major order
-            # When h5py reads (3, l, m, n) format, after transpose to (l, m, n, 3),
-            # the spatial dimensions need reordering to match VTI format, 
-            # cus vti is in the correct order for plotting data.
-            # Based on direct comparison with VTI files, permutation (2, 1, 0, 3) gives
-            # the best match (diff ~2.9e-06, essentially identical within numerical precision)
-            # This reorders spatial dimensions to (z, y, x, 3) to match how VTI data is interpreted
-            velocity = np.transpose(velocity, (2, 1, 0, 3))
+            # Fortran writes velocity(l,m,n,3) with dims=[l,m,n,3]; h5py reads reversed → (3,n,m,l).
+            # After transpose(1,2,3,0) we have (n,m,l,3). Transpose (2,1,0,3) → (l,m,n,3) = (nx,ny,nz,3).
+            # When fortran_order=False, skip this (use Python/default layout as-is).
+            if fortran_order:
+                velocity = np.transpose(velocity, (2, 1, 0, 3))
             
             return {
                 'dimensions': (nx, ny, nz),
@@ -108,24 +103,8 @@ def read_hdf5_file(filepath: str) -> Dict:
 
 
 def read_hdf5_file_fortran_order(filepath: str) -> Dict:
-    """
-    Read HDF5 file where velocity is stored in Fortran order (column-major)
-    Fortran writes velocity(l, m, n, 3) in column-major order
-    h5py reads in row-major (C order) by default, so we need to handle the order difference
-    
-    Args:
-        filepath: Path to .h5 or .hdf5 file
-        
-    Returns:
-        Same as read_hdf5_file, but properly handling Fortran order
-    """
-    # Read the file (which already handles basic transposition)
-    data = read_hdf5_file(filepath)
-    
-    # The standard read already does the x-y swap transpose
-    # For Fortran order, we might need additional handling, but for now
-    # the single transpose in read_hdf5_file should be sufficient
-    return data
+    """Read HDF5 file (Fortran-written). Same as read_hdf5_file with fortran_order=True."""
+    return read_hdf5_file(filepath, fortran_order=True)
 
 
 def compute_velocity_magnitude(velocity: np.ndarray) -> np.ndarray:
@@ -158,17 +137,17 @@ def compute_vorticity(velocity: np.ndarray, dx: float = 1.0, dy: float = 1.0, dz
     uy = velocity[:, :, :, 1]
     uz = velocity[:, :, :, 2]
     
-    # Compute gradients using central differences
-    dudy = np.gradient(uy, dy, axis=1)
-    dudz = np.gradient(uy, dz, axis=2)
-    dvdx = np.gradient(ux, dx, axis=0)
-    dvdz = np.gradient(uz, dz, axis=2)
-    dwdx = np.gradient(uz, dx, axis=0)
-    dwdy = np.gradient(uz, dy, axis=1)
+    # ωx=∂uz/∂y-∂uy/∂z, ωy=∂ux/∂z-∂uz/∂x, ωz=∂uy/∂x-∂ux/∂y
+    dux_dy = np.gradient(ux, dy, axis=1)
+    dux_dz = np.gradient(ux, dz, axis=2)
+    duy_dx = np.gradient(uy, dx, axis=0)
+    duy_dz = np.gradient(uy, dz, axis=2)
+    duz_dx = np.gradient(uz, dx, axis=0)
+    duz_dy = np.gradient(uz, dy, axis=1)
     
-    omega_x = dwdy - dvdz
-    omega_y = dudz - dwdx
-    omega_z = dvdx - dudy
+    omega_x = duz_dy - duy_dz
+    omega_y = dux_dz - duz_dx
+    omega_z = duy_dx - dux_dy
     
     vorticity = np.zeros_like(velocity)
     vorticity[:, :, :, 0] = omega_x
