@@ -7,175 +7,20 @@ import streamlit as st
 import numpy as np
 from pathlib import Path
 import plotly.graph_objects as go
-from scipy.stats import gaussian_kde
 
-from utils.iso_surfaces import compute_vorticity_vector
-
-
-def compute_vorticity_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=1.0, normalize=False):
-    """Compute smooth PDF for vorticity magnitude using KDE"""
-    # Compute vorticity vector
-    vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
-    
-    # Compute magnitude: |ω| = √(ωx² + ωy² + ωz²)
-    omega_mag = np.sqrt(
-        vorticity[:, :, :, 0]**2 + 
-        vorticity[:, :, :, 1]**2 + 
-        vorticity[:, :, :, 2]**2
-    )
-    
-    # Flatten and remove NaN/Inf
-    omega_flat = omega_mag.flatten()
-    omega_flat = omega_flat[np.isfinite(omega_flat)]
-    
-    if len(omega_flat) == 0:
-        return np.array([]), np.array([])
-    
-    # Normalize by RMS if requested (standard for vorticity: |ω|/σ_|ω|)
-    normalization_factor = 1.0
-    if normalize:
-        rms_omega = np.sqrt(np.mean(omega_flat**2))
-        if rms_omega > 0:
-            omega_flat = omega_flat / rms_omega
-            normalization_factor = rms_omega
-    
-    # Determine range
-    omega_min = omega_flat.min()
-    omega_max = omega_flat.max()
-    
-    # Add padding for smooth evaluation at edges
-    omega_range = omega_max - omega_min
-    omega_min -= 0.1 * omega_range
-    omega_max += 0.1 * omega_range
-    
-    # Create fine grid for smooth curve evaluation
-    omega_grid = np.linspace(omega_min, omega_max, bins)
-    
-    # Compute KDE for smooth PDF curve
-    try:
-        kde = gaussian_kde(omega_flat)
-        pdf_omega = kde(omega_grid)
-    except:
-        # Fallback to histogram if KDE fails
-        counts, edges = np.histogram(omega_flat, bins=bins, range=(omega_min, omega_max), density=True)
-        pdf_omega = counts
-        omega_grid = (edges[:-1] + edges[1:]) / 2
-    
-    # Normalize Y-axis: multiply by normalization_factor to preserve area = 1
-    if normalize and normalization_factor > 0:
-        pdf_omega = pdf_omega * normalization_factor
-    
-    return omega_grid, pdf_omega
-
-
-def compute_vorticity_statistics(velocity, dx=1.0, dy=1.0, dz=1.0):
-    """Compute statistics for vorticity magnitude"""
-    from utils.iso_surfaces import compute_vorticity_vector
-    from .velocity_magnitude_stats import compute_skewness_kurtosis
-    
-    # Compute vorticity vector
-    vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
-    
-    # Compute magnitude: |ω| = √(ωx² + ωy² + ωz²)
-    omega_mag = np.sqrt(
-        vorticity[:, :, :, 0]**2 + 
-        vorticity[:, :, :, 1]**2 + 
-        vorticity[:, :, :, 2]**2
-    )
-    
-    # Flatten
-    omega_flat = omega_mag.flatten()
-    
-    # Compute statistics
-    mean, rms, skewness, kurtosis = compute_skewness_kurtosis(omega_flat)
-    
-    return mean, rms, skewness, kurtosis
-
-
-def compute_enstrophy_pdf(velocity, bins=100, dx=1.0, dy=1.0, dz=1.0, normalize=False):
-    """Compute smooth PDF for enstrophy using KDE"""
-    # Compute vorticity vector
-    vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
-    
-    # Compute enstrophy: Ω = |ω|² = ωx² + ωy² + ωz²
-    enstrophy = (
-        vorticity[:, :, :, 0]**2 + 
-        vorticity[:, :, :, 1]**2 + 
-        vorticity[:, :, :, 2]**2
-    )
-    
-    # Flatten and remove NaN/Inf
-    enstrophy_flat = enstrophy.flatten()
-    enstrophy_flat = enstrophy_flat[np.isfinite(enstrophy_flat)]
-    
-    if len(enstrophy_flat) == 0:
-        return np.array([]), np.array([])
-    
-    # Normalize by mean if requested (standard for enstrophy: Ω/⟨Ω⟩)
-    normalization_factor = 1.0
-    if normalize:
-        mean_enstrophy = np.mean(enstrophy_flat)
-        if mean_enstrophy > 0:
-            enstrophy_flat = enstrophy_flat / mean_enstrophy
-            normalization_factor = mean_enstrophy
-    
-    # Determine range
-    enstrophy_min = enstrophy_flat.min()
-    enstrophy_max = enstrophy_flat.max()
-    
-    # Add padding for smooth evaluation at edges
-    enstrophy_range = enstrophy_max - enstrophy_min
-    enstrophy_min -= 0.1 * enstrophy_range
-    enstrophy_max += 0.1 * enstrophy_range
-    
-    # Create fine grid for smooth curve evaluation
-    enstrophy_grid = np.linspace(enstrophy_min, enstrophy_max, bins)
-    
-    # Compute KDE for smooth PDF curve
-    try:
-        kde = gaussian_kde(enstrophy_flat)
-        pdf_enstrophy = kde(enstrophy_grid)
-    except:
-        # Fallback to histogram if KDE fails
-        counts, edges = np.histogram(enstrophy_flat, bins=bins, range=(enstrophy_min, enstrophy_max), density=True)
-        pdf_enstrophy = counts
-        enstrophy_grid = (edges[:-1] + edges[1:]) / 2
-    
-    # Normalize Y-axis: multiply by normalization_factor to preserve area = 1
-    if normalize and normalization_factor > 0:
-        pdf_enstrophy = pdf_enstrophy * normalization_factor
-    
-    return enstrophy_grid, pdf_enstrophy
-
-
-def compute_enstrophy_statistics(velocity, dx=1.0, dy=1.0, dz=1.0):
-    """Compute statistics for enstrophy"""
-    from utils.iso_surfaces import compute_vorticity_vector
-    from .velocity_magnitude_stats import compute_skewness_kurtosis
-    
-    # Compute vorticity vector
-    vorticity = compute_vorticity_vector(velocity, dx, dy, dz)
-    
-    # Compute enstrophy: Ω = |ω|² = ωx² + ωy² + ωz²
-    enstrophy = (
-        vorticity[:, :, :, 0]**2 + 
-        vorticity[:, :, :, 1]**2 + 
-        vorticity[:, :, :, 2]**2
-    )
-    
-    # Flatten
-    enstrophy_flat = enstrophy.flatten()
-    
-    # Compute statistics
-    mean, rms, skewness, kurtosis = compute_skewness_kurtosis(enstrophy_flat)
-    
-    return mean, rms, skewness, kurtosis
+from core_physics import (
+    compute_vorticity_pdf,
+    compute_vorticity_statistics,
+    compute_enstrophy_pdf,
+    compute_enstrophy_statistics,
+)
 
 
 def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
                                get_plot_style_func=None, apply_plot_style_func=None,
                                get_palette_func=None, resolve_line_style_func=None,
-                               export_panel_func=None, capture_button_func=None):
+                               export_panel_func=None, capture_button_func=None,
+                               dx=1.0, dy=1.0, dz=1.0):
     """Render the Vorticity & Enstrophy PDFs tab content"""
     import glob
     from pathlib import Path
@@ -225,37 +70,57 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
     # Create mapping from filename to full path (handle files from different directories)
     filename_to_path = {Path(f).name: f for f in all_files}
     
-    # File selection - independent for each plot
+    # File selection (shared with Autonomous Lab agent workflow)
     st.sidebar.header("📁 File Selection")
     st.sidebar.caption(f"Found {len(all_files)} velocity files")
-    
-    # Separate file selection for each plot
+    file_options = [Path(f).name for f in all_files]
+    default_files = [Path(f).name for f in all_files[:min(2, len(all_files))]]
+
+    def resolve_default_selection(session_value, fallback):
+        valid = [f for f in (session_value or fallback) if f in file_options]
+        return valid if valid else fallback
+
+    for key, fallback in [
+        ("vorticity_file_select", default_files),
+        ("enstrophy_file_select", default_files),
+    ]:
+        if key in st.session_state:
+            valid = [f for f in st.session_state[key] if f in file_options]
+            if valid != st.session_state[key]:
+                st.session_state[key] = valid if valid else fallback
+
     selected_files_vort = st.sidebar.multiselect(
         "Vorticity PDF files:",
-        options=[Path(f).name for f in all_files],
-        default=[Path(f).name for f in all_files[:min(2, len(all_files))]],
+        options=file_options,
+        default=resolve_default_selection(st.session_state.get("vorticity_file_select"), default_files),
         help="Select files for Vorticity Magnitude PDF plot (left)",
         key="vorticity_file_select"
     )
-    
     selected_files_enst = st.sidebar.multiselect(
         "Enstrophy PDF files:",
-        options=[Path(f).name for f in all_files],
-        default=[Path(f).name for f in all_files[:min(2, len(all_files))]],
+        options=file_options,
+        default=resolve_default_selection(st.session_state.get("enstrophy_file_select"), default_files),
         help="Select files for Enstrophy PDF plot (right)",
         key="enstrophy_file_select"
     )
-    
+
     if not selected_files_vort and not selected_files_enst:
         st.warning("Please select at least one file for either plot.")
         return
-    
-    # Plot parameters
+
+    # Plot parameters (shared with Autonomous Lab agent workflow)
     st.sidebar.header("Plot Parameters")
-    pdf_bins = st.sidebar.slider("PDF bins", 50, 500, 100, 10, key="vorticity_pdf_bins")
+    if "vorticity_pdf_bins" in st.session_state and not (50 <= st.session_state["vorticity_pdf_bins"] <= 500):
+        st.session_state["vorticity_pdf_bins"] = 100
+
+    pdf_bins = st.sidebar.slider(
+        "PDF bins", 50, 500,
+        value=st.session_state.get("vorticity_pdf_bins", 100),
+        step=10, key="vorticity_pdf_bins"
+    )
     normalize_pdf = st.sidebar.checkbox(
         "Normalize PDFs",
-        value=False,
+        value=st.session_state.get("vorticity_normalize", False),
         help="Normalize: |ω| by RMS, Ω by mean",
         key="vorticity_normalize"
     )
@@ -282,7 +147,7 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
                         continue
                     
                     # Compute PDF
-                    omega_grid, pdf_omega = compute_vorticity_pdf(velocity, bins=pdf_bins, dx=1.0, dy=1.0, dz=1.0, normalize=normalize_pdf)
+                    omega_grid, pdf_omega = compute_vorticity_pdf(velocity, bins=pdf_bins, dx=dx, dy=dy, dz=dz, normalize=normalize_pdf)
                     vort_data[filename] = (omega_grid, pdf_omega)
                     
             except Exception as e:
@@ -307,7 +172,7 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
                         continue
                     
                     # Compute PDF
-                    enstrophy_grid, pdf_enstrophy = compute_enstrophy_pdf(velocity, bins=pdf_bins, dx=1.0, dy=1.0, dz=1.0, normalize=normalize_pdf)
+                    enstrophy_grid, pdf_enstrophy = compute_enstrophy_pdf(velocity, bins=pdf_bins, dx=dx, dy=dy, dz=dz, normalize=normalize_pdf)
                     enst_data[filename] = (enstrophy_grid, pdf_enstrophy)
                     
             except Exception as e:
@@ -328,24 +193,24 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
         stats_dict = {}
         if selected_files_vort:
             first_file = selected_files_vort[0]
-            filepath = data_dir / first_file
+            filepath = filename_to_path.get(first_file, data_dir / first_file)
             try:
                 vti_data = load_velocity_file_func(str(filepath))
                 velocity = vti_data['velocity']
                 if velocity is not None and len(velocity.shape) == 4:
-                    mean, rms, skew, kurt = compute_vorticity_statistics(velocity, dx=1.0, dy=1.0, dz=1.0)
+                    mean, rms, skew, kurt = compute_vorticity_statistics(velocity, dx=dx, dy=dy, dz=dz)
                     stats_dict['vorticity'] = (mean, rms, skew, kurt)
             except:
                 pass
         
         if selected_files_enst:
             first_file = selected_files_enst[0]
-            filepath = data_dir / first_file
+            filepath = filename_to_path.get(first_file, data_dir / first_file)
             try:
                 vti_data = load_velocity_file_func(str(filepath))
                 velocity = vti_data['velocity']
                 if velocity is not None and len(velocity.shape) == 4:
-                    mean, rms, skew, kurt = compute_enstrophy_statistics(velocity, dx=1.0, dy=1.0, dz=1.0)
+                    mean, rms, skew, kurt = compute_enstrophy_statistics(velocity, dx=dx, dy=dy, dz=dz)
                     stats_dict['enstrophy'] = (mean, rms, skew, kurt)
             except:
                 pass

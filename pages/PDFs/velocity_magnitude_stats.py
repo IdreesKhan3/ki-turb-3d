@@ -7,213 +7,14 @@ import streamlit as st
 import numpy as np
 from pathlib import Path
 import plotly.graph_objects as go
-from scipy.stats import gaussian_kde
 
-
-# ==========================================================
-# Higher-order moments: Skewness and Kurtosis
-# ==========================================================
-def compute_skewness_kurtosis(data):
-    """Compute mean, RMS, skewness, and kurtosis"""
-    # Remove NaN/Inf
-    data_clean = data[np.isfinite(data)]
-    
-    if len(data_clean) == 0:
-        return 0.0, 0.0, 0.0, 0.0
-    
-    # Compute mean
-    mean = np.mean(data_clean)
-    
-    # Compute fluctuating component: u' = u - ⟨u⟩
-    u_prime = data_clean - mean
-    
-    # Compute moments
-    u2_mean = np.mean(u_prime**2)  # ⟨u'²⟩
-    u3_mean = np.mean(u_prime**3)  # ⟨u'³⟩
-    u4_mean = np.mean(u_prime**4)  # ⟨u'⁴⟩
-    
-    # Compute RMS
-    rms = np.sqrt(u2_mean) if u2_mean > 0 else 0.0
-    
-    # Compute Skewness: S = ⟨u'³⟩/⟨u'²⟩^(3/2)
-    if u2_mean > 0:
-        skewness = u3_mean / (u2_mean**(3/2))
-    else:
-        skewness = 0.0
-    
-    # Compute Kurtosis: K = ⟨u'⁴⟩/⟨u'²⟩²
-    if u2_mean > 0:
-        kurtosis = u4_mean / (u2_mean**2)
-    else:
-        kurtosis = 0.0
-    
-    return mean, rms, skewness, kurtosis
-
-
-def compute_velocity_magnitude_pdf(velocity, bins=100, normalize=False):
-    """Compute smooth PDF for velocity magnitude using KDE"""
-    # Compute velocity magnitude: |u| = √(ux² + uy² + uz²)
-    u_mag = np.sqrt(
-        velocity[:, :, :, 0]**2 + 
-        velocity[:, :, :, 1]**2 + 
-        velocity[:, :, :, 2]**2
-    )
-    
-    # Flatten and remove NaN/Inf
-    u_mag_flat = u_mag.flatten()
-    u_mag_flat = u_mag_flat[np.isfinite(u_mag_flat)]
-    
-    if len(u_mag_flat) == 0:
-        return np.array([]), np.array([])
-    
-    # Normalize by RMS if requested (standard for velocity: |u|/σ_|u|)
-    normalization_factor = 1.0
-    if normalize:
-        rms_u = np.sqrt(np.mean(u_mag_flat**2))
-        if rms_u > 0:
-            u_mag_flat = u_mag_flat / rms_u
-            normalization_factor = rms_u
-    
-    # Determine range
-    u_mag_min = u_mag_flat.min()
-    u_mag_max = u_mag_flat.max()
-    
-    # Add padding for smooth evaluation at edges
-    u_mag_range = u_mag_max - u_mag_min
-    u_mag_min -= 0.1 * u_mag_range
-    u_mag_max += 0.1 * u_mag_range
-    
-    # Create fine grid for smooth curve evaluation
-    u_mag_grid = np.linspace(u_mag_min, u_mag_max, bins)
-    
-    # Compute KDE for smooth PDF curve
-    try:
-        kde = gaussian_kde(u_mag_flat)
-        pdf_u_mag = kde(u_mag_grid)
-    except:
-        # Fallback to histogram if KDE fails
-        counts, edges = np.histogram(u_mag_flat, bins=bins, range=(u_mag_min, u_mag_max), density=True)
-        pdf_u_mag = counts
-        u_mag_grid = (edges[:-1] + edges[1:]) / 2
-    
-    # Normalize Y-axis: multiply by normalization_factor to preserve area = 1
-    if normalize and normalization_factor > 0:
-        pdf_u_mag = pdf_u_mag * normalization_factor
-    
-    return u_mag_grid, pdf_u_mag
-
-
-def compute_velocity_magnitude_statistics(velocity):
-    """Compute statistics for velocity magnitude"""
-    # Compute velocity magnitude: |u| = √(ux² + uy² + uz²)
-    u_mag = np.sqrt(
-        velocity[:, :, :, 0]**2 + 
-        velocity[:, :, :, 1]**2 + 
-        velocity[:, :, :, 2]**2
-    )
-    
-    # Flatten
-    u_mag_flat = u_mag.flatten()
-    
-    # Compute statistics
-    mean, rms, skewness, kurtosis = compute_skewness_kurtosis(u_mag_flat)
-    
-    return mean, rms, skewness, kurtosis
-
-
-def compute_velocity_pdf(velocity, bins=100, normalize=False):
-    """Compute smooth PDFs for velocity components using KDE"""
-    # Extract each component
-    ux = velocity[:, :, :, 0].flatten()
-    uy = velocity[:, :, :, 1].flatten()
-    uz = velocity[:, :, :, 2].flatten()
-    
-    # Remove NaN/Inf from each
-    ux = ux[np.isfinite(ux)]
-    uy = uy[np.isfinite(uy)]
-    uz = uz[np.isfinite(uz)]
-    
-    if len(ux) == 0 or len(uy) == 0 or len(uz) == 0:
-        return np.array([]), np.array([]), np.array([]), np.array([])
-    
-    # Normalize by RMS if requested (standard for velocity: u/σ_u)
-    normalization_factor = 1.0
-    if normalize:
-        # Use combined RMS across all components
-        all_u = np.concatenate([ux, uy, uz])
-        rms_u = np.sqrt(np.mean(all_u**2))
-        if rms_u > 0:
-            ux = ux / rms_u
-            uy = uy / rms_u
-            uz = uz / rms_u
-            normalization_factor = rms_u
-    
-    # Find common range across all components for consistent comparison
-    u_min = min(ux.min(), uy.min(), uz.min())
-    u_max = max(ux.max(), uy.max(), uz.max())
-    
-    # Add padding for smooth evaluation at edges
-    u_range = u_max - u_min
-    u_min -= 0.1 * u_range
-    u_max += 0.1 * u_range
-    
-    # Create fine grid for smooth curve evaluation
-    u_grid = np.linspace(u_min, u_max, bins)
-    
-    # Compute KDE for each component to get smooth PDF curves
-    try:
-        kde_u = gaussian_kde(ux)
-        pdf_u = kde_u(u_grid)
-    except:
-        # Fallback to histogram if KDE fails
-        counts, edges = np.histogram(ux, bins=bins, range=(u_min, u_max), density=True)
-        pdf_u = counts
-        u_grid = (edges[:-1] + edges[1:]) / 2
-    
-    try:
-        kde_v = gaussian_kde(uy)
-        pdf_v = kde_v(u_grid)
-    except:
-        counts, edges = np.histogram(uy, bins=bins, range=(u_min, u_max), density=True)
-        pdf_v = counts
-        if len(u_grid) != len(pdf_v):
-            u_grid = (edges[:-1] + edges[1:]) / 2
-    
-    try:
-        kde_w = gaussian_kde(uz)
-        pdf_w = kde_w(u_grid)
-    except:
-        counts, edges = np.histogram(uz, bins=bins, range=(u_min, u_max), density=True)
-        pdf_w = counts
-        if len(u_grid) != len(pdf_w):
-            u_grid = (edges[:-1] + edges[1:]) / 2
-    
-    # Normalize Y-axis: multiply by normalization_factor to preserve area = 1
-    if normalize and normalization_factor > 0:
-        pdf_u = pdf_u * normalization_factor
-        pdf_v = pdf_v * normalization_factor
-        pdf_w = pdf_w * normalization_factor
-    
-    return u_grid, pdf_u, pdf_v, pdf_w
-
-
-def compute_velocity_component_statistics(velocity):
-    """Compute statistics for each velocity component"""
-    # Extract each component
-    ux = velocity[:, :, :, 0].flatten()
-    uy = velocity[:, :, :, 1].flatten()
-    uz = velocity[:, :, :, 2].flatten()
-    
-    # Compute statistics for each component
-    stats_u = compute_skewness_kurtosis(ux)
-    stats_v = compute_skewness_kurtosis(uy)
-    stats_w = compute_skewness_kurtosis(uz)
-    
-    return {
-        'u': stats_u,
-        'v': stats_v,
-        'w': stats_w
-    }
+from core_physics import (
+    compute_skewness_kurtosis,
+    compute_velocity_magnitude_pdf,
+    compute_velocity_magnitude_statistics,
+    compute_velocity_pdf,
+    compute_velocity_component_statistics,
+)
 
 
 def display_statistics_table(statistics_dict, title="Statistical Moments"):
@@ -293,43 +94,72 @@ def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,
     # Create mapping from filename to full path (handle files from different directories)
     filename_to_path = {Path(f).name: f for f in all_files}
     
-    # File selection - independent for each plot
+    # File selection (shared with Autonomous Lab agent workflow)
     st.sidebar.header("📁 File Selection")
     st.sidebar.caption(f"Found {len(all_files)} velocity files")
-    
+    file_options = [Path(f).name for f in all_files]
+    default_files = [Path(f).name for f in all_files[:min(2, len(all_files))]]
+
+    def resolve_default_selection(session_value, fallback):
+        valid = [f for f in (session_value or fallback) if f in file_options]
+        return valid if valid else fallback
+
+    for key, fallback in [
+        ("velocity_pdf_file_select", default_files),
+        ("velocity_mag_file_select", default_files),
+    ]:
+        if key in st.session_state:
+            valid = [f for f in st.session_state[key] if f in file_options]
+            if valid != st.session_state[key]:
+                st.session_state[key] = valid if valid else fallback
+
     selected_files_pdf = st.sidebar.multiselect(
         "Velocity PDF files:",
-        options=[Path(f).name for f in all_files],
-        default=[Path(f).name for f in all_files[:min(2, len(all_files))]],
+        options=file_options,
+        default=resolve_default_selection(st.session_state.get("velocity_pdf_file_select"), default_files),
         help="Select files for Velocity PDF plot (left)",
         key="velocity_pdf_file_select"
     )
-    
     selected_files_mag = st.sidebar.multiselect(
         "Velocity Magnitude PDF files:",
-        options=[Path(f).name for f in all_files],
-        default=[Path(f).name for f in all_files[:min(2, len(all_files))]],
+        options=file_options,
+        default=resolve_default_selection(st.session_state.get("velocity_mag_file_select"), default_files),
         help="Select files for Velocity Magnitude PDF plot (right)",
         key="velocity_mag_file_select"
     )
-    
+
     if not selected_files_pdf and not selected_files_mag:
         st.warning("Please select at least one file for either plot.")
         return
-    
-    # Plot parameters
+
+    # Plot parameters (shared with Autonomous Lab agent workflow)
     st.sidebar.header("Plot Parameters")
-    pdf_bins = st.sidebar.slider("Velocity PDF bins", 50, 500, 100, 10, key="velocity_pdf_bins")
-    mag_bins = st.sidebar.slider("Velocity Magnitude PDF bins", 50, 500, 100, 10, key="velocity_mag_pdf_bins")
+    for key, lo, hi, default in [
+        ("velocity_pdf_bins", 50, 500, 100),
+        ("velocity_mag_pdf_bins", 50, 500, 100),
+    ]:
+        if key in st.session_state and not (lo <= st.session_state[key] <= hi):
+            st.session_state[key] = default
+
+    pdf_bins = st.sidebar.slider(
+        "Velocity PDF bins", 50, 500,
+        value=st.session_state.get("velocity_pdf_bins", 100),
+        step=10, key="velocity_pdf_bins"
+    )
+    mag_bins = st.sidebar.slider(
+        "Velocity Magnitude PDF bins", 50, 500,
+        value=st.session_state.get("velocity_mag_pdf_bins", 100),
+        step=10, key="velocity_mag_pdf_bins"
+    )
     normalize_pdf = st.sidebar.checkbox(
         "Normalize Velocity PDF (u/σ_u)",
-        value=False,
+        value=st.session_state.get("velocity_pdf_normalize", False),
         help="Normalize velocity components by RMS for comparison with literature",
         key="velocity_pdf_normalize"
     )
     normalize_mag = st.sidebar.checkbox(
         "Normalize by RMS (|u|/σ_|u|)",
-        value=False,
+        value=st.session_state.get("velocity_mag_normalize", False),
         help="Normalize velocity magnitude by RMS for comparison with literature",
         key="velocity_mag_normalize"
     )

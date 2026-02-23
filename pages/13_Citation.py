@@ -240,7 +240,7 @@ def main() -> None:
           title   = {KI-TURB 3D: Turbulence Analysis and Visualization Suite},
           author  = {Muhammad Idrees Khan},
           year    = {2025},
-          version = {1.0.0},
+          version = {2.0.0},
           url     = {https://github.com/IdreesKhan3/ki-turb-3d},
           license = {MIT}
         }
@@ -253,7 +253,7 @@ def main() -> None:
     apa_citation = (
         "Khan, M. I. (2025). "
         "KI-TURB 3D: Turbulence Analysis and Visualization Suite "
-        "(Version 1.0.0) [Computer software]. "
+        "(Version 2.0.0) [Computer software]. "
         "https://github.com/IdreesKhan3/ki-turb-3d"
     )
     st.code(apa_citation, language="text")

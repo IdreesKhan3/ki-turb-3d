@@ -1,6 +1,6 @@
 """
 D3Q19 Lattice Visualization
-Interactive 3D visualization of D3Q19 lattice stencil with full customization
+Interactive 3D visualization of D3Q19 lattice stencil with full customization - Theory Equations page
 """
 
 import numpy as np
@@ -8,13 +8,13 @@ import plotly.graph_objects as go
 from typing import Dict, Optional, Tuple, List
 
 
-# # D3Q19 lattice directions 
+# # D3Q19 lattice directions, khan2025validating
 D3Q19_DIRX = np.array([1, -1, 0, 0, 0, 0, 1, -1, 1, -1, 0, 0, 0, 0, 1, -1, 1, -1, 0])
 D3Q19_DIRY = np.array([0, 0, 1, -1, 0, 0, 1, -1, -1, 1, 1, -1, 1, -1, 0, 0, 0, 0, 0])
 D3Q19_DIRZ = np.array([0, 0, 0, 0, 1, -1, 0, 0, 0, 0, 1, -1, -1, 1, 1, -1, -1, 1, 0])
 
 
-# Default colors for lattice points (matching original)
+# Colors for lattice points 
 DEFAULT_LATTICE_COLORS = [
     'red', 'red', 'green', 'green', 'yellow', 'yellow', 'cyan', 'cyan',
     'magenta', 'magenta', 'teal', 'teal', 'olive', 'olive', 'gray', 'gray',
@@ -68,12 +68,7 @@ def _create_dashed_segments(start, end, dash_length=0.08, gap_length=0.04):
 
 
 def _create_cube_edges():
-    """Create all cube edge lines matching the original matplotlib code EXACTLY
-    Returns: list of tuples (start, end, style) where style is 'solid' or 'dash'
-    
-    Matches original matplotlib ax.plot() calls exactly from lines 176-221
-    Each line matches the original ax.plot([x1, x2], [y1, y2], [z1, z2]) format
-    """
+
     edges = []
     
     # Front face (solid) - lines 178-180
@@ -357,7 +352,7 @@ def plot_d3q19_lattice(
                     lightposition=dict(x=0, y=0, z=0)
                 ))
     
-    # Add cube edges - separate traces for solid and dashed lines to match original
+    # Add cube edges - separate traces for solid and dashed lines to match 
     if show_cube_edges:
         edges = _create_cube_edges()
         

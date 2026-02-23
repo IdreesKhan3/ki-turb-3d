@@ -41,12 +41,14 @@ def detect_simulation_files(directory: str) -> Dict[str, List[str]]:
     
     # Find real-space turbulence statistics files (turbulence_stats*.csv)
     files['real_turb_stats'] = sorted(dir_path.glob('turbulence_stats*.csv'), key=lambda f: natural_sort_key(str(f)))
-    # Find spectral turbulence statistics files (eps_real_validation*.csv)
-    eps_files = list(dir_path.glob('eps_real_validation*.csv'))
-    files['spectral_turb_stats'] = sorted(eps_files, key=lambda f: natural_sort_key(str(f)))
+    # Find spectral turbulence statistics files (LBM: eps_real_validation, NS: same or turbulence_validation)
+    eps_files = list(dir_path.glob('eps_real_validation*.csv')) + list(dir_path.glob('turbulence_validation*.csv'))
+    files['spectral_turb_stats'] = sorted(set(eps_files), key=lambda f: natural_sort_key(str(f)))
     
-    # Find parameter file
-    files['parameters'] = list(dir_path.glob('simulation.input'))
+    # Find parameter file (LBM: simulation.input, NS: simulation.json)
+    param_input = list(dir_path.glob('simulation.input'))
+    param_json = list(dir_path.glob('simulation.json'))
+    files['parameters'] = param_input + param_json
     
     # Find spectrum files
     files['spectrum'] = sorted(dir_path.glob('spectrum*.dat'), key=lambda f: natural_sort_key(str(f)))

@@ -7,118 +7,16 @@ import streamlit as st
 import numpy as np
 from pathlib import Path
 import plotly.graph_objects as go
-from scipy.stats import gaussian_kde
 
-from utils.iso_surfaces import compute_rotation_deformation_tensors
+from core_physics import compute_dissipation_pdf, compute_dissipation_statistics
 from data_readers.parameter_reader import read_parameters
-
-
-def compute_dissipation_pdf(velocity, nu=1.0, bins=100, dx=1.0, dy=1.0, dz=1.0, normalize=False):
-    """
-    Compute smooth Probability Density Function for dissipation rate ε = 2ν S_ij S_ij
-    Uses Kernel Density Estimation (KDE) to produce smooth curves
-    
-    Args:
-        velocity: (nx, ny, nz, 3) array of velocity components
-        nu: Kinematic viscosity (default 1.0)
-        bins: Number of evaluation points for smooth curve
-        dx, dy, dz: Grid spacing (default 1.0)
-        normalize: If True, normalize by mean dissipation (ε/⟨ε⟩)
-        
-    Returns:
-        eps_grid, pdf_eps (arrays) - smooth PDF curve
-    """
-    # Compute strain rate tensor S_ij
-    _, S = compute_rotation_deformation_tensors(velocity, dx, dy, dz)
-    
-    # Compute dissipation: ε = 2ν S_ij S_ij
-    # S_ij S_ij is the double contraction (sum over i and j)
-    S_squared_sum = np.einsum('ijklm,ijklm->ijk', S, S)
-    dissipation = 2.0 * nu * S_squared_sum
-    
-    # Flatten and remove NaN/Inf
-    eps_flat = dissipation.flatten()
-    eps_flat = eps_flat[np.isfinite(eps_flat)]
-    
-    # Remove negative values (dissipation should be non-negative)
-    eps_flat = eps_flat[eps_flat >= 0]
-    
-    if len(eps_flat) == 0:
-        return np.array([]), np.array([])
-    
-    # Normalize by mean if requested (standard for dissipation: ε/⟨ε⟩)
-    normalization_factor = 1.0
-    if normalize:
-        mean_eps = np.mean(eps_flat)
-        if mean_eps > 0:
-            eps_flat = eps_flat / mean_eps
-            normalization_factor = mean_eps
-    
-    # Determine range
-    eps_min = eps_flat.min()
-    eps_max = eps_flat.max()
-    
-    # Add padding for smooth evaluation at edges
-    eps_range = eps_max - eps_min
-    if eps_range > 0:
-        eps_min -= 0.1 * eps_range
-        eps_max += 0.1 * eps_range
-    else:
-        eps_min = max(0, eps_min - 0.01)
-        eps_max = eps_max + 0.01
-    
-    # Create fine grid for smooth curve evaluation
-    eps_grid = np.linspace(eps_min, eps_max, bins)
-    
-    # Compute KDE for smooth PDF curve
-    try:
-        kde = gaussian_kde(eps_flat)
-        pdf_eps = kde(eps_grid)
-    except:
-        # Fallback to histogram if KDE fails
-        counts, edges = np.histogram(eps_flat, bins=bins, range=(eps_min, eps_max), density=True)
-        pdf_eps = counts
-        eps_grid = (edges[:-1] + edges[1:]) / 2
-    
-    # Normalize Y-axis: multiply by normalization_factor to preserve area = 1
-    if normalize and normalization_factor > 0:
-        pdf_eps = pdf_eps * normalization_factor
-    
-    return eps_grid, pdf_eps
-
-
-def compute_dissipation_statistics(velocity, nu=1.0, dx=1.0, dy=1.0, dz=1.0):
-    """
-    Compute statistical moments (mean, RMS, skewness, kurtosis) for dissipation rate.
-    
-    Returns:
-        mean, rms, skewness, kurtosis (floats)
-    """
-    from utils.iso_surfaces import compute_rotation_deformation_tensors
-    from .velocity_magnitude_stats import compute_skewness_kurtosis
-    
-    # Compute strain rate tensor S_ij
-    _, S = compute_rotation_deformation_tensors(velocity, dx, dy, dz)
-    
-    # Compute dissipation: ε = 2ν S_ij S_ij
-    S_squared_sum = np.einsum('ijklm,ijklm->ijk', S, S)
-    dissipation = 2.0 * nu * S_squared_sum
-    
-    # Flatten and remove NaN/Inf and negative values
-    eps_flat = dissipation.flatten()
-    eps_flat = eps_flat[np.isfinite(eps_flat)]
-    eps_flat = eps_flat[eps_flat >= 0]
-    
-    # Compute statistics
-    mean, rms, skewness, kurtosis = compute_skewness_kurtosis(eps_flat)
-    
-    return mean, rms, skewness, kurtosis
 
 
 def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
                             get_plot_style_func=None, apply_plot_style_func=None,
                             get_palette_func=None, resolve_line_style_func=None,
-                            export_panel_func=None, capture_button_func=None):
+                            export_panel_func=None, capture_button_func=None,
+                            dx=1.0, dy=1.0, dz=1.0, nu=0.004):
     """Render the Dissipation Rate PDF tab content"""
     import glob
     from pathlib import Path
@@ -159,47 +57,7 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
             all_hdf5_files.extend(dir_hdf5)
     
     all_files = all_vti_files + all_hdf5_files
-    
-    # Physical parameters (show first, always visible)
-    st.sidebar.header("⚙️ Physical Parameters")
-    
-    # Always try to read viscosity from parameter file first
-    param_file = data_dir / "simulation.input"
-    nu_from_file = None
-    if param_file.exists():
-        try:
-            params = read_parameters(str(param_file))
-            if 'nu' in params:
-                nu_from_file = params['nu']
-        except Exception as e:
-            st.sidebar.warning(f"Error reading simulation.input: {e}")
-    
-    # Set default value: use file value if available, otherwise use a reasonable default
-    default_nu = nu_from_file if nu_from_file is not None else 0.004
-    
-    # Show status message
-    if nu_from_file is not None:
-        st.sidebar.info(f"📄 Viscosity from simulation.input: {nu_from_file:.6f}")
-    else:
-        st.sidebar.warning("Viscosity not found in simulation.input. Please enter manually or check parameter file.")
-    
-    nu_help = "Kinematic viscosity used in dissipation calculation: ε = 2ν S_ij S_ij"
-    if nu_from_file is not None:
-        nu_help += f" (loaded from simulation.input, can be overridden)"
-    else:
-        nu_help += " (enter manually)"
-    
-    # User can always override manually
-    nu = st.sidebar.number_input(
-        "ν (Kinematic Viscosity)",
-        value=default_nu,
-        min_value=0.0001,
-        step=0.0001,
-        format="%.6f",
-        help=nu_help,
-        key="dissipation_nu_input"
-    )
-    
+
     if not all_files:
         st.error("No velocity files found. Expected: `*.vti`, `*.h5`, or `*.hdf5`")
         return
@@ -207,14 +65,22 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
     # Create mapping from filename to full path (handle files from different directories)
     filename_to_path = {Path(f).name: f for f in all_files}
     
-    # File selection
+    # File selection (shared with Autonomous Lab agent workflow)
     st.sidebar.header("📁 File Selection")
     st.sidebar.caption(f"Found {len(all_files)} velocity files")
-    
+    file_options = [Path(f).name for f in all_files]
+    default_files = [Path(f).name for f in all_files[:min(3, len(all_files))]]
+    if "dissipation_file_select" in st.session_state:
+        valid = [f for f in st.session_state["dissipation_file_select"] if f in file_options]
+        if valid != st.session_state["dissipation_file_select"]:
+            st.session_state["dissipation_file_select"] = valid if valid else default_files
+    session_selection = st.session_state.get("dissipation_file_select")
+    default_selection = [f for f in (session_selection or default_files) if f in file_options] or default_files
+
     selected_files = st.sidebar.multiselect(
         "Dissipation PDF files:",
-        options=[Path(f).name for f in all_files],
-        default=[Path(f).name for f in all_files[:min(3, len(all_files))]],
+        options=file_options,
+        default=default_selection,
         help="Select files for Dissipation Rate PDF plot",
         key="dissipation_file_select"
     )
@@ -223,12 +89,19 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
         st.warning("Please select at least one file.")
         return
     
-    # Plot parameters
+    # Plot parameters (shared with Autonomous Lab agent workflow)
     st.sidebar.header("Plot Parameters")
-    pdf_bins = st.sidebar.slider("PDF bins", 50, 500, 100, 10, key="dissipation_pdf_bins")
+    if "dissipation_pdf_bins" in st.session_state and not (50 <= st.session_state["dissipation_pdf_bins"] <= 500):
+        st.session_state["dissipation_pdf_bins"] = 100
+
+    pdf_bins = st.sidebar.slider(
+        "PDF bins", 50, 500,
+        value=st.session_state.get("dissipation_pdf_bins", 100),
+        step=10, key="dissipation_pdf_bins"
+    )
     normalize_pdf = st.sidebar.checkbox(
         "Normalize by mean (ε/⟨ε⟩)",
-        value=False,
+        value=st.session_state.get("dissipation_normalize", False),
         help="Normalize dissipation by mean value for comparison with literature",
         key="dissipation_normalize"
     )
@@ -255,14 +128,17 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
                 metadata = vti_data.get('metadata', {})
                 file_nu = metadata.get('nu', metadata.get('viscosity', None))
                 if file_nu is None:
-                    # Try parameter file
-                    if param_file.exists():
-                        try:
-                            params = read_parameters(str(param_file))
-                            file_nu = params.get('nu', nu)
-                        except:
-                            file_nu = nu
-                    else:
+                    # Try parameter file (simulation.input or simulation.json) in file's directory
+                    file_dir = Path(filepath).parent
+                    for candidate in (file_dir / "simulation.input", file_dir / "simulation.json"):
+                        if candidate.exists():
+                            try:
+                                params = read_parameters(str(candidate))
+                                file_nu = params.get('nu', nu)
+                                break
+                            except Exception:
+                                pass
+                    if file_nu is None:
                         file_nu = nu
                 
                 # Compute PDF
@@ -270,9 +146,9 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
                     velocity, 
                     nu=file_nu, 
                     bins=pdf_bins, 
-                    dx=1.0, 
-                    dy=1.0, 
-                    dz=1.0,
+                    dx=dx, 
+                    dy=dy, 
+                    dz=dz,
                     normalize=normalize_pdf
                 )
                 pdf_data[filename] = (eps_grid, pdf_eps)
@@ -295,12 +171,12 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
         stats_dict = {}
         if selected_files:
             first_file = selected_files[0]
-            filepath = data_dir / first_file
+            filepath = filename_to_path.get(first_file, data_dir / first_file)
             try:
                 vti_data = load_velocity_file_func(str(filepath))
                 velocity = vti_data['velocity']
                 if velocity is not None and len(velocity.shape) == 4:
-                    mean, rms, skew, kurt = compute_dissipation_statistics(velocity, nu=nu, dx=1.0, dy=1.0, dz=1.0)
+                    mean, rms, skew, kurt = compute_dissipation_statistics(velocity, nu=nu, dx=dx, dy=dy, dz=dz)
                     stats_dict['dissipation'] = (mean, rms, skew, kurt)
             except:
                 pass

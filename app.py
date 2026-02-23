@@ -19,7 +19,7 @@ from utils.theme_config import get_theme_list, inject_theme_css, get_theme
 from utils.file_detector import detect_simulation_files, natural_sort_key
 
 # App version for logging
-APP_VERSION = "1.0.0"
+APP_VERSION = "2.0.0"
 
 # Configure logging
 logging.basicConfig(
@@ -75,6 +75,8 @@ if 'theme' not in st.session_state:
     st.session_state.theme = "Light Scientific"
 if 'all_loaded_files' not in st.session_state:
     st.session_state.all_loaded_files = {}
+if 'hdf5_fortran_order' not in st.session_state:
+    st.session_state.hdf5_fortran_order = True  # Fortran-written HDF5 (default)
 
 
 # ==========================================================
@@ -279,10 +281,10 @@ def _display_logo_or_title():
             st.image(str(logo_path), width='stretch')
         except Exception:
             st.markdown("### KI-TURB 3D")
-            st.caption("Turbulence Visualization & Analysis Suite")
+            st.caption("Turbulence Analysis & Visualization Suite")
     else:
         st.markdown("### KI-TURB 3D")
-        st.caption("Turbulence Visualization & Analysis Suite")
+        st.caption("Turbulence Analysis & Visualization Suite")
 
 
 def _get_theme_colors():
@@ -433,6 +435,22 @@ def main():
             
             # Link to full privacy policy
             st.markdown("📄 [View Full Privacy Policy](https://github.com/IdreesKhan3/ki-turb-3d/blob/main/PRIVACY_POLICY.md)")
+        
+        # HDF5 format option
+        with st.expander("📁 Data Format Settings", expanded=False):
+            st.caption("**HDF5 velocity files**")
+            hdf5_mode = st.radio(
+                "HDF5 layout:",
+                options=["Fortran (transpose)", "Default (no transpose)"],
+                index=0 if st.session_state.hdf5_fortran_order else 1,
+                help="Fortran: for HDF5 written by Fortran (OpenACC solver). Default: for Python-written or standard layout.",
+                key="hdf5_mode_radio"
+            )
+            new_fortran = (hdf5_mode == "Fortran (transpose)")
+            if new_fortran != st.session_state.hdf5_fortran_order:
+                st.session_state.hdf5_fortran_order = new_fortran
+                st.cache_data.clear()
+                st.rerun()
         
         st.markdown("---")
         
@@ -643,7 +661,7 @@ def main():
             <p style='margin: 0; font-size: 0.9rem; color: {text_color}; line-height: 1.5;'>
                 <strong>KI-TURB 3D</strong> analyzes <strong>Lattice Boltzmann Method (LBM)</strong> <strong>Direct Numerical Simulation (DNS)</strong> and <strong>Large Eddy Simulation (LES)</strong> turbulence data. 
                 Data is primarily from <strong>Multiple Relaxation Time (MRT)</strong> simulations; the tool can be used seamlessly for <strong>Single Relaxation Time (SRT)</strong>, <strong>Bhatnagar-Gross-Krook (BGK)</strong>, and <strong>Two Relaxation Time (TRT)</strong> data. 
-                Core analysis: Energy spectra <em>E</em>(<em>k</em>), structure functions <em>S</em><sub><em>p</em></sub>(<em>r</em>), scaling exponents ξ<sub><em>p</em></sub> via <strong>Extended Self-Similarity (ESS)</strong>, isotropy validation, flatness factors, probability density functions (PDFs), time series statistics, energy balance, 3D visualization, and multi-simulation comparison.
+                Core analysis: Energy spectra <em>E</em>(<em>k</em>), structure functions <em>S</em><sub><em>p</em></sub>(<em>r</em>), scaling exponents ξ<sub><em>p</em></sub> via <strong>Extended Self-Similarity (ESS)</strong>, isotropy validation, flatness factors, probability density functions (PDFs), time series statistics, energy balance, 3D visualization, and multi-simulation comparison. Use <strong>Manual mode</strong> (navigate pages) or <strong>LLM-driven agents</strong> (chat in Autonomous Lab) for the same analyses.
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -736,7 +754,7 @@ def main():
             """, unsafe_allow_html=True)
             st.markdown(f"""
             <div style='padding: 0.5rem; border-radius: 4px; background: {card_bg}; border-left: 3px solid {accent_color};'>
-                <strong style='color: {text_color}; font-size: 0.9rem; display: block; margin-bottom: 0.2rem;'>AI Assistant</strong>
+                <strong style='color: {text_color}; font-size: 0.9rem; display: block; margin-bottom: 0.2rem;'>Autonomous Lab</strong>
                 <span style='color: {secondary_text}; font-size: 0.75rem; line-height: 1.3;'>Natural language interface</span>
             </div>
             """, unsafe_allow_html=True)

@@ -32,7 +32,7 @@ except ImportError:
 
 def _simple_markdown_to_html(text: str) -> str:
     """Basic markdown to HTML converter (fallback when markdown library not available)"""
-    if not text:
+    if not isinstance(text, str) or not text.strip():
         return ""
     
     # Escape HTML first
@@ -233,7 +233,9 @@ def _process_text_for_pdf(text: str) -> str:
     Returns:
         Text with LaTeX replaced by image tags
     """
-    if not text or not HAS_MATPLOTLIB:
+    if not isinstance(text, str):
+        return ""
+    if not text.strip() or not HAS_MATPLOTLIB:
         return text
     
     # 1. Replace Display Math: $$ ... $$ 
@@ -397,12 +399,15 @@ def generate_html_report(
             
             # Add caption if present
             caption = section.get('caption', '')
-            if caption:
+            if isinstance(caption, str) and caption.strip():
                 html_parts.append(f'<div class="caption">Figure {i}. {caption}</div>')
         
         elif section_type == "table":
             # Support both 'dataframe' (captured) and 'content' (manual) keys
-            df = section.get('dataframe') or section.get('content')
+            # Use explicit None checks; avoid boolean evaluation of DataFrame
+            df = section.get('dataframe')
+            if df is None:
+                df = section.get('content')
             if isinstance(df, pd.DataFrame):
                 html_parts.append('<div class="table-container">')
                 html_parts.append(df.to_html(classes='dataframe', table_id=f"table_{i}", index=False, escape=False))
@@ -410,12 +415,15 @@ def generate_html_report(
                 
                 # Add caption if present
                 caption = section.get('caption', '')
-                if caption:
+                if isinstance(caption, str) and caption.strip():
                     html_parts.append(f'<div class="caption">Table {i}. {caption}</div>')
         
         elif section_type == "text":
-            # Process content
-            processed_content = content if content else ""
+            # Process text content; use isinstance to avoid pandas truth-value issues
+            if isinstance(content, str) and content.strip():
+                processed_content = content
+            else:
+                processed_content = ""
             
             # If generating PDF, pre-render LaTeX to images
             # This must happen BEFORE markdown conversion

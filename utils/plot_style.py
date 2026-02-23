@@ -122,7 +122,7 @@ def resolve_line_style(sim_prefix, idx, colors, ps, style_key="per_sim_style",
     """
     default_color = colors[idx % len(colors)]
     default_width = ps.get("line_width", 2.0)
-    default_dash = "solid"
+    default_dash = ps.get("line_dash", "solid")  # Agent-controllable: LLM can set line_dash
     default_marker = default_marker
     default_msize = ps.get("marker_size", 6)
 
@@ -430,6 +430,8 @@ def _get_palette(ps):
     """
     if ps.get("palette") == "Custom":
         cols = ps.get("custom_colors", [])
+        if isinstance(cols, dict):
+            cols = list(cols.values()) if cols else []
         return cols if cols else pc.qualitative.Plotly
 
     mapping = {
@@ -516,6 +518,44 @@ def _normalize_plot_name(plot_name: str) -> str:
         Normalized plot name
     """
     return plot_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+
+
+def resolve_curve_style(curve: str, idx: int, colors: list, ps: dict, plot_key: str):
+    """
+    Resolve per-curve style (color, width, dash, marker, msize) from plot style.
+    Used by vis and agent tools for per-curve overrides. Matches page's _resolve_curve_style.
+
+    Args:
+        curve: Curve key (e.g. "frac_x", "b11", "b12", "devx")
+        idx: Trace index (for default color from palette)
+        colors: Default color list from palette
+        ps: Plot style dict (may contain enable_per_curve_style, per_curve_style_{plot_key})
+        plot_key: Normalized plot key (e.g. "Energy_Fractions_A", "Diagonal_b_ii_C")
+
+    Returns:
+        Tuple of (color, line_width, dash, marker, marker_size)
+    """
+    default_color = colors[idx % len(colors)]
+    default_width = ps.get("line_width", 2.2)
+    default_dash = "solid"
+    default_marker = "circle"
+    default_msize = ps.get("marker_size", 6)
+
+    if not ps.get("enable_per_curve_style", False):
+        return default_color, default_width, default_dash, default_marker, default_msize
+
+    style_key = f"per_curve_style_{plot_key}"
+    s = ps.get(style_key, {}).get(curve, {})
+    if not s.get("enabled", False):
+        return default_color, default_width, default_dash, default_marker, default_msize
+
+    return (
+        s.get("color") or default_color,
+        float(s.get("width") or default_width),
+        s.get("dash") or default_dash,
+        s.get("marker") or default_marker,
+        int(s.get("msize") or default_msize),
+    )
 
 
 # ==========================================================
