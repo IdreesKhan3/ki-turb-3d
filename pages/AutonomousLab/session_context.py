@@ -12,7 +12,7 @@ import plotly.io as pio
 from pathlib import Path
 from typing import Optional
 
-from utils.image_processor import plotly_figure_to_image_dict, extract_figure_data_for_agent
+from agents.shared.image_processor import plotly_figure_to_image_dict, extract_figure_data_for_agent
 
 # Max artifacts to include in context (figures, tables, user images)
 ARTIFACT_HISTORY_MAX = 15

@@ -19,7 +19,7 @@ from .prompts import (
     REVIEWER_PROMPT,
 )
 from ..intent_detection import get_plot_routing
-from utils.image_processor import (
+from agents.shared.image_processor import (
     convert_to_provider_format,
     plotly_figure_to_image_dict,
     extract_figure_data_for_agent,

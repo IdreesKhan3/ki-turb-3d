@@ -15,7 +15,7 @@ if str(project_root) not in sys.path:
 
 from utils.theme_config import inject_theme_css
 from utils.app_navigation import render_app_navigation_iframe
-from utils.multimodal_input import (
+from pages.AutonomousLab.multimodal_input import (
     render_multimodal_input,
     get_input_text,
     is_voice_input,
@@ -248,12 +248,12 @@ def main():
             if has_image and input_data and input_data.get("files"):
                 try:
                     import base64
-                    from utils.image_processor import _decode_base64_robust, _infer_mime_type_from_filename
+                    from agents.shared.image_processor import _decode_base64_robust, _infer_mime_type_from_filename
                     file = input_data["files"][0]
                     raw = file.get("data", "")
                     if raw:
                         if "," in raw and raw.startswith("data:"):
-                            from utils.image_processor import _parse_data_uri
+                            from agents.shared.image_processor import _parse_data_uri
                             mime_type, b64 = _parse_data_uri(raw)
                             image_bytes = _decode_base64_robust(b64)
                         else:
@@ -337,7 +337,7 @@ def main():
                         if a.get("artifact_type") == "plotly_figure":
                             try:
                                 import json
-                                from utils.image_processor import plotly_figure_to_image_dict, extract_figure_data_for_agent
+                                from agents.shared.image_processor import plotly_figure_to_image_dict, extract_figure_data_for_agent
                                 content = a.get("artifact_content")
                                 if isinstance(content, dict):
                                     content = json.dumps(content)

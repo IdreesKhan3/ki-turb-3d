@@ -77,6 +77,32 @@ Plan:
 2. Analyst: compute_spectral_isotropy
 3. Visualizer: plot_spectral_isotropy or plot_component_spectra or get_spectral_isotropy_summary (ONE output only—do not repeat)
 
+User: "Plot structure functions" or "structure functions ESS" or "S_p(r)"
+Plan:
+1. Steward: find structure_functions_*.txt or structure_funcs*_t*.bin in the directory
+2. Analyst: compute_structure_functions (REQUIRED before plot—data goes to cache)
+3. Visualizer: plot_structure_functions (ONE plot only—do not repeat)
+
+User: "Plot flatness" or "flatness F(r)" or "flatness page"
+Plan:
+1. Steward: find flatness_data*_*.txt in the directory
+2. Analyst: compute_flatness (REQUIRED before plot—data goes to cache)
+3. Visualizer: plot_flatness or get_flatness_summary (ONE output only—do not repeat)
+
+User: "Plot PDF" or "velocity PDF" or "vorticity PDF" or "PDFs page"
+Plan:
+1. Steward: find *.vti or *.h5 or *.hdf5 in the directory
+2. Visualizer: plot_pdf (ONE plot only—do not repeat)
+
+User: "Overview summary" or "data availability" or "overview from DNS/512"
+Plan:
+1. Steward: find simulation.input, turbulence_stats*.csv, or eps_real_validation*.csv in the directory
+2. Visualizer: get_overview_summary or get_overview_theory (ONE output only—do not repeat)
+
+User: "NS equations" or "LBM formulation" or "d3q19 lattice" or "MRT matrix" or "theory equations"
+Plan:
+1. Visualizer: get_theory_ns_equations or get_theory_lbm_formulation or plot_d3q19_lattice or get_theory_mrt_matrix (no data needed—delegate directly)
+
 User: "Plot turbulence stats from DNS/512" or "other stats table" or "turbulence stats summary"
 Plan:
 1. Steward: find turbulence_stats*.csv or eps_real_validation*.csv in the directory
@@ -125,7 +151,7 @@ Plan:
 
 CRITICAL: One add_report_section(plot) per figure—no more. To reference figures in explanations, use add_report_section(text) with content like "Figure 1 shows...". Never add the same figure twice. preview_report runs ONCE at the end.
 
-MULTI-ITEM REPORTS (any pages): When user asks for a report with multiple items (figures from different pages, tables, theory equations, explanations), create ONE step per item. Pattern: for each figure → (steward find files if needed, analyst compute if needed, visualizer plot, visualizer add_report_section). For each table → (steward find files if needed, visualizer get_summary or equivalent, visualizer add_report_section with table_data). For theory/equations → (visualizer get_theory or equivalent, visualizer add_report_section with content). For explanations → (visualizer add_report_section section_type=text covering ALL figures, tables, and equations). End with preview_report. Do NOT collapse multiple items into one step. Do NOT skip any item the user listed.
+MULTI-ITEM REPORTS (any pages): When user asks for a report with multiple items (figures from different pages, tables, theory equations, explanations), create ONE step per item. Pattern: for each figure → (steward find files if needed, analyst compute if needed, visualizer plot, visualizer add_report_section). For structure functions: analyst compute_structure_functions is REQUIRED before visualizer plot_structure_functions—do not skip. Same for flatness: analyst compute_flatness before visualizer plot_flatness. For each table → (steward find files if needed, visualizer get_summary or equivalent, visualizer add_report_section with table_data). For theory/equations → (visualizer get_theory or equivalent, visualizer add_report_section with content). For explanations → (visualizer add_report_section section_type=text covering ALL figures, tables, and equations). End with preview_report. Do NOT collapse multiple items into one step. Do NOT skip any item the user listed.
 
 Remember: Infer from the user's words. Include every item they asked for; add nothing they did not ask for.
 
