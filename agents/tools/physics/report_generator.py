@@ -48,7 +48,7 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                     "section_type": {
                         "type": "string",
                         "enum": ["plot", "text", "table"],
-                        "description": "Type: 'plot' uses last_figure; 'text' uses content; 'table' uses table_data.",
+                        "description": "Type: 'plot' uses figure_queue/last_figure; 'text' uses content (or last_generated_code if content empty); 'table' uses table_data or last_table_summary_rows.",
                     },
                     "title": {
                         "type": "string",
@@ -333,10 +333,10 @@ def execute_tool(
         if section_type == "table":
             table_data = args.get("table_data")
             if table_data is None:
-                # Use last summary from session when table_data not provided
-                table_data = session_context.get("last_real_isotropy_summary_rows")
+                # Use last table from any summary tool (get_*_summary sets last_table_summary_rows)
+                table_data = session_context.get("last_table_summary_rows")
             if table_data is None:
-                return "Error: For table sections, provide table_data as list of dicts (each dict = row, keys = column names). Or run get_real_isotropy_summary first, then add_report_section."
+                return "Error: For table sections, provide table_data as list of dicts (each dict = row, keys = column names). Or run a summary tool (get_real_isotropy_summary, get_flatness_summary, etc.) first, then add_report_section."
             # DataFrame: convert to list of dicts
             if isinstance(table_data, pd.DataFrame):
                 table_data = table_data.to_dict("records")
@@ -356,7 +356,7 @@ def execute_tool(
                     # Single-row dict: wrap in list
                     table_data = [table_data]
             if not isinstance(table_data, list):
-                return "Error: For table sections, provide table_data as list of dicts (each dict = row, keys = column names). Or run get_real_isotropy_summary first, then add_report_section."
+                return "Error: For table sections, provide table_data as list of dicts (each dict = row, keys = column names). Or run a summary tool first, then add_report_section."
             try:
                 df = pd.DataFrame(table_data)
             except Exception as e:
@@ -373,17 +373,17 @@ def execute_tool(
             return f"Added table section '{title}' to report. Report now has {len(sections)} section(s)."
 
         if section_type == "plot":
-            fig = session_context.get("last_figure")
+            queue = session_context.get("figure_queue") or []
+            fig = queue.pop(0) if queue else session_context.get("last_figure")
             if fig is None:
-                # Try last_figure_json
                 json_str = session_context.get("last_figure_json")
                 if json_str:
                     try:
                         fig = pio.from_json(json_str)
                     except Exception:
                         pass
-                if fig is None:
-                    return "Error: No figure available to add. Produce a plot first (e.g. plot_spectrum, plot_pdf), then add it to the report."
+            if fig is None:
+                return "Error: No figure available to add. Produce a plot first (e.g. plot_spectrum, plot_pdf), then add it to the report."
             sections.append({
                 "title": title,
                 "type": "plot",
@@ -400,8 +400,16 @@ def execute_tool(
 
         if section_type == "text":
             content = args.get("content", "")
+            used_stored_code = False
             if content is None or not isinstance(content, str) or not content.strip():
-                return "Error: For text sections, provide 'content' (markdown string)."
+                # Fallback: use last generated code (generate_code stores in session_context)
+                content = session_context.pop("last_generated_code", None)
+                used_stored_code = bool(content)
+            if content is None or not isinstance(content, str) or not content.strip():
+                return "Error: For text sections, provide 'content' (markdown string). Or run generate_code first—its output is stored for add_report_section."
+            # Wrap code in markdown code block to prevent underscores/subscripts from being parsed as italics
+            if used_stored_code and content.strip().startswith(("import ", "from ", "def ", "class ", "#")):
+                content = "```python\n" + content.strip() + "\n```"
             sections.append({
                 "title": title,
                 "type": "text",

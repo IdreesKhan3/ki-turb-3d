@@ -497,6 +497,7 @@ def execute_tool(
             legend_names=agent_legend if isinstance(agent_legend, dict) else None,
         )
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         _write_back_pdf_files(session_context, pdf_type, files)
         _write_back_bins_normalize(session_context, pdf_type, bins, normalize)
         _write_back_nu_dx(session_context, nu, dx)
@@ -582,6 +583,7 @@ def execute_tool(
             use_log_scale=use_log_scale,
         )
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         _write_back_pdf_files(session_context, pdf_type, files)
         _write_back_bins_normalize(session_context, pdf_type, bins, normalize)
         _write_back_log_scale(session_context, pdf_type, use_log_scale)
@@ -628,6 +630,7 @@ def execute_tool(
             use_log_scale=use_log_scale,
         )
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         _write_back_pdf_files(session_context, pdf_type, files)
         _write_back_bins_normalize(session_context, pdf_type, bins, normalize)
         _write_back_log_scale(session_context, pdf_type, use_log_scale)
@@ -674,6 +677,7 @@ def execute_tool(
             use_log_scale=use_log_scale,
         )
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         _write_back_pdf_files(session_context, pdf_type, files)
         _write_back_bins_normalize(session_context, pdf_type, bins, normalize)
         _write_back_log_scale(session_context, pdf_type, use_log_scale)
@@ -720,6 +724,7 @@ def execute_tool(
             use_log_scale=use_log_scale,
         )
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         _write_back_pdf_files(session_context, pdf_type, files)
         _write_back_bins_normalize(session_context, pdf_type, bins, normalize)
         _write_back_log_scale(session_context, pdf_type, use_log_scale)
@@ -767,6 +772,7 @@ def execute_tool(
     )
 
     session_context["last_figure"] = fig
+    session_context.setdefault("figure_queue", []).append(fig)
     _write_back_pdf_files(session_context, pdf_type, files)
     _write_back_bins_normalize(session_context, pdf_type, bins, normalize)
     _write_back_nu_dx(session_context, nu, dx)

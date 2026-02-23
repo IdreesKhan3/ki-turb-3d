@@ -336,19 +336,31 @@ def execute_tool(
             style_config = default_plot_style()
             style_config.update({"x_axis_type": "linear", "y_axis_type": "linear", "line_width": 2.2})
             session_context["real_isotropy_style_config"] = style_config
+        session_context.setdefault("plot_styles", {})["Energy Fractions (A)"] = style_config
         if style_updates:
             style_config.update(style_updates)
             if "custom_colors" in style_updates:
                 style_config["palette"] = "Custom"
             if ("figure_width" in style_updates or "figure_height" in style_updates) and "enable_custom_size" not in style_updates:
                 style_config["enable_custom_size"] = True
-        axis_labels_real = session_context.get("axis_labels_real_iso") or {"x": "t/t0", "y": "Energy fraction"}
+        # Page structure: axis_labels_real_iso {time, energy_frac, ...}, real_iso_legends {Ex, Ey, Ez, ...}
+        labels = dict(session_context.get("axis_labels_real_iso") or {})
+        legends = dict(session_context.get("real_iso_legends") or {})
         agent_axis = args.get("axis_labels")
         if agent_axis and isinstance(agent_axis, dict):
-            axis_labels_real = dict(axis_labels_real)
-            axis_labels_real.update(agent_axis)
-            session_context["axis_labels_real_iso"] = axis_labels_real
-        axis_labels = agent_axis or axis_labels_real
+            if "x" in agent_axis:
+                labels["time"] = agent_axis["x"]
+            if "y" in agent_axis:
+                labels["energy_frac"] = agent_axis["y"]
+            session_context["axis_labels_real_iso"] = labels
+        agent_legends = args.get("legend_names")
+        if agent_legends and isinstance(agent_legends, dict):
+            for agent_k, page_k in [("frac_x", "Ex"), ("frac_y", "Ey"), ("frac_z", "Ez")]:
+                if agent_k in agent_legends:
+                    legends[page_k] = agent_legends[agent_k]
+            session_context["real_iso_legends"] = legends
+        axis_labels = {"x": labels.get("time", "t/t0"), "y": labels.get("energy_frac", "Energy fraction")}
+        legend_names = {"frac_x": legends.get("Ex", "E<sub>x</sub>/E<sub>tot</sub>"), "frac_y": legends.get("Ey", "E<sub>y</sub>/E<sub>tot</sub>"), "frac_z": legends.get("Ez", "E<sub>z</sub>/E<sub>tot</sub>")}
 
         ma_win = args.get("ma_win")
         if ma_win is not None and (not isinstance(ma_win, int) or ma_win < 0):
@@ -359,14 +371,6 @@ def execute_tool(
         raw_data_opacity = args.get("raw_data_opacity")
         if raw_data_opacity is not None:
             style_config["raw_data_opacity"] = float(raw_data_opacity)
-        default_legends = {"frac_x": "E<sub>x</sub>/E<sub>tot</sub>", "frac_y": "E<sub>y</sub>/E<sub>tot</sub>", "frac_z": "E<sub>z</sub>/E<sub>tot</sub>"}
-        legend_names_real = session_context.get("real_iso_legend_names") or default_legends
-        agent_legends = args.get("legend_names")
-        if agent_legends and isinstance(agent_legends, dict):
-            legend_names_real = dict(legend_names_real)
-            legend_names_real.update(agent_legends)
-            session_context["real_iso_legend_names"] = legend_names_real
-        legend_names = legend_names_real
         fig = create_energy_fractions_figure(
             iter_norm, frac_x, frac_y, frac_z, style_config,
             axis_labels=axis_labels,
@@ -377,6 +381,7 @@ def execute_tool(
             stationary_t=stationary_line_x,
         )
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": "Real isotropy figure created.",
@@ -408,23 +413,28 @@ def execute_tool(
             style_config = default_plot_style()
             style_config.update({"x_axis_type": "linear", "y_axis_type": "linear", "line_width": 1.5})
             session_context["lumley_style_config"] = style_config
+        session_context.setdefault("plot_styles", {})["Lumley Triangle (B)"] = style_config
         if style_updates:
             style_config.update(style_updates)
             if "custom_colors" in style_updates:
                 style_config["palette"] = "Custom"
             if ("figure_width" in style_updates or "figure_height" in style_updates) and "enable_custom_size" not in style_updates:
                 style_config["enable_custom_size"] = True
-        axis_labels_lumley = session_context.get("axis_labels_lumley") or {"x": "ξ", "y": "η"}
+        # Page structure: axis_labels_real_iso {lumley_x, lumley_y, ...}
+        labels = dict(session_context.get("axis_labels_real_iso") or {})
         agent_axis = args.get("axis_labels")
         if agent_axis and isinstance(agent_axis, dict):
-            axis_labels_lumley = dict(axis_labels_lumley)
-            axis_labels_lumley.update(agent_axis)
-            session_context["axis_labels_lumley"] = axis_labels_lumley
-        axis_labels = agent_axis or axis_labels_lumley
+            if "x" in agent_axis:
+                labels["lumley_x"] = agent_axis["x"]
+            if "y" in agent_axis:
+                labels["lumley_y"] = agent_axis["y"]
+            session_context["axis_labels_real_iso"] = labels
+        axis_labels = {"x": labels.get("lumley_x", "ξ"), "y": labels.get("lumley_y", "η")}
 
         fig = create_lumley_triangle_figure(xi, eta, style_config, axis_labels=axis_labels, apply_style=True)
         _write_back_data_dir(session_context, p)
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": "Lumley triangle figure created.",
@@ -461,6 +471,7 @@ def execute_tool(
             style_config = default_plot_style()
             style_config.update({"x_axis_type": "linear", "y_axis_type": "linear", "line_width": 1.6})
             session_context["diagonal_bii_style_config"] = style_config
+        session_context.setdefault("plot_styles", {})["Diagonal b_ii (C)"] = style_config
         if style_updates:
             style_config.update(style_updates)
             if "custom_colors" in style_updates:
@@ -470,27 +481,28 @@ def execute_tool(
         # Diagonal b_ii MUST use linear scale (b_ii can be negative; log scale causes artifacts)
         style_config["x_axis_type"] = "linear"
         style_config["y_axis_type"] = "linear"
-        # Match page defaults: x="t/t₀", y="Anisotropy tensor b<sub>ij</sub>" (page uses axis_labels_real_iso["bij"])
-        axis_labels_bii = session_context.get("axis_labels_diagonal_bii") or {"x": "t/t₀", "y": "Anisotropy tensor b<sub>ij</sub>"}
+        # Page structure: axis_labels_real_iso {time, bij}, real_iso_legends {b11, b22, b33}
+        labels = dict(session_context.get("axis_labels_real_iso") or {})
+        legends = dict(session_context.get("real_iso_legends") or {})
         agent_axis = args.get("axis_labels")
         if agent_axis and isinstance(agent_axis, dict):
-            axis_labels_bii = dict(axis_labels_bii)
-            axis_labels_bii.update(agent_axis)
-            session_context["axis_labels_diagonal_bii"] = axis_labels_bii
-        axis_labels = agent_axis or axis_labels_bii
+            if "x" in agent_axis:
+                labels["time"] = agent_axis["x"]
+            if "y" in agent_axis:
+                labels["bij"] = agent_axis["y"]
+            session_context["axis_labels_real_iso"] = labels
+        agent_legends = args.get("legend_names")
+        if agent_legends and isinstance(agent_legends, dict):
+            for k in ("b11", "b22", "b33"):
+                if k in agent_legends:
+                    legends[k] = agent_legends[k]
+            session_context["real_iso_legends"] = legends
+        axis_labels = {"x": labels.get("time", "t/t₀"), "y": labels.get("bij", "Anisotropy tensor b<sub>ij</sub>")}
+        legend_names = {k: legends.get(k, f"b<sub>{k[1:]}</sub>") for k in ("b11", "b22", "b33")}
 
         tol_list = args.get("tol_list")
         if tol_list is not None and not isinstance(tol_list, list):
             tol_list = None
-
-        default_legends = {"b11": "b<sub>11</sub>", "b22": "b<sub>22</sub>", "b33": "b<sub>33</sub>"}
-        legend_names_bii = session_context.get("diagonal_bii_legend_names") or default_legends
-        agent_legends = args.get("legend_names")
-        if agent_legends and isinstance(agent_legends, dict):
-            legend_names_bii = dict(legend_names_bii)
-            legend_names_bii.update(agent_legends)
-            session_context["diagonal_bii_legend_names"] = legend_names_bii
-        legend_names = legend_names_bii
         fig = create_diagonal_bii_figure(
             iter_norm, b["b11"], b["b22"], b["b33"], style_config,
             axis_labels=axis_labels,
@@ -500,6 +512,7 @@ def execute_tool(
         )
         _write_back_data_dir(session_context, p)
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": "Diagonal b_ii figure created.",
@@ -536,6 +549,7 @@ def execute_tool(
             style_config = default_plot_style()
             style_config.update({"x_axis_type": "linear", "y_axis_type": "log", "line_width": 2.2})
             session_context["cross_corr_style_config"] = style_config
+        session_context.setdefault("plot_styles", {})["Cross-correlations (D)"] = style_config
         if style_updates:
             style_config.update(style_updates)
             if "custom_colors" in style_updates:
@@ -543,28 +557,31 @@ def execute_tool(
             if ("figure_width" in style_updates or "figure_height" in style_updates) and "enable_custom_size" not in style_updates:
                 style_config["enable_custom_size"] = True
 
-        axis_labels_cross = session_context.get("axis_labels_cross_corr") or {"x": "t/t₀", "y": "Cross-correlations / Anisotropy index"}
+        # Page structure: axis_labels_real_iso {time, cross}, real_iso_legends {b12, b13, b23, anis}
+        labels = dict(session_context.get("axis_labels_real_iso") or {})
+        legends = dict(session_context.get("real_iso_legends") or {})
         agent_axis = args.get("axis_labels")
         if agent_axis and isinstance(agent_axis, dict):
-            axis_labels_cross = dict(axis_labels_cross)
-            axis_labels_cross.update(agent_axis)
-            session_context["axis_labels_cross_corr"] = axis_labels_cross
-        axis_labels = agent_axis or axis_labels_cross
+            if "x" in agent_axis:
+                labels["time"] = agent_axis["x"]
+            if "y" in agent_axis:
+                labels["cross"] = agent_axis["y"]
+            session_context["axis_labels_real_iso"] = labels
+        agent_legends = args.get("legend_names")
+        if agent_legends and isinstance(agent_legends, dict):
+            for k in ("b12", "b13", "b23", "anis"):
+                if k in agent_legends:
+                    legends[k] = agent_legends[k]
+            session_context["real_iso_legends"] = legends
+        axis_labels = {"x": labels.get("time", "t/t₀"), "y": labels.get("cross", "Cross-correlations / Anisotropy index")}
+        _def = {"b12": "|b<sub>12</sub>|", "b13": "|b<sub>13</sub>|", "b23": "|b<sub>23</sub>|", "anis": "Anisotropy index"}
+        legend_names = {k: legends.get(k, _def[k]) for k in ("b12", "b13", "b23", "anis")}
 
         tol_list = args.get("tol_list")
         if tol_list is not None and not isinstance(tol_list, list):
             tol_list = None
         if tol_list is None:
             tol_list = [0.001, 0.01]
-
-        default_legends = {"b12": "|b<sub>12</sub>|", "b13": "|b<sub>13</sub>|", "b23": "|b<sub>23</sub>|", "anis": "Anisotropy index"}
-        legend_names_cross = session_context.get("cross_corr_legend_names") or default_legends
-        agent_legends = args.get("legend_names")
-        if agent_legends and isinstance(agent_legends, dict):
-            legend_names_cross = dict(legend_names_cross)
-            legend_names_cross.update(agent_legends)
-            session_context["cross_corr_legend_names"] = legend_names_cross
-        legend_names = legend_names_cross
         fig = create_cross_correlations_figure(
             iter_norm,
             b["b12"], b["b13"], b["b23"],
@@ -577,6 +594,7 @@ def execute_tool(
         )
         _write_back_data_dir(session_context, p)
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": "Cross-correlations figure created.",
@@ -622,6 +640,7 @@ def execute_tool(
             style_config = default_plot_style()
             style_config.update({"x_axis_type": "linear", "y_axis_type": "log", "line_width": 2.2})
             session_context["deviations_style_config"] = style_config
+        session_context.setdefault("plot_styles", {})["Deviations (E)"] = style_config
         if style_updates:
             style_config.update(style_updates)
             if "custom_colors" in style_updates:
@@ -629,28 +648,31 @@ def execute_tool(
             if ("figure_width" in style_updates or "figure_height" in style_updates) and "enable_custom_size" not in style_updates:
                 style_config["enable_custom_size"] = True
 
-        axis_labels_dev = session_context.get("axis_labels_deviations") or {"x": "t/t₀", "y": "Absolute deviation"}
+        # Page structure: axis_labels_real_iso {time, dev}, real_iso_legends {devx, devy, devz, maxdev}
+        labels = dict(session_context.get("axis_labels_real_iso") or {})
+        legends = dict(session_context.get("real_iso_legends") or {})
         agent_axis = args.get("axis_labels")
         if agent_axis and isinstance(agent_axis, dict):
-            axis_labels_dev = dict(axis_labels_dev)
-            axis_labels_dev.update(agent_axis)
-            session_context["axis_labels_deviations"] = axis_labels_dev
-        axis_labels = agent_axis or axis_labels_dev
+            if "x" in agent_axis:
+                labels["time"] = agent_axis["x"]
+            if "y" in agent_axis:
+                labels["dev"] = agent_axis["y"]
+            session_context["axis_labels_real_iso"] = labels
+        agent_legends = args.get("legend_names")
+        if agent_legends and isinstance(agent_legends, dict):
+            for k in ("devx", "devy", "devz", "maxdev"):
+                if k in agent_legends:
+                    legends[k] = agent_legends[k]
+            session_context["real_iso_legends"] = legends
+        axis_labels = {"x": labels.get("time", "t/t₀"), "y": labels.get("dev", "Absolute deviation")}
+        _def = {"devx": "devx", "devy": "devy", "devz": "devz", "maxdev": "Max deviation"}
+        legend_names = {k: legends.get(k, _def[k]) for k in ("devx", "devy", "devz", "maxdev")}
 
         tol_list = args.get("tol_list")
         if tol_list is not None and not isinstance(tol_list, list):
             tol_list = None
         if tol_list is None:
             tol_list = [0.01, 0.02]
-
-        default_legends = {"devx": "devx", "devy": "devy", "devz": "devz", "maxdev": "Max deviation"}
-        legend_names_dev = session_context.get("deviations_legend_names") or default_legends
-        agent_legends = args.get("legend_names")
-        if agent_legends and isinstance(agent_legends, dict):
-            legend_names_dev = dict(legend_names_dev)
-            legend_names_dev.update(agent_legends)
-            session_context["deviations_legend_names"] = legend_names_dev
-        legend_names = legend_names_dev
         fig = create_deviations_figure(
             iter_norm, devx, devy, devz, maxdev, style_config,
             axis_labels=axis_labels,
@@ -661,6 +683,7 @@ def execute_tool(
         )
         _write_back_data_dir(session_context, p)
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": "Deviations figure created.",
@@ -695,8 +718,8 @@ def execute_tool(
         lines.append("| " + " | ".join(str(summary_row[h]) for h in headers) + " |")
         table_md = "\n".join(lines)
         _write_back_data_dir(session_context, p)
-        # Store for add_report_section when table_data not provided
-        session_context["last_real_isotropy_summary_rows"] = [summary_row]
+        # Store for add_report_section when table_data not provided (convention: last_table_summary_rows)
+        session_context["last_table_summary_rows"] = [summary_row]
         return {
             "status": "success",
             "message": f"Real isotropy summary:\n\n{table_md}",
@@ -745,6 +768,7 @@ def execute_tool(
             style_config = default_plot_style()
             style_config.update({"x_axis_type": "linear", "y_axis_type": "log", "line_width": 1.5})
             session_context["convergence_style_config"] = style_config
+        session_context.setdefault("plot_styles", {})["Convergence (F)"] = style_config
         if style_updates:
             style_config.update(style_updates)
             if "custom_colors" in style_updates:
@@ -752,13 +776,16 @@ def execute_tool(
             if ("figure_width" in style_updates or "figure_height" in style_updates) and "enable_custom_size" not in style_updates:
                 style_config["enable_custom_size"] = True
 
-        axis_labels_conv = session_context.get("axis_labels_convergence") or {"x": "t/t₀", "y": "Running standard deviation"}
+        # Page structure: axis_labels_real_iso {time, convergence}
+        labels = dict(session_context.get("axis_labels_real_iso") or {})
         agent_axis = args.get("axis_labels")
         if agent_axis and isinstance(agent_axis, dict):
-            axis_labels_conv = dict(axis_labels_conv)
-            axis_labels_conv.update(agent_axis)
-            session_context["axis_labels_convergence"] = axis_labels_conv
-        axis_labels = agent_axis or axis_labels_conv
+            if "x" in agent_axis:
+                labels["time"] = agent_axis["x"]
+            if "y" in agent_axis:
+                labels["convergence"] = agent_axis["y"]
+            session_context["axis_labels_real_iso"] = labels
+        axis_labels = {"x": labels.get("time", "t/t₀"), "y": labels.get("convergence", "Running standard deviation")}
 
         conv_windows = args.get("conv_windows")
         if conv_windows is not None and not isinstance(conv_windows, list):
@@ -772,6 +799,7 @@ def execute_tool(
         )
         _write_back_data_dir(session_context, p)
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": "Convergence figure created.",

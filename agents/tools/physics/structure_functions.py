@@ -243,6 +243,7 @@ def execute_tool(
         if fig is None:
             return "Error: No valid structure functions data to plot."
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": f"Structure functions ({mode}) figure created.",

@@ -15,7 +15,7 @@ WEB_BROWSE_TIMEOUT = 15
 FILE_DOWNLOAD_TIMEOUT = 30
 LLM_REQUEST_TIMEOUT = 120
 OLLAMA_DEFAULT_TIMEOUT = 300
-GEMINI_DEFAULT_TIMEOUT = 120
+GEMINI_DEFAULT_TIMEOUT = 300  # 5 min; increase if complex requests still time out
 SHELL_COMMAND_TIMEOUT = 120
 
 # ==========================================================

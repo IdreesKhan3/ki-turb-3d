@@ -183,7 +183,10 @@ Requirements:
                 system_prompt=system_prompt,
                 temperature=0.2,
             )
-            return response or "No code generated."
+            code = response or "No code generated."
+            # Store for add_report_section when code goes in report (same pattern as last_table_summary_rows)
+            session_context["last_generated_code"] = code
+            return code
         except Exception as e:
             return f"Error generating code: {e}"
 

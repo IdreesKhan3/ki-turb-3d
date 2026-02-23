@@ -287,6 +287,7 @@ def execute_tool(
         if fig is None:
             return "Error: No valid IC(k) data to plot."
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": "Spectral isotropy figure created.",
@@ -375,6 +376,7 @@ def execute_tool(
         if fig is None:
             return "Error: No component spectra data (E11/E22/E33). Run compute_spectral_isotropy first; data may lack E11/E22/E33 columns."
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": "Component spectra figure created.",

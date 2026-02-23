@@ -586,9 +586,10 @@ INTENT_ROUTING: Dict[str, Dict[str, Any]] = {
         "prevent_tools": [],
         "intent_override": (
             "INTENT_OVERRIDE: User requested FLATNESS (Page 07). "
-            "Delegate: steward (find flatness_data*_*.txt) -> analyst (compute_flatness) -> visualizer (plot_flatness). "
-            "ONE plot only. STOP after producing the plot. Do not delegate to visualizer again. "
-            "If user ALSO asked for summary: after plot, call get_flatness_summary()."
+            "CRITICAL: analyst compute_flatness is REQUIRED before any visualizer flatness tool (plot_flatness, get_flatness_summary). "
+            "Delegate: steward (find flatness_data*_*.txt) -> analyst (compute_flatness) -> visualizer. "
+            "If user asked for plot: visualizer plot_flatness. If user asked for summary/table: visualizer get_flatness_summary (uses cached data from compute_flatness). "
+            "ONE output per request. Do not call get_flatness_summary without analyst compute_flatness first."
         ),
     },
     INTENT_FLATNESS_THEORY: {

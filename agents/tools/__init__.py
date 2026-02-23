@@ -12,7 +12,7 @@ from . import app_control, core, execution, search, physics, generation
 
 STEWARD_TOOL_NAMES = frozenset({
     "list_directory", "find_file", "read_file",
-    "set_app_theme", "load_data", "set_selection_mode", "set_hdf5_format", "set_hdf5_format",
+    "set_app_theme", "load_data", "set_selection_mode", "set_hdf5_format",
     "search_codebase", "extract_section", "regex_search",
     "run_shell_command", "git_operation",
     "delete_file", "modify_file", "rename_file", "write_file",
@@ -44,7 +44,7 @@ REVIEWER_TOOL_NAMES = frozenset()
 ORCHESTRATOR_TOOL_NAMES = frozenset()
 
 CONFIRMABLE_TOOLS = frozenset({
-    "delete_file", "rename_file", "create_file", "write_file", "modify_file", "download_file",
+    "delete_file", "rename_file", "write_file", "modify_file", "download_file",
     "run_shell_command",
 })
 
@@ -55,8 +55,6 @@ def _format_confirmation_message(tool: str, args: Dict[str, Any]) -> str:
         return f"Delete file: {args.get('filepath', '?')}"
     if tool == "rename_file":
         return f"Rename {args.get('filepath', '?')} → {args.get('new_filepath', '?')}"
-    if tool == "create_file":
-        return f"Create file: {args.get('filepath', '?')}"
     if tool == "write_file":
         return f"Write/overwrite file: {args.get('filepath', '?')}"
     if tool == "modify_file":
@@ -110,6 +108,14 @@ def execute_tool(
     """
     session_context = session_context or {}
     if allowed_tool_names is not None and name not in allowed_tool_names:
+        # Helpful error when agent tries to call another agent (steward, analyst, orchestrator) as a tool
+        if name.lower() in ("steward", "analyst", "orchestrator", "reviewer"):
+            return (
+                f"Error: '{name}' is an AGENT, not a tool. You cannot call agents. "
+                "Use only your assigned tools (plot_*, add_report_section, get_*_theory, etc.). "
+                "If the task mentions steward or analyst, ignore that—the orchestrator delegates to them separately. "
+                "Do only your part: plot, add_report_section, or get theory."
+            )
         return f"Error: Tool '{name}' is not available for this agent. Use only your assigned tools."
 
     if name in CONFIRMABLE_TOOLS:

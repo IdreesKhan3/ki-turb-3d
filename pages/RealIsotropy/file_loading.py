@@ -28,6 +28,10 @@ DEFAULT_LEGENDS = {
     "b13": "|b<sub>13</sub>|",
     "b23": "|b<sub>23</sub>|",
     "anis": "Anisotropy index",
+    "devx": "devx",
+    "devy": "devy",
+    "devz": "devz",
+    "maxdev": "Max deviation",
 }
 DEFAULT_AXIS_LABELS = {
     "time": "t/t₀",

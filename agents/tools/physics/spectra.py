@@ -334,6 +334,7 @@ def execute_tool(
                 apply_style=True,
             )
             session_context["last_figure"] = fig
+            session_context.setdefault("figure_queue", []).append(fig)
             return {
                 "status": "success", "message": "Figure created successfully.",
                 "artifact_type": "plotly_figure", "artifact_content": fig.to_json(),
@@ -359,6 +360,7 @@ def execute_tool(
                 apply_style=True,
             )
             session_context["last_figure"] = fig
+            session_context.setdefault("figure_queue", []).append(fig)
             return {
                 "status": "success", "message": "Figure created successfully.",
                 "artifact_type": "plotly_figure", "artifact_content": fig.to_json(),
@@ -418,6 +420,7 @@ def execute_tool(
                     apply_style=True,
                 )
             session_context["last_figure"] = fig
+            session_context.setdefault("figure_queue", []).append(fig)
             return {
                 "status": "success",
                 "message": "Figure created successfully.",
@@ -485,6 +488,7 @@ def execute_tool(
             y_label=axis_labels.get("y", "Energy E(k)"),
         )
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": "Figure created successfully.",

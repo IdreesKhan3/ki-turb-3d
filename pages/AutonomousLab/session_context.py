@@ -77,8 +77,26 @@ def build_session_context(
             plot_styles[name] = s
     ctx["isotropy_plot_styles"] = {n: plot_styles[n] for n in isotropy_names if n in plot_styles}
     ctx["axis_labels_spec_iso"] = st.session_state.setdefault("axis_labels_spec_iso", {"x": "k", "y": "IC(k)"})
-    ctx["axis_labels_real_iso"] = st.session_state.setdefault("axis_labels_real_iso", {"x": "t/t0", "y": "Energy fraction"})
-    ctx["axis_labels_lumley"] = st.session_state.setdefault("axis_labels_lumley", {"x": "ξ", "y": "η"})
+    # Real Isotropy: page structure (time, energy_frac, lumley_x, lumley_y, bij, cross, dev, convergence)
+    ctx["axis_labels_real_iso"] = st.session_state.setdefault("axis_labels_real_iso", {
+        "time": "t/t₀", "energy_frac": "Energy fraction", "bij": "Anisotropy tensor b<sub>ij</sub>",
+        "cross": "Cross-correlations / Anisotropy index", "dev": "Absolute deviation",
+        "convergence": "Running standard deviation",
+        "lumley_x": "ξ = (III<sub>b</sub>/2)<sup>1/3</sup>", "lumley_y": "η = (-II<sub>b</sub>/3)<sup>1/2</sup>",
+    })
+    ctx["real_iso_legends"] = st.session_state.setdefault("real_iso_legends", {
+        "Ex": "E<sub>x</sub>/E<sub>tot</sub>", "Ey": "E<sub>y</sub>/E<sub>tot</sub>", "Ez": "E<sub>z</sub>/E<sub>tot</sub>",
+        "b11": "b<sub>11</sub>", "b22": "b<sub>22</sub>", "b33": "b<sub>33</sub>",
+        "b12": "|b<sub>12</sub>|", "b13": "|b<sub>13</sub>|", "b23": "|b<sub>23</sub>|", "anis": "Anisotropy index",
+        "devx": "devx", "devy": "devy", "devz": "devz", "maxdev": "Max deviation",
+    })
+    # Real isotropy style configs (agent uses these; map from plot_styles)
+    ctx["real_isotropy_style_config"] = plot_styles.get("Energy Fractions (A)")
+    ctx["lumley_style_config"] = plot_styles.get("Lumley Triangle (B)")
+    ctx["diagonal_bii_style_config"] = plot_styles.get("Diagonal b_ii (C)")
+    ctx["cross_corr_style_config"] = plot_styles.get("Cross-correlations (D)")
+    ctx["deviations_style_config"] = plot_styles.get("Deviations (E)")
+    ctx["convergence_style_config"] = plot_styles.get("Convergence (F)")
 
     # --- PAGE 09 — PDFs ---
     ctx["axis_labels_pdfs"] = st.session_state.setdefault("axis_labels_pdfs", {})
@@ -126,7 +144,8 @@ def build_session_context(
     ctx["pdfs_dx_override"] = st.session_state.get("pdfs_dx_override")
 
     # --- PAGE 12 — Report Generator ---
-    ctx["report_sections"] = st.session_state.get("report_sections") or []
+    # Use st.session_state list directly so modifications persist when sync is skipped (e.g. pending confirmation).
+    ctx["report_sections"] = st.session_state.setdefault("report_sections", [])
 
     # --- Shared: last figure, artifact history ---
     if "last_figure_json" in st.session_state:

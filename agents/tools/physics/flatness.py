@@ -2,6 +2,7 @@
 Flatness factor agent tools: F(r) from flatness_data*_*.txt.
 """
 
+import base64
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -9,7 +10,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from core_physics.flatness import compute_flatness_time_avg
-from tabulate import tabulate
 from visualizations.flatness_vis import create_flatness_figure
 from .._shared import (
     get_from_cache,
@@ -89,6 +89,15 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
             "parameters": {"type": "object", "properties": {}},
         },
     ]
+
+
+def _format_markdown_table(headers: List[str], rows: List[List[Any]]) -> str:
+    """Format table as GitHub-flavored markdown."""
+    lines = ["| " + " | ".join(str(h) for h in headers) + " |"]
+    lines.append("| " + " | ".join("---" for _ in headers) + " |")
+    for row in rows:
+        lines.append("| " + " | ".join(str(c) for c in row) + " |")
+    return "\n".join(lines)
 
 
 def _read_flatness_file(filepath: Path) -> Optional[Tuple[np.ndarray, np.ndarray]]:
@@ -297,6 +306,7 @@ def execute_tool(
         if fig is None:
             return "Error: No valid flatness data to plot."
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": "Flatness figure created.",
@@ -352,7 +362,12 @@ def execute_tool(
                 f"{max_F:.4f}",
             ])
 
-        table_str = tabulate(table_data, headers=headers, tablefmt="github")
+        table_str = _format_markdown_table(headers, table_data)
+
+        # Store for add_report_section when table_data not provided (convention: last_table_summary_rows)
+        session_context["last_table_summary_rows"] = [
+            dict(zip(headers, row)) for row in table_data
+        ]
 
         return {
             "status": "success",
@@ -364,15 +379,73 @@ def execute_tool(
         }
 
     if name == "export_flatness_data":
+        import pandas as pd
+
         ref = args.get("data_reference") or CACHE_KEY_FLATNESS
         cached = get_from_cache(session_context, ref)
         if not cached:
             return "Error: No flatness data. Run compute_flatness first."
-        
-        # Placeholder for export logic
-        return json.dumps({
-            "status": "error",
-            "message": "export_flatness_data is not yet fully implemented.",
-        })
+
+        export_format = (args.get("format") or "flatness").strip().lower()
+        fname = args.get("filename") or ("flatness_summary.csv" if export_format == "summary" else "flatness_export.csv")
+        if not fname.lower().endswith(".csv"):
+            fname = f"{fname}.csv"
+        try:
+            if export_format == "summary":
+                if "simulations" in cached:
+                    sim_items = list(sorted(cached["simulations"].items()))
+                else:
+                    sim_items = [("default", dict(cached))]
+                rows = []
+                for sim_prefix, data in sim_items:
+                    F_mean = np.asarray(data.get("F_mean", []))
+                    files = data.get("files", [])
+                    n_snap = len(files) if files else 0
+                    if len(F_mean) == 0:
+                        continue
+                    rows.append({
+                        "Simulation": sim_prefix,
+                        "Snapshots used": n_snap,
+                        "Mean F(r)": float(np.nanmean(F_mean)),
+                        "Std(F(r))": float(np.nanstd(F_mean)),
+                        "Min F(r)": float(np.nanmin(F_mean)),
+                        "Max F(r)": float(np.nanmax(F_mean)),
+                    })
+                df = pd.DataFrame(rows)
+            else:
+                if "simulations" in cached:
+                    sim_items = list(sorted(cached["simulations"].items()))
+                    rows = []
+                    for sim_prefix, data in sim_items:
+                        r = np.asarray(data.get("r", []))
+                        F_mean = np.asarray(data.get("F_mean", []))
+                        F_std_raw = data.get("F_std")
+                        n = len(r)
+                        for i in range(n):
+                            row = {"simulation": sim_prefix, "r": float(r[i]), "F_mean": float(F_mean[i]) if i < len(F_mean) else None}
+                            if F_std_raw is not None and i < len(F_std_raw):
+                                row["F_std"] = float(F_std_raw[i])
+                            rows.append(row)
+                    df = pd.DataFrame(rows)
+                else:
+                    r = cached.get("r", [])
+                    F_mean = cached.get("F_mean", [])
+                    F_std = cached.get("F_std") or []
+                    n = len(r)
+                    F_std_padded = [F_std[i] if i < len(F_std) else None for i in range(n)]
+                    df = pd.DataFrame({"r": r, "F_mean": F_mean, "F_std": F_std_padded})
+            buf = df.to_csv(index=False)
+            content = buf.encode("utf-8")
+            b64 = base64.b64encode(content).decode("ascii")
+            return {
+                "status": "success",
+                "message": f"Data exported as {fname}.",
+                "artifact_type": "downloadable_file",
+                "filename": fname,
+                "mime_type": "text/csv",
+                "content_base64": b64,
+            }
+        except Exception as e:
+            return f"Error exporting flatness data: {e}"
 
     return json.dumps({"status": "error", "message": f"Unknown tool: {name}"})

@@ -121,12 +121,22 @@ Plan:
 4. Delegate to analyst: explain the physics of all artifacts
 5. Delegate to visualizer: export_figure for artifact 2
 
+User: "Report with [PAGE] plot and [PAGE] summary table from PATH" (any page: flatness, spectral_isotropy, real_isotropy, turbulence_stats)
+Plan (generalized): steward find files for that page → analyst compute_* if page needs it (flatness, spectral_isotropy, real_isotropy, structure_functions, spectra) → visualizer plot_* → add_report_section(plot) → visualizer get_*_summary (if user asked for table) → add_report_section(table) → preview_report. Pages needing analyst: flatness, spectral_isotropy, real_isotropy, structure_functions, spectra. Pages with no analyst: real_isotropy (plot only), turbulence_stats, PDFs, volume_viewer.
+
+User: "Report with [multiple items]: plot A, plot B, theory X, summary table Y, [optional: code] from PATH"
+Plan (generalized): (1) If code in report: analyst generate_code (NO write_file) → visualizer add_report_section(text, content from context). (2) For each plot: steward find files → analyst compute_* if needed → visualizer plot_* → add_report_section(plot). (3) For theory: visualizer get_*_theory → add_report_section(text). (4) For table: steward find → analyst compute_* if needed → visualizer get_*_summary → add_report_section(table). (5) preview_report. Use page catalog for file_patterns and compute_tool per page.
+
 User: "Write a complete research paper in LaTeX, save it, then compile to PDF"
 Plan:
 1. Delegate to analyst: generate_content (content_type=paper, output_format=latex), then write_file to save (e.g. exports/paper.tex)
 2. Delegate to analyst: compile_latex(filepath=exports/paper.tex) to produce PDF
 
 REPORT BUILDER (plot + add to report + show in chat): When user says "plot X, generate a report with it, show the report in chat" or "add this to report and show compiled report", use the Report Builder flow. Do NOT use analyst generate_content or write_file—that produces LaTeX files for download. The Report Builder shows HTML in chat.
+
+CODE IN REPORT vs SAVE TO FILE: When user says "write code in the report", "include code in the report", "put code in the report", or "code for the report"—do NOT plan write_file. Plan: analyst generate_code (return code in response, NO write_file) -> visualizer add_report_section(section_type=text, content=<code>). Use write_file ONLY when user explicitly says "save to file", "save the code", "write to file", "export code", or "save as .py".
+
+DO NOT PASTE LONG CONTENT INTO TASKS: When delegating to add code to the report, do NOT paste the code into the task. Say: "Add the generated code to the report. Use add_report_section(section_type='text', title='Generated Code')." The generate_code tool stores its output; add_report_section uses it automatically.
 
 SINGLE-PLOT REPORT:
 User: "Plot the fourth subplot of real isotropy from DNS/512, generate a report that adds and explains it, then show the compiled report in chat"
@@ -151,7 +161,9 @@ Plan:
 
 CRITICAL: One add_report_section(plot) per figure—no more. To reference figures in explanations, use add_report_section(text) with content like "Figure 1 shows...". Never add the same figure twice. preview_report runs ONCE at the end.
 
-MULTI-ITEM REPORTS (any pages): When user asks for a report with multiple items (figures from different pages, tables, theory equations, explanations), create ONE step per item. Pattern: for each figure → (steward find files if needed, analyst compute if needed, visualizer plot, visualizer add_report_section). For structure functions: analyst compute_structure_functions is REQUIRED before visualizer plot_structure_functions—do not skip. Same for flatness: analyst compute_flatness before visualizer plot_flatness. For each table → (steward find files if needed, visualizer get_summary or equivalent, visualizer add_report_section with table_data). For theory/equations → (visualizer get_theory or equivalent, visualizer add_report_section with content). For explanations → (visualizer add_report_section section_type=text covering ALL figures, tables, and equations). End with preview_report. Do NOT collapse multiple items into one step. Do NOT skip any item the user listed.
+MULTI-ITEM REPORTS (any pages): When user asks for a report with multiple items (figures from different pages, tables, theory equations, explanations), create ONE step per item. Pattern: for each figure → (steward find files if needed, analyst compute if needed, visualizer plot, visualizer add_report_section). For structure functions: analyst compute_structure_functions is REQUIRED before visualizer plot_structure_functions—do not skip. Same for flatness: analyst compute_flatness before visualizer plot_flatness. For each table/summary: steward find files if needed. CRITICAL—tables that need computed data: flatness table → analyst compute_flatness REQUIRED before visualizer get_flatness_summary. Spectral isotropy table → analyst compute_spectral_isotropy REQUIRED before visualizer get_spectral_isotropy_summary. Real isotropy table → analyst compute_isotropy REQUIRED before visualizer get_real_isotropy_summary. (Turbulence stats table: steward find, visualizer get_turbulence_stats_summary—no analyst.) Then visualizer add_report_section with table_data. For theory/equations → (visualizer get_theory or equivalent, visualizer add_report_section with content). For explanations → (visualizer add_report_section section_type=text covering ALL figures, tables, and equations). End with preview_report. Do NOT collapse multiple items into one step. Do NOT skip any item the user listed.
+
+CRITICAL—REPORT SECTIONS: Each figure, table, and theory text MUST get its OWN add_report_section step. NEVER create a single step like "add all to report" or "put everything in report"—the visualizer adds only one section per delegation. Plan: plot 1 → add_report_section(plot) → plot 2 → add_report_section(plot) → ... → get_theory → add_report_section(text) → get_summary → add_report_section(table) → preview_report. If the user also asks for web search or code writing, do those steps first, then the report items in order.
 
 Remember: Infer from the user's words. Include every item they asked for; add nothing they did not ask for.
 

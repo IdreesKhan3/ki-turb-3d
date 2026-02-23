@@ -39,13 +39,22 @@ SYNC_APP_LEVEL: List[Tuple[str, str]] = [
 # (no sync yet)
 
 # --- PAGE 04 — Real Isotropy ---
-# (add: axis_labels_real_iso, axis_labels_lumley, real_iso_legend_names, etc.)
+SYNC_PAGE_REAL_ISOTROPY: List[Tuple[str, str]] = [
+    ("axis_labels_real_iso", "axis_labels_real_iso"),
+    ("real_iso_legends", "real_iso_legends"),
+]
 
 # --- PAGE 05 — Spectral Isotropy ---
 # (add: axis_labels_spec_iso, spec_iso_sim_legend_names, spec_iso_legends, etc.)
 
 # --- PAGE 06 — Energy Spectra ---
-# (plot_styles covers spectra; axis_labels_raw, axis_labels_norm via spectra tool)
+SYNC_PAGE_SPECTRA: List[Tuple[str, str]] = [
+    ("axis_labels_raw", "axis_labels_raw"),
+    ("axis_labels_norm", "axis_labels_norm"),
+    ("spectrum_legend_names", "spectrum_legend_names"),
+    ("norm_legend_names", "norm_legend_names"),
+    ("spectra_options", "spectra_options"),
+]
 
 # --- PAGE 07 — Flatness ---
 # (add: axis_labels_flatness, flatness_sim_legend_names, etc.)
@@ -103,6 +112,8 @@ def _all_mappings() -> List[Tuple[str, str]]:
     """Collect all mappings in page order."""
     mappings: List[Tuple[str, str]] = []
     mappings.extend(SYNC_APP_LEVEL)
+    mappings.extend(SYNC_PAGE_REAL_ISOTROPY)
+    mappings.extend(SYNC_PAGE_SPECTRA)
     mappings.extend(SYNC_PAGE_PDFS)
     mappings.extend(SYNC_PAGE_REPORT)
     return mappings

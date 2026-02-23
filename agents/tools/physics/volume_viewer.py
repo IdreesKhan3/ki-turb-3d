@@ -401,6 +401,7 @@ def execute_tool(
         from pages.AutonomousLab.session_sync import update_data_directory_in_context
         update_data_directory_in_context(session_context, Path(selected_file).parent.resolve())
         session_context["last_figure"] = fig
+        session_context.setdefault("figure_queue", []).append(fig)
         return {
             "status": "success",
             "message": f"3D volume plot created ({Path(selected_file).name}, {field_type}).",
