@@ -24,6 +24,16 @@ from .real_isotropy_vis import (
     create_deviations_figure,
     create_convergence_figure,
 )
+from .structure_functions_vis import (
+    create_sp_figure,
+    create_ess_figure,
+    create_anomalies_figure,
+)
+from .pdfs_vis import (
+    create_velocity_components_pdf_figure,
+    create_1d_pdf_figure,
+    create_2d_contour_pdf_figure,
+)
 
 __all__ = [
     # spectra page related
@@ -44,5 +54,11 @@ __all__ = [
     'create_cross_correlations_figure',
     'create_deviations_figure',
     'create_convergence_figure',
+    'create_sp_figure',
+    'create_ess_figure',
+    'create_anomalies_figure',
+    'create_velocity_components_pdf_figure',
+    'create_1d_pdf_figure',
+    'create_2d_contour_pdf_figure',
 ]
 

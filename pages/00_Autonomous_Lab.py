@@ -14,6 +14,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from utils.theme_config import inject_theme_css
+from utils.app_navigation import render_app_navigation_iframe
 from utils.multimodal_input import (
     render_multimodal_input,
     get_input_text,
@@ -105,20 +106,6 @@ def render_sidebar():
         elif selected_provider == "gemini":
             st.warning("Set GOOGLE_API_KEY environment variable.")
 
-    st.markdown("---")
-    st.subheader("Example Queries")
-    examples = [
-        "Analyze energy spectra",
-        "Change y-axis label to E(k)",
-        "Search for Kolmogorov turbulence",
-        "git status",
-        "List files in current directory",
-    ]
-    for i, ex in enumerate(examples):
-        if st.button(ex, key=f"lab_ex_{i}"):
-            st.session_state.lab_example_query = ex
-
-
 def render_chat_history():
     """Render chat history (text, figures, tables)."""
     st.markdown("---")
@@ -150,6 +137,18 @@ def render_chat_history():
                         st.markdown("---")
                         st.markdown(f"**{block.get('title', 'Theory & Equations')}**")
                         st.markdown(block.get("content", ""))
+                    # Report HTML blocks (compiled report preview — rendered like PDF/HTML)
+                    # Use st.html (no iframe) when available to avoid duplicate sidebar; wrap in container for scrolling
+                    report_html_blocks = msg.get("report_html_blocks") or []
+                    for j, block in enumerate(report_html_blocks):
+                        st.markdown("---")
+                        st.markdown(f"**{block.get('title', 'Report Preview')}**")
+                        html_content = block.get("content", "")
+                        try:
+                            with st.container(height=800):
+                                st.html(html_content)
+                        except AttributeError:
+                            st.components.v1.html(html_content, height=800, scrolling=True)
                     if msg.get("download"):
                         d = msg["download"]
                         st.download_button(
@@ -172,23 +171,17 @@ def main():
         "Chat with agents, ask questions, clear doubts, or request plots and analysis."
     )
 
+    # Browse App Pages — main area so it's visible (sidebar was too cramped)
+    render_app_navigation_iframe(key_prefix="lab", in_sidebar=False)
+
     with st.sidebar:
         render_sidebar()
 
-    data_dir = st.sidebar.text_input(
-        "Data directory (optional)",
-        placeholder="/path/to/simulation/data",
-    )
-    data_path = Path(data_dir).resolve() if data_dir else None
-    if data_dir and data_path and not data_path.exists():
-        st.sidebar.warning("Directory does not exist.")
-    st.sidebar.caption(f"Exports: `{project_root / 'exports'}`")
-
     render_chat_history()
 
-    # Session context builder (used for both normal and resume flows)
+    # Session context builder (uses main app data_directory from session state)
     def _session_context():
-        return build_session_context(data_dir=data_dir, data_path=data_path)
+        return build_session_context()
 
     # Handle resume from tool confirmation (user clicked Accept or Reject)
     pending = st.session_state.lab_pending_tool
@@ -311,11 +304,32 @@ def main():
                         artifacts = [response_data["artifact"]]
                     artifact = artifacts[-1] if artifacts else None
 
-                    # Sync plot_styles back if tool created/updated them
-                    if session_context.get("plot_styles"):
-                        st.session_state.plot_styles.update(session_context["plot_styles"])
+                    # Sync agent results to session (see session_sync.py for page-order mappings)
+                    from pages.AutonomousLab.session_sync import sync_context_to_session
+                    sync_context_to_session(session_context)
 
                     msg_entry = {"role": "assistant", "content": text_content}
+
+                    # Fallback: user asked to see report but agent returned outline. Show compiled report anyway
+                    # (same as manual Report page: figures, tables, text rendered)
+                    _show_report_kw = ("show report", "see the report", "display report", "preview report",
+                                        "compiled report", "full report", "show me the report", "how it looks",
+                                        "report with figures", "report with tables")
+                    _ctx_for_preview = _session_context()  # Use synced session (report_sections from agent run)
+                    if (any(kw in user_input.lower() for kw in _show_report_kw)
+                            and not any(a.get("artifact_type") == "report_html" for a in (artifacts or []))
+                            and _ctx_for_preview.get("report_sections")):
+                        try:
+                            from agents.tools import execute_tool
+                            prev = execute_tool("preview_report", {}, project_root, _ctx_for_preview)
+                            if isinstance(prev, dict) and prev.get("artifact_type") == "report_html":
+                                msg_entry.setdefault("report_html_blocks", []).append({
+                                    "content": prev.get("artifact_content", ""),
+                                    "title": "Report Preview",
+                                })
+                                msg_entry["content"] = prev.get("message", "Report preview (compiled form).")
+                        except Exception:
+                            pass
                     msg_figures = []
                     msg_tables = []
                     msg_markdown_blocks = []
@@ -366,6 +380,11 @@ def main():
                                     "caption": (text_content or "")[:200],
                                 })
                                 st.session_state.lab_artifact_history = st.session_state.lab_artifact_history[-LAB_ARTIFACT_HISTORY_MAX:]
+                        elif a.get("artifact_type") == "report_html":
+                            html_content = a.get("artifact_content") or ""
+                            title = a.get("artifact_title", "Report Preview")
+                            if html_content:
+                                msg_entry.setdefault("report_html_blocks", []).append({"content": html_content, "title": title})
                         elif a.get("artifact_type") == "downloadable_file" and not msg_entry.get("download"):
                             try:
                                 import base64
@@ -386,20 +405,25 @@ def main():
                     if msg_markdown_blocks:
                         msg_entry["markdown_blocks"] = msg_markdown_blocks
                     # Fallback: if user asked to save/export and agent didn't call export_figure, do it here
+                    # Only trigger on explicit save/export/download intent — NOT on "pdf" from "PDFs page" or "Dissipation Rate PDF" (probability density)
                     if not msg_entry.get("download") and "last_figure_json" in st.session_state:
-                        save_keywords = ("save", "export", "download", "png", "pdf", "svg")
-                        if any(kw in user_input.lower() for kw in save_keywords):
+                        save_intent = any(kw in user_input.lower() for kw in ("save", "export", "download"))
+                        if save_intent:
                             try:
                                 import base64
                                 fig = pio.from_json(st.session_state["last_figure_json"])
                                 fmt = "png"
-                                if "pdf" in user_input.lower():
+                                ul = user_input.lower()
+                                # Use "pdf" only when it clearly means file format, not probability density (PDFs page)
+                                pdf_as_format = any(p in ul for p in ("save as pdf", "export to pdf", "export as pdf", "to pdf", "as pdf", "pdf format", "download pdf"))
+                                pdfs_page_context = any(p in ul for p in ("pdfs page", "pdf page", "dissipation pdf", "vorticity pdf", "velocity pdf", "enstrophy pdf", "joint pdf", "r-q", "probability density"))
+                                if pdf_as_format and not pdfs_page_context:
                                     fmt = "pdf"
-                                elif "svg" in user_input.lower():
+                                elif "svg" in ul and not pdfs_page_context:
                                     fmt = "svg"
-                                elif "html" in user_input.lower():
+                                elif "html" in ul:
                                     fmt = "html"
-                                fname = f"spectrum.{fmt}"
+                                fname = f"figure.{fmt}"
                                 out_dir = project_root / "exports"
                                 out_dir.mkdir(exist_ok=True)
                                 out_path = out_dir / fname

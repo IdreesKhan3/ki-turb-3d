@@ -40,6 +40,20 @@ PAGE_SCHEMA: Dict[str, Dict[str, Any]] = {
         "keywords": ["autonomous lab", "chat", "ai assistant"],
         "page_type": "chat",
     },
+    "app_settings": {
+        "file_patterns": [],
+        "compute_tool": None,
+        "plot_tools": [],
+        "summary_tool": None,
+        "skip_analyst": True,
+        "keywords": [
+            "hdf5 fortran", "hdf5 default", "hdf5 format", "hdf5 layout",
+            "fortran hdf5", "default hdf5", "data format", "set hdf5",
+            "load hdf5 fortran", "use hdf5 fortran", "hdf5 fortran option",
+            "hdf5 no transpose", "python hdf5", "standard hdf5",
+        ],
+        "page_type": "chat",
+    },
     "overview": {
         "file_patterns": ["simulation.input", "simulation.json", "turbulence_stats*.csv", "tau_analysis_*.bin", "eps_real_validation*.csv"],
         "compute_tool": None,
@@ -115,65 +129,118 @@ PAGE_SCHEMA: Dict[str, Dict[str, Any]] = {
     "flatness": {
         "file_patterns": ["flatness_data*_*.txt"],
         "compute_tool": "compute_flatness",
-        "plot_tools": ["plot_flatness"],
+        "plot_tools": ["plot_flatness", "get_flatness_theory"],
         "summary_tool": "get_flatness_summary",
         "skip_analyst": False,
-        "keywords": ["flatness", "kurtosis", "intermittency", "flatness page", "flatness data"],
+        "keywords": ["flatness", "kurtosis", "intermittency", "flatness page", "flatness data", "flatness theory", "flatness equations", "theory for flatness", "equations for flatness", "F(r) theory", "kurtosis theory"],
         "page_type": "analysis",
     },
 
     # =========================================================================
-    # PAGE 08 — STRUCTURE FUNCTIONS (structure_functions_*.txt) — tools not yet wired
+    # PAGE 08 — STRUCTURE FUNCTIONS (structure_functions_*.txt, structure_funcs*_t*.bin)
     # =========================================================================
     "structure_functions": {
         "file_patterns": ["structure_functions_*.txt", "structure_funcs*_t*.bin"],
-        "compute_tool": None,
-        "plot_tools": [],
+        "compute_tool": "compute_structure_functions",
+        "plot_tools": ["plot_structure_functions", "get_structure_functions_theory"],
         "summary_tool": None,
-        "skip_analyst": True,
-        "keywords": ["structure function"],
+        "skip_analyst": False,
+        "keywords": ["structure function", "S_p", "ESS", "structure functions page", "structure functions theory", "theory for structure functions", "equations for structure functions", "She-Leveque", "scaling exponent"],
+        "data_refs": {"structure": "current_structure_functions_data"},
         "page_type": "analysis",
     },
 
     # =========================================================================
-    # PAGE 09 — PDFs (turbulence_stats*.csv) — tools not yet wired
+    # PAGE 09 — PDFs (*.vti, *.h5, *.hdf5) — Phase 1: schema wired, tools TBD
+    # Velocity-based PDFs: vorticity, enstrophy, dissipation, velocity magnitude, joint PDFs (R-Q, velocity-dissipation, etc.)
     # =========================================================================
     "pdfs": {
-        "file_patterns": ["turbulence_stats*.csv"],
+        "file_patterns": ["*.vti", "*.h5", "*.hdf5"],
         "compute_tool": None,
-        "plot_tools": [],
+        "plot_tools": ["plot_pdf"],
         "summary_tool": None,
         "skip_analyst": True,
-        "keywords": ["pdf", "turbulence stats"],
+        "keywords": [
+            "pdf", "pdfs", "pdfs page", "probability density",
+            "velocity pdf", "velocity components pdf", "u v w pdf", "vorticity pdf", "enstrophy pdf", "dissipation pdf", "dissipation rate pdf",
+            "velocity magnitude pdf", "velocity magnitude",
+            "joint pdf", "velocity-dissipation joint", "velocity-enstrophy joint",
+            "dissipation-enstrophy joint", "r-q joint", "r-q topological", "q-r joint",
+        ],
         "page_type": "analysis",
     },
 
-    # --- PAGES 10-13: Other stats, 3D viewer, Report, Citation ---
+    # =========================================================================
+    # PAGE 10 — OTHER TURBULENCE STATS (turbulence_stats*.csv, eps_real_validation*.csv)
+    # Custom x-y plots and data tables from turbulence_stats and eps_validation CSVs
+    # =========================================================================
     "other_turbulence_stats": {
-        "file_patterns": ["turbulence_stats*.csv"],
+        "file_patterns": ["turbulence_stats*.csv", "eps_real_validation*.csv", "turbulence_validation*.csv"],
         "compute_tool": None,
-        "plot_tools": [],
-        "summary_tool": None,
+        "plot_tools": ["plot_turbulence_stats"],
+        "summary_tool": "get_turbulence_stats_summary",
         "skip_analyst": True,
-        "keywords": ["other stats", "turbulence stats", "time series"],
+        "keywords": [
+            "other stats",
+            "other turbulence stats",
+            "turbulence stats",
+            "turbulence stats page",
+            "time series",
+            "custom plot",
+            "plot turbulence stats",
+            "turbulence stats table",
+            "turbulence stats summary",
+            "energy balance",
+            "eps validation",
+        ],
         "page_type": "analysis",
     },
+    # =========================================================================
+    # PAGE 11 — 3D VOLUME VIEWER (*.vti, *.h5, *.hdf5)
+    # Velocity field visualization: volume rendering, slices, isosurface, Q/R invariants
+    # =========================================================================
     "volume_viewer_3d": {
         "file_patterns": ["*.vti", "*.h5", "*.hdf5"],
         "compute_tool": None,
-        "plot_tools": [],
+        "plot_tools": ["plot_volume_3d"],
         "summary_tool": None,
         "skip_analyst": True,
-        "keywords": ["3d", "volume", "viewer", "vti", "velocity field"],
+        "keywords": [
+            "3d volume",
+            "3d volume viewer",
+            "volume viewer",
+            "volume visualization",
+            "velocity field 3d",
+            "vti",
+            "hdf5",
+            "vorticity",
+            "isosurface",
+            "q invariant",
+            "r invariant",
+            "q_s^s",
+        ],
         "page_type": "analysis",
     },
+    # =========================================================================
+    # PAGE 12 — REPORT GENERATOR (report_config.json, lab_artifact_history)
+    # Phase 2: add_report_section, generate_report wired.
+    # =========================================================================
     "report_generator": {
-        "file_patterns": [],
+        "file_patterns": ["report_config.json"],
         "compute_tool": None,
-        "plot_tools": [],
+        "plot_tools": ["preview_report", "add_report_section", "remove_report_section",
+                      "reorder_report_section", "edit_report_section", "generate_report"],
         "summary_tool": None,
         "skip_analyst": True,
-        "keywords": ["report", "export report", "pdf report"],
+        "keywords": [
+            "report", "export report", "pdf report", "report builder",
+            "scientific report", "generate report", "report page",
+            "add to report", "capture to report", "report sections",
+            "what's in my report", "show report structure", "report outline",
+            "show me the report", "preview report", "compiled report", "display report",
+            "delete section", "remove section", "move section", "reorder section",
+            "edit section", "change section", "update section",
+        ],
         "page_type": "analysis",
     },
     "citation": {
@@ -225,8 +292,30 @@ INTENT_ENERGY_SPECTRA_THEORY = "energy_spectra_theory"
 
 # --- PAGES 07-09 — Flatness, Structure Functions, PDFs ---
 INTENT_FLATNESS = "flatness"
+INTENT_FLATNESS_THEORY = "flatness_theory"
 INTENT_STRUCTURE_FUNCTIONS = "structure_functions"
+INTENT_STRUCTURE_FUNCTIONS_THEORY = "structure_functions_theory"
 INTENT_PDF = "pdf"
+
+# --- PAGE 10 — Other Turbulence Stats ---
+INTENT_OTHER_TURBULENCE_STATS = "other_turbulence_stats"
+INTENT_OTHER_TURBULENCE_STATS_SUMMARY = "other_turbulence_stats_summary"
+
+# --- PAGE 11 — 3D Volume Viewer ---
+INTENT_VOLUME_VIEWER_3D = "volume_viewer_3d"
+INTENT_VOLUME_VIEWER_3D_THEORY = "volume_viewer_3d_theory"
+
+# --- PAGE 12 — Report Generator ---
+INTENT_REPORT_ADD_SECTION = "report_add_section"
+INTENT_REPORT_REMOVE = "report_remove"
+INTENT_REPORT_REORDER = "report_reorder"
+INTENT_REPORT_EDIT = "report_edit"
+INTENT_REPORT_GENERATE = "report_generate"
+INTENT_REPORT_PREVIEW = "report_preview"
+
+# --- APP SETTINGS — HDF5 format ---
+INTENT_APP_SETTINGS_HDF5_FORTRAN = "app_settings_hdf5_fortran"
+INTENT_APP_SETTINGS_HDF5_DEFAULT = "app_settings_hdf5_default"
 
 # --- Fallback ---
 INTENT_UNKNOWN = "unknown"
@@ -502,32 +591,178 @@ INTENT_ROUTING: Dict[str, Dict[str, Any]] = {
             "If user ALSO asked for summary: after plot, call get_flatness_summary()."
         ),
     },
-
-    # -------------------------------------------------------------------------
-    # PAGES 07-09 — Flatness, Structure Functions, PDFs (tools not yet wired)
-    # -------------------------------------------------------------------------
-    INTENT_FLATNESS: {
+    INTENT_FLATNESS_THEORY: {
         "page_id": "flatness",
-        "primary_tool": "plot_flatness",
-        "prevent_tools": [],
+        "primary_tool": "get_flatness_theory",
+        "prevent_tools": ["compute_flatness", "plot_flatness"],
         "intent_override": (
-            "INTENT_OVERRIDE: User requested FLATNESS (Page 07). "
-            "Delegate: steward (find flatness_data*_*.txt) -> analyst (compute_flatness) -> visualizer (plot_flatness). "
-            "ONE plot only. STOP after producing the plot. Do not delegate to visualizer again. "
-            "If user ALSO asked for summary: after plot, call get_flatness_summary()."
+            "INTENT_OVERRIDE: User requested FLATNESS THEORY/EQUATIONS (Page 07): F_L(r), longitudinal velocity increment, Gaussian reference (F=3), intermittency. "
+            "Use get_flatness_theory ONLY. Delegate: visualizer (get_flatness_theory()). No data needed. Skip steward and analyst. STOP after the markdown.\n\n"
         ),
     },
     INTENT_STRUCTURE_FUNCTIONS: {
         "page_id": "structure_functions",
         "primary_tool": "plot_structure_functions",
         "prevent_tools": [],
-        "intent_override": None,
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested STRUCTURE FUNCTIONS (Page 08): S_p(r), ESS, or anomalies. "
+            "Exactly 3 steps: steward (find structure_functions_*.txt or structure_funcs*_t*.bin) -> analyst (compute_structure_functions) -> visualizer (plot_structure_functions). "
+            "ONE plot only. When Context has 'Computed structure functions' or data_reference=current_structure_functions_data, delegate directly to visualizer—do NOT re-delegate to analyst. "
+            "STOP after producing the plot. Do not delegate plot_structure_functions again."
+        ),
+    },
+    INTENT_STRUCTURE_FUNCTIONS_THEORY: {
+        "page_id": "structure_functions",
+        "primary_tool": "get_structure_functions_theory",
+        "prevent_tools": ["compute_structure_functions", "plot_structure_functions"],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested STRUCTURE FUNCTIONS THEORY/EQUATIONS (Page 08): S_p(r), ESS, She-Leveque scaling. "
+            "Use get_structure_functions_theory ONLY. Delegate: visualizer (get_structure_functions_theory()). No data needed. Skip steward and analyst. STOP after the markdown.\n\n"
+        ),
     },
     INTENT_PDF: {
         "page_id": "pdfs",
         "primary_tool": "plot_pdf",
         "prevent_tools": [],
-        "intent_override": None,
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested PDFs (Page 09): probability density functions from velocity fields—vorticity, enstrophy, dissipation, velocity magnitude, or joint PDFs (R-Q, velocity-dissipation, etc.). "
+            "Delegate: steward (find *.vti or *.h5 or *.hdf5 in path) -> visualizer (plot_pdf). "
+            "Skip analyst. Data: velocity fields from VTI/HDF5. ONE plot only. STOP after producing the plot.\n\n"
+        ),
+    },
+
+    # -------------------------------------------------------------------------
+    # PAGE 10 — OTHER TURBULENCE STATS
+    # -------------------------------------------------------------------------
+    INTENT_OTHER_TURBULENCE_STATS: {
+        "page_id": "other_turbulence_stats",
+        "primary_tool": "plot_turbulence_stats",
+        "prevent_tools": ["get_turbulence_stats_summary"],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested OTHER TURBULENCE STATS (Page 10): custom x-y plot from turbulence_stats*.csv or eps_real_validation*.csv. "
+            "Delegate: steward (find turbulence_stats*.csv or eps_real_validation*.csv in path) -> visualizer (plot_turbulence_stats). "
+            "Skip analyst. ONE plot only. STOP after producing the plot.\n\n"
+        ),
+    },
+    INTENT_OTHER_TURBULENCE_STATS_SUMMARY: {
+        "page_id": "other_turbulence_stats",
+        "primary_tool": "get_turbulence_stats_summary",
+        "prevent_tools": ["plot_turbulence_stats"],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested OTHER TURBULENCE STATS SUMMARY/TABLE (Page 10). "
+            "Delegate: steward (find turbulence_stats*.csv or eps_real_validation*.csv) -> visualizer (get_turbulence_stats_summary). "
+            "Skip analyst. STOP after the table.\n\n"
+        ),
+    },
+
+    # -------------------------------------------------------------------------
+    # PAGE 11 — 3D VOLUME VIEWER
+    # -------------------------------------------------------------------------
+    INTENT_VOLUME_VIEWER_3D: {
+        "page_id": "volume_viewer_3d",
+        "primary_tool": "plot_volume_3d",
+        "prevent_tools": ["get_volume_viewer_theory"],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested 3D VOLUME VIEWER (Page 11): 3D visualization of velocity fields from *.vti, *.h5, *.hdf5. "
+            "Delegate: steward (find *.vti or *.h5 or *.hdf5 in path) -> visualizer (plot_volume_3d). "
+            "Skip analyst. Pass data_dir when task specifies path (e.g. examples/DNS/512). ONE plot only. STOP after producing the plot.\n\n"
+        ),
+    },
+    INTENT_VOLUME_VIEWER_3D_THEORY: {
+        "page_id": "volume_viewer_3d",
+        "primary_tool": "get_volume_viewer_theory",
+        "prevent_tools": ["plot_volume_3d"],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested 3D VOLUME VIEWER THEORY/EQUATIONS (Page 11): velocity magnitude, vorticity, Q_S^S, Q/R invariants. "
+            "Use get_volume_viewer_theory ONLY. Delegate: visualizer (get_volume_viewer_theory()). No data needed. Skip steward and analyst. STOP after the markdown.\n\n"
+        ),
+    },
+
+    # -------------------------------------------------------------------------
+    # PAGE 12 — REPORT GENERATOR
+    # -------------------------------------------------------------------------
+    INTENT_REPORT_ADD_SECTION: {
+        "page_id": "report_generator",
+        "primary_tool": "add_report_section",
+        "prevent_tools": ["generate_report"],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested to ADD TO REPORT (Page 12): add section (plot, text, or table). "
+            "Use add_report_section. For plot: section_type='plot', title from figure. For text: section_type='text', content=markdown. "
+            "For table: section_type='table', table_data=list of dicts (each dict=row). Skip steward and analyst. Delegate to visualizer. STOP after adding.\n\n"
+        ),
+    },
+    INTENT_REPORT_REMOVE: {
+        "page_id": "report_generator",
+        "primary_tool": "remove_report_section",
+        "prevent_tools": [],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested to REMOVE/DELETE a report section. "
+            "Use remove_report_section(index=1-based). Extract section number from user (e.g. 'section 2' -> index=2). "
+            "Delegate to visualizer. STOP after removing.\n\n"
+        ),
+    },
+    INTENT_REPORT_REORDER: {
+        "page_id": "report_generator",
+        "primary_tool": "reorder_report_section",
+        "prevent_tools": [],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested to MOVE/REORDER a report section. "
+            "Use reorder_report_section(from_index, to_index). Extract indices from user (1-based). "
+            "E.g. 'move section 2 up' -> from_index=2, to_index=1. 'move section 1 down' -> from_index=1, to_index=2. "
+            "Delegate to visualizer. STOP after reordering.\n\n"
+        ),
+    },
+    INTENT_REPORT_EDIT: {
+        "page_id": "report_generator",
+        "primary_tool": "edit_report_section",
+        "prevent_tools": [],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested to EDIT a report section (title, content, caption, header_level). "
+            "Use edit_report_section(index=1-based, title=..., content=..., caption=..., header_level=...). "
+            "Only pass fields user asked to change. Delegate to visualizer. STOP after editing.\n\n"
+        ),
+    },
+    INTENT_REPORT_GENERATE: {
+        "page_id": "report_generator",
+        "primary_tool": "generate_report",
+        "prevent_tools": ["add_report_section"],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested to GENERATE REPORT (Page 12): export the scientific report as HTML or PDF. "
+            "Use generate_report. format='pdf' or 'html' based on user preference. Uses report_sections from session. "
+            "Skip steward and analyst. Delegate directly to visualizer (generate_report). STOP after generating.\n\n"
+        ),
+    },
+    INTENT_REPORT_PREVIEW: {
+        "page_id": "report_generator",
+        "primary_tool": "preview_report",
+        "prevent_tools": ["generate_report"],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested to SEE THE FULL COMPILED REPORT (Page 12): figures, tables, text, sections—everything rendered in chat. "
+            "Use preview_report ONLY. Do NOT use generate_report or read_file. "
+            "Delegate directly to visualizer (preview_report). STOP after showing the compiled report.\n\n"
+        ),
+    },
+
+    # -------------------------------------------------------------------------
+    # APP SETTINGS — HDF5 format (steward: set_hdf5_format)
+    # -------------------------------------------------------------------------
+    INTENT_APP_SETTINGS_HDF5_FORTRAN: {
+        "page_id": "app_settings",
+        "primary_tool": "set_hdf5_format",
+        "prevent_tools": [],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested HDF5 format: Fortran (transpose for Fortran-written velocity files). "
+            "Delegate to steward: set_hdf5_format(format='fortran'). Steward calls the tool. STOP after steward confirms.\n\n"
+        ),
+    },
+    INTENT_APP_SETTINGS_HDF5_DEFAULT: {
+        "page_id": "app_settings",
+        "primary_tool": "set_hdf5_format",
+        "prevent_tools": [],
+        "intent_override": (
+            "INTENT_OVERRIDE: User requested HDF5 format: Default (no transpose, Python/standard layout). "
+            "Delegate to steward: set_hdf5_format(format='default'). Steward calls the tool. STOP after steward confirms.\n\n"
+        ),
     },
 }
 
@@ -655,6 +890,16 @@ def get_tool_for_request(page_id: str, request_type: str) -> Optional[str]:
         if request_type in ("theory", "equations"):
             return "get_energy_spectra_theory"
         return "plot_spectrum"
+    if page_id == "flatness":
+        if request_type in ("theory", "equations"):
+            return "get_flatness_theory"
+        if request_type == "summary":
+            return "get_flatness_summary"
+        return "plot_flatness"
+    if page_id == "structure_functions":
+        if request_type in ("theory", "equations"):
+            return "get_structure_functions_theory"
+        return "plot_structure_functions"
     if page_id == "theory_equations":
         if request_type in ("ns_equations", "navier-stokes", "ns"):
             return "get_theory_ns_equations"
@@ -665,4 +910,28 @@ def get_tool_for_request(page_id: str, request_type: str) -> Optional[str]:
         if request_type in ("mrt_matrix", "matrix", "transformation matrix"):
             return "get_theory_mrt_matrix"
         return "get_theory_ns_equations"  # default for generic theory request
+    if page_id == "other_turbulence_stats":
+        if request_type == "summary":
+            return "get_turbulence_stats_summary"
+        return "plot_turbulence_stats"
+    if page_id == "pdfs":
+        return "plot_pdf"
+    if page_id == "volume_viewer_3d":
+        if request_type in ("theory", "equations"):
+            return "get_volume_viewer_theory"
+        return "plot_volume_3d"
+    if page_id == "report_generator":
+        if request_type == "generate":
+            return "generate_report"
+        if request_type == "preview":
+            return "preview_report"
+        if request_type == "structure":
+            return "preview_report"  # structure/structure request -> preview (full report has TOC)
+        if request_type == "remove":
+            return "remove_report_section"
+        if request_type == "reorder":
+            return "reorder_report_section"
+        if request_type == "edit":
+            return "edit_report_section"
+        return "add_report_section"
     return (cfg.get("plot_tools") or [None])[0]

@@ -13,12 +13,14 @@ import h5py
 from typing import Dict
 
 
-def read_hdf5_file(filepath: str) -> Dict:
+def read_hdf5_file(filepath: str, fortran_order: bool = True) -> Dict:
     """
     Read HDF5 file containing 3D velocity field
     
     Args:
         filepath: Path to .h5 or .hdf5 file
+        fortran_order: If True, apply transpose for Fortran-written HDF5 (h5py reads
+            reversed dims). If False, use data as-is (Python/default layout).
         
     Returns:
         Dictionary with:
@@ -80,8 +82,11 @@ def read_hdf5_file(filepath: str) -> Dict:
             
             varname = metadata.get('varname', metadata.get('name', 'Velocity'))
             
-            # Fortran col-major (1st idx fastest) vs HDF5 row-major (last fastest) → h5py reads (n,m,l,3). Transpose (2,1,0,3) → (nx,ny,nz,3). # change accordingly
-            velocity = np.transpose(velocity, (2, 1, 0, 3))
+            # Fortran writes velocity(l,m,n,3) with dims=[l,m,n,3]; h5py reads reversed → (3,n,m,l).
+            # After transpose(1,2,3,0) we have (n,m,l,3). Transpose (2,1,0,3) → (l,m,n,3) = (nx,ny,nz,3).
+            # When fortran_order=False, skip this (use Python/default layout as-is).
+            if fortran_order:
+                velocity = np.transpose(velocity, (2, 1, 0, 3))
             
             return {
                 'dimensions': (nx, ny, nz),
@@ -98,8 +103,8 @@ def read_hdf5_file(filepath: str) -> Dict:
 
 
 def read_hdf5_file_fortran_order(filepath: str) -> Dict:
-    """Read HDF5 file (Fortran-written). Same as read_hdf5_file."""
-    return read_hdf5_file(filepath)
+    """Read HDF5 file (Fortran-written). Same as read_hdf5_file with fortran_order=True."""
+    return read_hdf5_file(filepath, fortran_order=True)
 
 
 def compute_velocity_magnitude(velocity: np.ndarray) -> np.ndarray:
@@ -132,17 +137,17 @@ def compute_vorticity(velocity: np.ndarray, dx: float = 1.0, dy: float = 1.0, dz
     uy = velocity[:, :, :, 1]
     uz = velocity[:, :, :, 2]
     
-    # Compute gradients using central differences
-    dudy = np.gradient(uy, dy, axis=1)
-    dudz = np.gradient(uy, dz, axis=2)
-    dvdx = np.gradient(ux, dx, axis=0)
-    dvdz = np.gradient(uz, dz, axis=2)
-    dwdx = np.gradient(uz, dx, axis=0)
-    dwdy = np.gradient(uz, dy, axis=1)
+    # ωx=∂uz/∂y-∂uy/∂z, ωy=∂ux/∂z-∂uz/∂x, ωz=∂uy/∂x-∂ux/∂y
+    dux_dy = np.gradient(ux, dy, axis=1)
+    dux_dz = np.gradient(ux, dz, axis=2)
+    duy_dx = np.gradient(uy, dx, axis=0)
+    duy_dz = np.gradient(uy, dz, axis=2)
+    duz_dx = np.gradient(uz, dx, axis=0)
+    duz_dy = np.gradient(uz, dy, axis=1)
     
-    omega_x = dwdy - dvdz
-    omega_y = dudz - dwdx
-    omega_z = dvdx - dudy
+    omega_x = duz_dy - duy_dz
+    omega_y = dux_dz - duz_dx
+    omega_z = duy_dx - dux_dy
     
     vorticity = np.zeros_like(velocity)
     vorticity[:, :, :, 0] = omega_x

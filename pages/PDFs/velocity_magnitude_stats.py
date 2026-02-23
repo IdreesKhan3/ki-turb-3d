@@ -94,43 +94,72 @@ def render_velocity_magnitude_tab(data_dir_or_dirs, load_velocity_file_func,
     # Create mapping from filename to full path (handle files from different directories)
     filename_to_path = {Path(f).name: f for f in all_files}
     
-    # File selection - independent for each plot
+    # File selection (shared with Autonomous Lab agent workflow)
     st.sidebar.header("📁 File Selection")
     st.sidebar.caption(f"Found {len(all_files)} velocity files")
-    
+    file_options = [Path(f).name for f in all_files]
+    default_files = [Path(f).name for f in all_files[:min(2, len(all_files))]]
+
+    def resolve_default_selection(session_value, fallback):
+        valid = [f for f in (session_value or fallback) if f in file_options]
+        return valid if valid else fallback
+
+    for key, fallback in [
+        ("velocity_pdf_file_select", default_files),
+        ("velocity_mag_file_select", default_files),
+    ]:
+        if key in st.session_state:
+            valid = [f for f in st.session_state[key] if f in file_options]
+            if valid != st.session_state[key]:
+                st.session_state[key] = valid if valid else fallback
+
     selected_files_pdf = st.sidebar.multiselect(
         "Velocity PDF files:",
-        options=[Path(f).name for f in all_files],
-        default=[Path(f).name for f in all_files[:min(2, len(all_files))]],
+        options=file_options,
+        default=resolve_default_selection(st.session_state.get("velocity_pdf_file_select"), default_files),
         help="Select files for Velocity PDF plot (left)",
         key="velocity_pdf_file_select"
     )
-    
     selected_files_mag = st.sidebar.multiselect(
         "Velocity Magnitude PDF files:",
-        options=[Path(f).name for f in all_files],
-        default=[Path(f).name for f in all_files[:min(2, len(all_files))]],
+        options=file_options,
+        default=resolve_default_selection(st.session_state.get("velocity_mag_file_select"), default_files),
         help="Select files for Velocity Magnitude PDF plot (right)",
         key="velocity_mag_file_select"
     )
-    
+
     if not selected_files_pdf and not selected_files_mag:
         st.warning("Please select at least one file for either plot.")
         return
-    
-    # Plot parameters
+
+    # Plot parameters (shared with Autonomous Lab agent workflow)
     st.sidebar.header("Plot Parameters")
-    pdf_bins = st.sidebar.slider("Velocity PDF bins", 50, 500, 100, 10, key="velocity_pdf_bins")
-    mag_bins = st.sidebar.slider("Velocity Magnitude PDF bins", 50, 500, 100, 10, key="velocity_mag_pdf_bins")
+    for key, lo, hi, default in [
+        ("velocity_pdf_bins", 50, 500, 100),
+        ("velocity_mag_pdf_bins", 50, 500, 100),
+    ]:
+        if key in st.session_state and not (lo <= st.session_state[key] <= hi):
+            st.session_state[key] = default
+
+    pdf_bins = st.sidebar.slider(
+        "Velocity PDF bins", 50, 500,
+        value=st.session_state.get("velocity_pdf_bins", 100),
+        step=10, key="velocity_pdf_bins"
+    )
+    mag_bins = st.sidebar.slider(
+        "Velocity Magnitude PDF bins", 50, 500,
+        value=st.session_state.get("velocity_mag_pdf_bins", 100),
+        step=10, key="velocity_mag_pdf_bins"
+    )
     normalize_pdf = st.sidebar.checkbox(
         "Normalize Velocity PDF (u/σ_u)",
-        value=False,
+        value=st.session_state.get("velocity_pdf_normalize", False),
         help="Normalize velocity components by RMS for comparison with literature",
         key="velocity_pdf_normalize"
     )
     normalize_mag = st.sidebar.checkbox(
         "Normalize by RMS (|u|/σ_|u|)",
-        value=False,
+        value=st.session_state.get("velocity_mag_normalize", False),
         help="Normalize velocity magnitude by RMS for comparison with literature",
         key="velocity_mag_normalize"
     )

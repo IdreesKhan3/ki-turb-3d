@@ -14,6 +14,7 @@ APP_CONTROL_TOOL_NAMES = frozenset({
     "set_app_theme",
     "load_data",
     "set_selection_mode",
+    "set_hdf5_format",
 })
 
 
@@ -67,6 +68,21 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                     },
                 },
                 "required": ["mode"],
+            },
+        },
+        {
+            "name": "set_hdf5_format",
+            "description": "Set HDF5 velocity file layout: Fortran (transpose) for Fortran-written HDF5 (OpenACC solver), or Default (no transpose) for Python-written or standard layout. Use when user asks to load/use HDF5 with fortran option, default HDF5, switch HDF5 format, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "format": {
+                        "type": "string",
+                        "enum": ["fortran", "default"],
+                        "description": "fortran = apply transpose for Fortran-written HDF5; default = no transpose (Python/standard layout)",
+                    },
+                },
+                "required": ["format"],
             },
         },
     ]
@@ -123,5 +139,17 @@ def execute_tool(
             return {"status": "success", "message": "Selection mode: Multiple Simulations (Comparison)"}
 
         return f"Error: mode must be 'single' or 'multiple'. Got: {mode}"
+
+    if name == "set_hdf5_format":
+        fmt = args.get("format")
+        if fmt == "fortran":
+            st.session_state.hdf5_fortran_order = True
+            st.cache_data.clear()
+            return {"status": "success", "message": "HDF5 format: Fortran (transpose) — for Fortran-written velocity files"}
+        if fmt == "default":
+            st.session_state.hdf5_fortran_order = False
+            st.cache_data.clear()
+            return {"status": "success", "message": "HDF5 format: Default (no transpose) — for Python/standard layout"}
+        return f"Error: format must be 'fortran' or 'default'. Got: {fmt}"
 
     return f"Error: Unknown app control tool '{name}'"

@@ -12,14 +12,14 @@ from . import app_control, core, execution, search, physics, generation
 
 STEWARD_TOOL_NAMES = frozenset({
     "list_directory", "find_file", "read_file",
-    "set_app_theme", "load_data", "set_selection_mode",
+    "set_app_theme", "load_data", "set_selection_mode", "set_hdf5_format", "set_hdf5_format",
     "search_codebase", "extract_section", "regex_search",
     "run_shell_command", "git_operation",
     "delete_file", "modify_file", "rename_file", "write_file",
 })
 ANALYST_TOOL_NAMES = frozenset({
     "list_directory", "find_file", "read_file",
-    "compute_spectra", "compute_spectral_isotropy", "compute_isotropy", "export_data",
+    "compute_spectra", "compute_spectral_isotropy", "compute_isotropy", "compute_flatness", "compute_structure_functions", "export_data",
     "web_search", "search_research_papers", "browse_web", "download_file",
     "semantic_search", "find_symbol_definitions", "find_symbol_references",
     "write_file",
@@ -31,6 +31,14 @@ VISUALIZER_TOOL_NAMES = frozenset({
     "plot_convergence", "get_real_isotropy_summary", "get_real_isotropy_theory", "export_figure", "export_data", "export_isotropy_data",
     "get_overview_summary", "get_overview_theory",
     "get_theory_ns_equations", "get_theory_lbm_formulation", "plot_d3q19_lattice", "get_theory_mrt_matrix",
+    "plot_flatness", "get_flatness_summary", "get_flatness_theory", "export_flatness_data",
+    "plot_structure_functions",
+    "get_structure_functions_theory",
+    "plot_turbulence_stats", "get_turbulence_stats_summary",
+    "plot_volume_3d", "get_volume_viewer_theory",
+    "plot_pdf",
+    "add_report_section", "generate_report", "preview_report",
+    "remove_report_section", "reorder_report_section", "edit_report_section",
 })
 REVIEWER_TOOL_NAMES = frozenset()
 ORCHESTRATOR_TOOL_NAMES = frozenset()

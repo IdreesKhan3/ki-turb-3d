@@ -6,7 +6,6 @@ High-quality scientific report generation with structural controls and LaTeX sup
 import streamlit as st
 from pathlib import Path
 import sys
-import json
 import pandas as pd
 from datetime import datetime
 
@@ -49,63 +48,6 @@ def insert_section(index, type="text"):
         new_section["type"] = "table"
     
     st.session_state.report_sections.insert(index + 1, new_section)
-
-def save_config(data_dir):
-    """Saves the current report structure to JSON."""
-    config_path = data_dir / "report_config.json"
-
-    serializable_sections = []
-    for sec in st.session_state.report_sections:
-        item = sec.copy()
-
-        # Persist tables
-        if item.get("type") == "table":
-            df = item.get("dataframe")
-            if df is None:
-                df = item.get("content")
-            if isinstance(df, pd.DataFrame):
-                item["table_json"] = df.to_json(orient="split")
-            # remove non-serializable objects
-            item["dataframe"] = None
-            if isinstance(item.get("content"), pd.DataFrame):
-                item["content"] = None
-
-        # Keep current behavior for plots (do not persist)
-        if item.get("type") == "plot":
-            item["figure"] = None
-
-        serializable_sections.append(item)
-
-    with open(config_path, "w") as f:
-        json.dump(serializable_sections, f, indent=4)
-
-    st.toast(f"💾 Report configuration saved to {config_path.name}")
-
-def load_config(data_dir):
-    """Loads a report structure from JSON."""
-    config_path = data_dir / "report_config.json"
-    if not config_path.exists():
-        st.error("No saved configuration found.")
-        return
-
-    with open(config_path, "r") as f:
-        data = json.load(f)
-
-    # Backward compatibility + table restore
-    for section in data:
-        if "header_level" not in section:
-            section["header_level"] = "H2" if section.get("type") == "text" else "Normal"
-
-        if section.get("type") == "table" and section.get("table_json"):
-            try:
-                df = pd.read_json(section["table_json"], orient="split")
-                section["dataframe"] = df
-                section["content"] = df
-            except Exception:
-                section["dataframe"] = None
-
-    st.session_state.report_sections = data
-    st.toast("📂 Configuration loaded (Note: You may need to recapture plots)")
 
 # ==========================================================
 # Main
@@ -154,19 +96,6 @@ def main():
         value="",
         help="Your name or organization"
     )
-    
-    st.sidebar.markdown("---")
-    
-    st.sidebar.subheader("⚙️ Actions")
-    
-    col_s1, col_s2 = st.sidebar.columns(2)
-    with col_s1:
-        if st.button("💾 Save Config"):
-            save_config(data_dir)
-    with col_s2:
-        if st.button("📂 Load Config"):
-            load_config(data_dir)
-            st.rerun()
     
     st.sidebar.markdown("---")
     
@@ -328,7 +257,7 @@ def main():
             
             final_sections = []
             for s in st.session_state.report_sections:
-                if s['type'] == 'text' and s.get('content'):
+                if s['type'] == 'text' and isinstance(s.get('content'), str) and s.get('content', '').strip():
                     final_sections.append({
                         'title': s['title'],
                         'type': 'text',

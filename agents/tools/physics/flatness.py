@@ -83,6 +83,11 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                 },
             },
         },
+        {
+            "name": "get_flatness_theory",
+            "description": "Show Flatness page Theory & Equations: F_L(r), longitudinal velocity increment, Gaussian reference (F=3), intermittency interpretation. Use when user asks for 'flatness theory', 'flatness equations', 'theory for flatness', 'equations for flatness', 'F(r) theory', 'kurtosis theory'.",
+            "parameters": {"type": "object", "properties": {}},
+        },
     ]
 
 
@@ -108,6 +113,18 @@ def execute_tool(
 ) -> Any:
     """Execute flatness tool."""
     session_context = session_context or {}
+
+    if name == "get_flatness_theory":
+        from content.flatness_theory_content import get_flatness_theory_markdown
+
+        content = get_flatness_theory_markdown()
+        return {
+            "status": "success",
+            "message": "Flatness theory equations created.",
+            "artifact_type": "markdown",
+            "artifact_content": content,
+            "artifact_title": "Flatness — Theory & Equations",
+        }
 
     if name == "compute_flatness":
         data_dir = args.get("data_dir", "")
@@ -169,6 +186,10 @@ def execute_tool(
             cache_data = {"simulations": results_by_sim}
 
         save_to_cache(session_context, CACHE_KEY_FLATNESS, cache_data)
+        from pages.AutonomousLab.session_sync import update_data_directory_in_context
+        first_sim = next(iter(results_by_sim.values()))
+        if first_sim.get("files"):
+            update_data_directory_in_context(session_context, Path(first_sim["files"][0]).parent)
         n_sims = len(results_by_sim)
         return json.dumps({
             "status": "success",
@@ -215,6 +236,8 @@ def execute_tool(
                 "margin_left": 60, "margin_right": 20, "margin_top": 40, "margin_bottom": 50,
                 "enable_y_limits": False, "y_min": 0.5, "y_max": 1.5,
                 "enable_x_limits": False, "x_min": 0.01, "x_max": 10.0,
+                "std_alpha": 0.18, "reference_dash": "dot", "reference_color": "#000000",
+                "reference_width": 1.5, "per_sim_style_flatness": {},
             })
             session_context.setdefault("plot_styles", {})["Flatness"] = style_config
             session_context["flatness_style_config"] = style_config
@@ -257,13 +280,18 @@ def execute_tool(
 
         sim_legend_map = {k: simulation_legend_names.get(k) or sim_legends.get(k) or _default_labelify(k) for k, _ in sim_items}
 
+        datasets = [
+            {"sim_prefix": sp, "r": d["r"], "F_mean": d["F_mean"], "F_std": d.get("F_std")}
+            for sp, d in sim_items
+        ]
         fig = create_flatness_figure(
-            sim_items,
+            datasets,
             style_config,
-            show_std_band=show_std_band,
+            show_std=show_std_band,
             show_error_bars=show_error_bars,
+            show_reference=True,
             axis_labels=axis_labels,
-            simulation_legend_names=sim_legend_map,
+            legend_names=sim_legend_map,
             apply_style=True,
         )
         if fig is None:
@@ -326,13 +354,14 @@ def execute_tool(
 
         table_str = tabulate(table_data, headers=headers, tablefmt="github")
 
-        return json.dumps({
+        return {
             "status": "success",
-            "message": "Flatness summary table created:",
+            "message": "Flatness summary table created.",
             "artifact_type": "markdown",
             "artifact_content": table_str,
+            "artifact_title": "Flatness — Summary",
             **get_artifact_source_meta(__file__, project_root, name),
-        })
+        }
 
     if name == "export_flatness_data":
         ref = args.get("data_reference") or CACHE_KEY_FLATNESS
@@ -346,4 +375,4 @@ def execute_tool(
             "message": "export_flatness_data is not yet fully implemented.",
         })
 
-    return json.dumps({"status": "error", "message": f"Unknown tool: {name}"}))
+    return json.dumps({"status": "error", "message": f"Unknown tool: {name}"})

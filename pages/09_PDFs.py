@@ -17,6 +17,7 @@ from pages.PDFs.velocity_magnitude_stats import render_velocity_magnitude_tab
 from pages.PDFs.dissipation_stats import render_dissipation_tab
 from pages.PDFs.joint_pdf_stats import render_joint_pdf_tab
 from pages.PDFs.pdf_params import get_grid_spacing_options
+from data_readers.parameter_reader import read_parameters
 from utils.plot_style import resolve_line_style, apply_axis_limits, apply_figure_size
 from pages.PDFs.pdfs_plot_style import (
     get_plot_style, apply_plot_style,
@@ -37,20 +38,22 @@ def _cached_read_vti(filepath: str):
     return read_vti_file(abs_path)
 
 @st.cache_data(show_spinner=True)
-def _cached_read_hdf5(filepath: str, _cache_version: str = "v2"):
+def _cached_read_hdf5(filepath: str, fortran_order: bool = True, _cache_version: str = "v2"):
     """Cached HDF5 file reading for performance
     
+    fortran_order: If True, apply transpose for Fortran-written HDF5.
     _cache_version: Internal parameter to invalidate cache when reader is updated
     """
     abs_path = str(Path(filepath).resolve())
-    return read_hdf5_file(abs_path)
+    return read_hdf5_file(abs_path, fortran_order=fortran_order)
 
 def _load_velocity_file(filepath: str):
     """Load velocity data from either VTI or HDF5 file"""
     abs_filepath = str(Path(filepath).resolve())
     filepath_lower = abs_filepath.lower()
+    fortran_order = st.session_state.get('hdf5_fortran_order', True)
     if filepath_lower.endswith(('.h5', '.hdf5')):
-        return _cached_read_hdf5(abs_filepath)
+        return _cached_read_hdf5(abs_filepath, fortran_order=fortran_order)
     elif filepath_lower.endswith('.vti'):
         return _cached_read_vti(abs_filepath)
     else:
@@ -122,7 +125,7 @@ def main():
     spacing_options = get_grid_spacing_options(data_dir)
     with st.sidebar.expander("🔧 Advanced (grid spacing)", expanded=False):
         choice_labels = list(spacing_options.keys())
-        default_idx = 1 if len(choice_labels) > 1 else 0  # Prefer NS when both exist
+        default_idx = 0  # LBM first, NS second
         spacing_choice = st.radio(
             "Grid spacing source",
             choice_labels,
@@ -132,9 +135,11 @@ def main():
         )
         dx_selected, dy_selected, dz_selected = spacing_options[spacing_choice]
         st.caption("Used for gradients, strain rates, dissipation, vorticity (periodic BCs).")
+        synced_dx = st.session_state.get("pdfs_dx_override")
+        manual_dx_value = max(1e-6, float(synced_dx)) if synced_dx is not None else dx_selected
         manual_dx = st.number_input(
             "Or override dx (=dy=dz)",
-            value=dx_selected,
+            value=manual_dx_value,
             min_value=1e-6,
             step=0.001,
             format="%.6f",
@@ -149,6 +154,45 @@ def main():
         )
         dx, dy, dz = (manual_dx, manual_dx, manual_dx) if use_override else (dx_selected, dy_selected, dz_selected)
         st.caption(f"Using dx = {dx:.6f}")
+
+    # Physical Parameters (ν) — shared by Dissipation and Joint PDFs tabs, shown once
+    st.sidebar.header("⚙️ Physical Parameters")
+    nu_from_file = None
+    param_source = None
+    for candidate in (data_dir / "simulation.input", data_dir / "simulation.json"):
+        if candidate.exists():
+            try:
+                params = read_parameters(str(candidate))
+                if "nu" in params:
+                    nu_from_file = params["nu"]
+                    param_source = candidate.name
+                    break
+            except Exception as e:
+                st.sidebar.warning(f"Error reading {candidate.name}: {e}")
+    default_nu = nu_from_file if nu_from_file is not None else 0.004
+    nu_value = st.session_state.get("pdfs_nu_input")
+    if nu_value is not None:
+        nu_value = max(0.0001, float(nu_value))
+    else:
+        nu_value = default_nu
+    if nu_from_file is not None:
+        st.sidebar.info(f"📄 Viscosity from {param_source}: {nu_from_file:.6f}")
+    else:
+        st.sidebar.warning("Viscosity not found in simulation.input or simulation.json. Please enter manually or check parameter file.")
+    nu_help = "Kinematic viscosity used in dissipation calculation: ε = 2ν S_ij S_ij"
+    if nu_from_file is not None:
+        nu_help += f" (loaded from {param_source}, can be overridden)"
+    else:
+        nu_help += " (enter manually)"
+    nu = st.sidebar.number_input(
+        "ν (Kinematic Viscosity)",
+        value=nu_value,
+        min_value=0.0001,
+        step=0.0001,
+        format="%.6f",
+        help=nu_help,
+        key="pdfs_nu_input",
+    )
     
     # Create tabs
     tabs = st.tabs([
@@ -196,7 +240,7 @@ def main():
         render_dissipation_tab(
             data_dirs,  # Pass all directories
             _load_velocity_file,
-            dx=dx, dy=dy, dz=dz,
+            dx=dx, dy=dy, dz=dz, nu=nu,
             get_plot_style_func=get_plot_style,
             apply_plot_style_func=apply_plot_style,
             get_palette_func=_get_palette,
@@ -212,7 +256,7 @@ def main():
         render_joint_pdf_tab(
             data_dirs,  # Pass all directories
             _load_velocity_file,
-            dx=dx, dy=dy, dz=dz,
+            dx=dx, dy=dy, dz=dz, nu=nu,
             get_plot_style_func=get_plot_style,
             apply_plot_style_func=apply_plot_style,
             get_palette_func=_get_palette,

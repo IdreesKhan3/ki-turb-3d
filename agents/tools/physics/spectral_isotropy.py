@@ -171,6 +171,10 @@ def execute_tool(
             cache_data = {"simulations": results_by_sim}
 
         save_to_cache(session_context, CACHE_KEY_SPECTRAL_ISOTROPY, cache_data)
+        from pages.AutonomousLab.session_sync import update_data_directory_in_context
+        first_sim = next(iter(results_by_sim.values()))
+        if first_sim.get("files"):
+            update_data_directory_in_context(session_context, Path(first_sim["files"][0]).parent)
         n_sims = len(results_by_sim)
         return json.dumps({
             "status": "success",

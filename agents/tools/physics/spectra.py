@@ -158,6 +158,8 @@ def execute_tool(
                 }],
             }
             save_to_cache(session_context, CACHE_KEY_SPECTRA_NORM, cached)
+            from pages.AutonomousLab.session_sync import update_data_directory_in_context
+            update_data_directory_in_context(session_context, Path(files[0]).parent)
             return json.dumps({
                 "status": "success",
                 "message": f"Computed normalized spectrum from {len(files)} files. Data ready for plot_spectrum.",
@@ -194,6 +196,8 @@ def execute_tool(
                 highlight = None
             cached = {"mode": "evolution", "thin_curves": thin_curves, "highlight": highlight}
             save_to_cache(session_context, CACHE_KEY_SPECTRA_EVOLUTION, cached)
+            from pages.AutonomousLab.session_sync import update_data_directory_in_context
+            update_data_directory_in_context(session_context, Path(files[0]).parent)
             return json.dumps({
                 "status": "success",
                 "message": f"Prepared time evolution from {len(files)} files (showing every {every_n}th). Data ready for plot_spectrum.",
@@ -240,6 +244,8 @@ def execute_tool(
             "E_std": E_std.tolist() if E_std is not None else [],
         }
         save_to_cache(session_context, CACHE_KEY_SPECTRA, raw_data)
+        from pages.AutonomousLab.session_sync import update_data_directory_in_context
+        update_data_directory_in_context(session_context, Path(files[0]).parent)
         return json.dumps({
             "status": "success",
             "message": f"Computed raw time-averaged spectrum from {len(files)} files. Data ready for plot_spectrum.",

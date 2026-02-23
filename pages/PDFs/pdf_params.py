@@ -44,7 +44,10 @@ def get_grid_spacing(data_dir: Path, param_file: Path = None) -> Tuple[float, fl
     Legacy: get dx, dy, dz. Prefers NS (simulation.json) when it has L,nx,ny,nz, else 1.
     """
     options = get_grid_spacing_options(data_dir)
-    # Prefer NS if available, else LBM
+    # Prefer LBM (dx=1) first, else NS
+    for label, (dx, dy, dz) in options.items():
+        if "LBM" in label:
+            return dx, dy, dz
     for label, (dx, dy, dz) in options.items():
         if "NS" in label:
             return dx, dy, dz

@@ -22,6 +22,15 @@ from utils.plot_style import (
 )
 
 
+def _color_for_picker(val: Any, default: str = "#FFFFFF") -> str:
+    """Streamlit color_picker requires hex. Convert 'white' etc. to hex."""
+    if val and isinstance(val, str) and val.strip().startswith("#"):
+        return val.strip()
+    if val and str(val).strip().lower() in ("white", "black", "gray", "grey"):
+        return {"white": "#FFFFFF", "black": "#000000", "gray": "#808080", "grey": "#808080"}[str(val).strip().lower()]
+    return default
+
+
 def _get_title_dict(ps: Dict[str, Any], title_text: str) -> Dict[str, Any] | None:
     """Get title dict with font color for dark theme compatibility."""
     if not title_text:
@@ -200,11 +209,13 @@ def plot_style_sidebar(
         st.markdown("---")
         st.markdown("**Backgrounds**")
         ps["plot_bgcolor"] = st.color_picker(
-            "Plot background (inside axes)", ps.get("plot_bgcolor", "#FFFFFF"),
+            "Plot background (inside axes)",
+            _color_for_picker(ps.get("plot_bgcolor"), "#FFFFFF"),
             key=f"{key_prefix}_plot_bgcolor"
         )
         ps["paper_bgcolor"] = st.color_picker(
-            "Paper background (outside axes)", ps.get("paper_bgcolor", "#FFFFFF"),
+            "Paper background (outside axes)",
+            _color_for_picker(ps.get("paper_bgcolor"), "#FFFFFF"),
             key=f"{key_prefix}_paper_bgcolor"
         )
 
@@ -248,7 +259,9 @@ def plot_style_sidebar(
             key=f"{key_prefix}_grid_dash",
         )
         ps["grid_color"] = st.color_picker(
-            "Major grid color", ps.get("grid_color", "#B0B0B0"), key=f"{key_prefix}_grid_color"
+            "Major grid color",
+            _color_for_picker(ps.get("grid_color"), "#B0B0B0"),
+            key=f"{key_prefix}_grid_color"
         )
         ps["grid_opacity"] = st.slider(
             "Major grid opacity", 0.0, 1.0, float(ps.get("grid_opacity", 0.6)),
@@ -271,7 +284,8 @@ def plot_style_sidebar(
             key=f"{key_prefix}_minor_grid_dash",
         )
         ps["minor_grid_color"] = st.color_picker(
-            "Minor grid color", ps.get("minor_grid_color", "#D0D0D0"),
+            "Minor grid color",
+            _color_for_picker(ps.get("minor_grid_color"), "#D0D0D0"),
             key=f"{key_prefix}_minor_grid_color"
         )
         ps["minor_grid_opacity"] = st.slider(
@@ -307,17 +321,21 @@ def plot_style_sidebar(
             ps["custom_colors"] = new_cols
 
         ps["pope_color"] = st.color_picker(
-            "Pope model color", ps.get("pope_color", "#000000"), key=f"{key_prefix}_pope_color"
+            "Pope model color",
+            _color_for_picker(ps.get("pope_color"), "#000000"),
+            key=f"{key_prefix}_pope_color"
         )
         ps["kolmogorov_color"] = st.color_picker(
-            "Kolmogorov line color", ps.get("kolmogorov_color", "#666666"),
+            "Kolmogorov line color",
+            _color_for_picker(ps.get("kolmogorov_color"), "#666666"),
             key=f"{key_prefix}_kolmogorov_color"
         )
 
         st.markdown("---")
         st.markdown("**Highlight curve**")
         ps["highlight_color"] = st.color_picker(
-            "Highlight color (time evolution)", ps.get("highlight_color", "#E41A1C"),
+            "Highlight color (time evolution)",
+            _color_for_picker(ps.get("highlight_color"), "#E41A1C"),
             key=f"{key_prefix}_highlight_color"
         )
 

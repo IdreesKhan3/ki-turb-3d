@@ -43,6 +43,58 @@ def _parse_plan_steps(plan: str) -> List[str]:
     return steps if steps else [plan.strip()]
 
 
+def _count_add_report_steps_in_plan(plan_steps: List[str]) -> int:
+    """Count plan steps that add to report (add_report_section). Includes plot, table, theory, text."""
+    if not plan_steps:
+        return 1
+    count = 0
+    for step in plan_steps:
+        s = step.lower()
+        # Explicit add_report_section or "add X to report" (figure, table, theory, text)
+        if "add_report_section" in s or ("add" in s and "report" in s):
+            count += 1
+    return count if count > 0 else 1
+
+
+def _count_add_report_successes(ctx_joined: str) -> int:
+    """Count add_report_section successes in context."""
+    return ctx_joined.count("[Step done: add_report_section succeeded]")
+
+
+def _is_report_mode(plan_steps: List[str]) -> bool:
+    """True when plan builds a report (add to report + preview). In report mode, figures/tables go only inside the report, not as standalone artifacts."""
+    if not plan_steps:
+        return False
+    plan_joined = " ".join(s.lower() for s in plan_steps)
+    has_add = "add" in plan_joined and "report" in plan_joined
+    has_preview = "preview_report" in plan_joined or "preview report" in plan_joined or "show report" in plan_joined
+    return has_add and has_preview
+
+
+def _is_step_failure(result_text: str) -> bool:
+    """Detect if an agent step failed (error message, no files found, etc.)."""
+    if not result_text or not isinstance(result_text, str):
+        return False
+    text = result_text.strip().lower()
+    failure_indicators = [
+        "error:",
+        "error ",
+        "no files found",
+        "no matching files",
+        "not found",
+        "could not",
+        "failed",
+        "failed to",
+        "unable to",
+        "does not exist",
+        "tool error",
+        "blocked dangerous",
+        "timed out",
+        "timeout",
+    ]
+    return any(ind in text for ind in failure_indicators)
+
+
 class UnifiedTeam:
     """Five LLM-driven agents: each thinks and uses tools. Strong agentic design: Plan → Act → Reflect."""
 
@@ -127,7 +179,7 @@ class UnifiedTeam:
         user_message: str,
         chat_history: Optional[List[Dict[str, Any]]] = None,
         session_context: Optional[Dict[str, Any]] = None,
-        max_delegate_rounds: int = 12,
+        max_delegate_rounds: int = 25,
         use_plan: bool = True,
         resume_state: Optional[Dict[str, Any]] = None,
         stream_callback: Optional[Any] = None,
@@ -214,6 +266,10 @@ class UnifiedTeam:
                 parts.append("User's plot style available for plot_spectrum—only pass when user explicitly requests custom style.")
             if sess.get("axis_labels_raw") or sess.get("axis_labels_norm"):
                 parts.append("Axis labels available for plot_spectrum—only pass when user explicitly requests custom labels.")
+            if sess.get("axis_labels_pdfs") or sess.get("legend_titles_pdfs"):
+                parts.append("Legend & Axis Labels available for plot_pdf—only pass when user explicitly requests custom labels.")
+            if sess.get("pdfs_plot_styles") or sess.get("pdfs_style_config"):
+                parts.append("Plot style available for plot_pdf (fonts, grid, per-sim overrides)—only pass when user explicitly requests custom style.")
             artifact_hist = sess.get("artifact_history") or []
             if artifact_hist:
                 parts.append(_format_artifact_history(artifact_hist))
@@ -319,6 +375,27 @@ class UnifiedTeam:
                     "Otherwise delegate ONLY the NEXT unfulfilled step. Never re-delegate for a step that already produced an artifact.]\n\n"
                 )
                 full_input = hint + full_input
+            # Programmatic duplicate prevention: allow N add_report_section when plan has N add steps (multi-figure reports)
+            ctx_joined = "\n".join(context_parts)
+            add_steps_in_plan = _count_add_report_steps_in_plan(plan_steps)
+            add_successes = _count_add_report_successes(ctx_joined)
+            if "Added" in ctx_joined and "to report" in ctx_joined and "[visualizer result]" in ctx_joined:
+                if add_successes >= add_steps_in_plan:
+                    full_input = (
+                        "\n[CRITICAL: All add_report_section steps are DONE (plan had "
+                        f"{add_steps_in_plan}, {add_successes} succeeded). "
+                        "Do NOT delegate add_report_section again. Proceed to preview_report or respond with plain text.]\n\n"
+                    ) + full_input
+                else:
+                    full_input = (
+                        f"\n[add_report_section: {add_successes}/{add_steps_in_plan} done. "
+                        "Continue with next add_report_section (plot/text) per plan, then preview_report.]\n\n"
+                    ) + full_input
+            if any(a.get("artifact_type") == "report_html" for a in collected_artifacts):
+                full_input = (
+                    "\n[CRITICAL: preview_report (report HTML) has ALREADY been collected. "
+                    "Plan COMPLETE. Respond with plain text. Do NOT delegate again.]\n\n"
+                ) + full_input
             if context_parts:
                 full_input = full_input + "\n\nContext from previous steps:\n" + "\n\n".join(context_parts)
 
@@ -336,18 +413,23 @@ class UnifiedTeam:
 
             delegation = self._parse_delegation(response_text)
             if delegation is None:
-                # If we already collected multiple artifacts, return them (use final_text if last step was explain)
-                if collected_artifacts:
-                    text = final_text if final_text else f"Produced {len(collected_artifacts)} artifact(s) as requested."
-                    return {"text": text, "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
-                # Reflection: before returning final answer, verify we achieved the goal (Strong Agentic)
-                if use_plan and plan_steps and not last_artifact:
+                # Reflection: verify plan completion before returning (end-to-end persistence)
+                # Run whenever we have a plan—even with partial artifacts—to avoid stopping early
+                if use_plan and plan_steps:
+                    n_artifacts = len(collected_artifacts)
                     reflect_prompt = (
-                        f"Your response: {response_text[:400]}...\n\n"
+                        f"Your response: {response_text[:500]}...\n\n"
                         f"User requested: {user_message}\n\n"
-                        "Reflect: Did we FULLY achieve the user's goal? If something is missing, delegate to the right agent. "
-                        "If we're done, respond with plain text (no JSON) to the user."
+                        f"Plan has {len(plan_steps)} step(s). We have collected {n_artifacts} artifact(s) so far.\n\n"
+                        "CRITICAL: Did we FULLY achieve the user's goal? Complete EVERY item in the plan. "
+                        "If ANY step is missing or failed, delegate to the right agent NOW. "
+                        "Only respond with plain text (no JSON) when ALL plan items are truly done."
                     )
+                    if any(a.get("artifact_type") == "report_html" for a in collected_artifacts):
+                        reflect_prompt += (
+                            "\n\n[Report preview has been collected. Plan is COMPLETE. "
+                            "Respond with plain text ONLY. Do NOT delegate again.]"
+                        )
                     try:
                         reflect_response = self.orchestrator.think_and_act(
                             reflect_prompt,
@@ -366,6 +448,10 @@ class UnifiedTeam:
                     except Exception:
                         pass
                 if delegation is None:
+                    # Truly done: return collected artifacts or final response
+                    if collected_artifacts:
+                        text = final_text if final_text else f"Produced {len(collected_artifacts)} artifact(s) as requested."
+                        return {"text": text, "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
                     return {"text": response_text, "artifact": last_artifact}
 
             agent_name, task = delegation
@@ -441,27 +527,72 @@ class UnifiedTeam:
                     final_text = result_text
             context_parts.append(f"[{agent_name} result]\n{result_text}")
 
-            # Analyst text-only (Q&A or compute status): do NOT return early—let orchestrator decide.
-            # If done (Q&A): orchestrator will respond with plain text, delegation=None, we return.
-            # If not done (compute→plot): orchestrator will delegate to Visualizer. No heuristic needed.
+            # Report workflow: add_report_section success (no artifact) — track for multi-figure reports
+            # Also treat "already added" / "skipped duplicate" as success (section was in report from prior run)
+            _add_success = (
+                ("Added" in str(result_text) and "to report" in str(result_text))
+                or ("already added" in str(result_text).lower() and "to report" in str(result_text))
+                or "skipped duplicate" in str(result_text).lower()
+            )
+            if agent_name == "visualizer" and not last_artifact and _add_success:
+                add_steps = _count_add_report_steps_in_plan(plan_steps)
+                add_done = _count_add_report_successes("\n".join(context_parts)) + 1
+                if add_done >= add_steps:
+                    context_parts.append(
+                        "[Step done: add_report_section succeeded]. All report add steps done. "
+                        "Delegate to visualizer: preview_report to show the report in chat (if user asked to see it)."
+                    )
+                else:
+                    context_parts.append(
+                        f"[Step done: add_report_section succeeded]. {add_done}/{add_steps} add steps done. "
+                        "Continue with next add_report_section per plan, then preview_report."
+                    )
+                if plan_steps and current_step_index < len(plan_steps) - 1:
+                    current_step_index += 1
 
-            # Advance step when we complete an agent task (plan-driven progress)
-            if plan_steps and current_step_index < len(plan_steps) - 1:
+            # Detect step failure: do NOT advance step index; inject retry signal for orchestrator
+            step_failed = _is_step_failure(result_text)
+            if step_failed:
+                context_parts.append(
+                    "[STEP FAILED] The previous step returned an error. Do NOT advance. "
+                    "Fix the cause (e.g. steward: find correct path, analyst: use different data_dir) and retry, "
+                    "or skip this item and continue with the next plan step."
+                )
+                self.log_callback("**[TEAM]** Step failed, will retry or skip.")
+            elif not last_artifact and plan_steps and current_step_index < len(plan_steps) - 1:
+                # Intermediate success (e.g. steward found files, analyst computed)—no artifact but step done
                 current_step_index += 1
 
-            # Table: collect and continue to next step (multi-task)
-            if last_artifact and last_artifact.get("artifact_type") == "markdown_table":
+            # Report HTML (preview_report): collect and mark plan complete — prevents re-delegation
+            if last_artifact and last_artifact.get("artifact_type") == "report_html":
+                if not step_failed and plan_steps and current_step_index < len(plan_steps):
+                    current_step_index = len(plan_steps)  # Mark all steps done
                 collected_artifacts.append(last_artifact)
                 last_artifact = None
-                rejection_count = 0
-                context_parts.append(f"[Collected artifact {len(collected_artifacts)}: table]. Continue with next step in plan.")
-                if len(collected_artifacts) >= max_artifacts_per_turn:
-                    return {"text": f"Produced {len(collected_artifacts)} artifact(s).", "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
+                context_parts.append(
+                    "[Collected artifact: report preview]. Plan COMPLETE. "
+                    "add_report_section and preview_report are DONE. Respond with plain text. Do NOT delegate again."
+                )
+                continue
+
+            # Table: in report mode, don't collect (table goes only inside report). Otherwise collect.
+            if last_artifact and last_artifact.get("artifact_type") == "markdown_table":
+                if not step_failed and plan_steps and current_step_index < len(plan_steps) - 1:
+                    current_step_index += 1
+                if not _is_report_mode(plan_steps):
+                    collected_artifacts.append(last_artifact)
+                    rejection_count = 0
+                    context_parts.append(f"[Collected artifact {len(collected_artifacts)}: table]. Continue with next step in plan.")
+                    if len(collected_artifacts) >= max_artifacts_per_turn:
+                        return {"text": f"Produced {len(collected_artifacts)} artifact(s).", "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
+                else:
+                    context_parts.append("[Table for report—not shown standalone]. Continue with next step in plan.")
+                last_artifact = None
                 continue
 
             # Figure/file: Reviewer validates, then collect and continue (multi-task) or return single
             if last_artifact and last_artifact.get("artifact_type") in ("plotly_figure", "downloadable_file"):
-                if rejection_count >= 2:
+                if rejection_count >= 3:
                     self.log_callback("**[REVIEWER]** Max rejections reached, returning artifact(s).")
                     if collected_artifacts:
                         collected_artifacts.append(last_artifact)
@@ -521,14 +652,19 @@ class UnifiedTeam:
                     last_artifact = None
                     text = final_text if final_text else f"Produced {len(collected_artifacts)} artifact(s)."
                     return {"text": text, "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
-                # Approved: collect and continue to next step (multi-task)
-                collected_artifacts.append(last_artifact)
+                # Approved: in report mode, don't collect (figure goes only inside report). Otherwise collect.
+                if not step_failed and plan_steps and current_step_index < len(plan_steps) - 1:
+                    current_step_index += 1
+                if not _is_report_mode(plan_steps):
+                    collected_artifacts.append(last_artifact)
+                    rejection_count = 0
+                    art_kind = "exported file" if last_artifact.get("artifact_type") == "downloadable_file" else "figure"
+                    if len(collected_artifacts) >= max_artifacts_per_turn:
+                        return {"text": f"Produced {len(collected_artifacts)} artifact(s).", "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
+                    context_parts.append(f"[Collected artifact {len(collected_artifacts)}: {art_kind}]. Continue with next step in plan or respond to user.")
+                else:
+                    context_parts.append("[Figure for report—not shown standalone]. Continue with next step in plan.")
                 last_artifact = None
-                rejection_count = 0
-                art_kind = "exported file" if collected_artifacts[-1].get("artifact_type") == "downloadable_file" else "figure"
-                if len(collected_artifacts) >= max_artifacts_per_turn:
-                    return {"text": f"Produced {len(collected_artifacts)} artifact(s).", "artifacts": collected_artifacts, "artifact": collected_artifacts[-1]}
-                context_parts.append(f"[Collected artifact {len(collected_artifacts)}: {art_kind}]. Continue with next step in plan or respond to user.")
                 continue
 
         last_part = context_parts[-1] if context_parts else response_text

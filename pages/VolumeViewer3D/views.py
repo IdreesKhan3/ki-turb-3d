@@ -10,6 +10,7 @@ from plotly.colors import hex_to_rgb
 
 from data_readers.vti_reader import compute_velocity_magnitude, compute_vorticity
 from utils.iso_surfaces import compute_qs_s, compute_q_invariant, compute_r_invariant
+from pages.PDFs.pdf_params import get_grid_spacing_options
 from utils.export_figs import export_panel
 from utils.plot_style import apply_figure_size, convert_superscript
 from utils.report_builder import capture_button
@@ -26,8 +27,8 @@ from .data_helpers import (
 from .plot_style import render_plot_style_sidebar, get_plot_style_3d
 
 
-def _compute_field(velocity, field_type: str):
-    """Compute scalar field from velocity based on field_type."""
+def _compute_field(velocity, field_type: str, dx: float = 1.0, dy: float = 1.0, dz: float = 1.0):
+    """Compute scalar field from velocity based on field_type. dx,dy,dz used for gradient-based fields."""
     if field_type == "Velocity Magnitude":
         return compute_velocity_magnitude(velocity)
     elif field_type == "ux":
@@ -37,12 +38,12 @@ def _compute_field(velocity, field_type: str):
     elif field_type == "uz":
         return velocity[:, :, :, 2]
     elif field_type == "Vorticity Magnitude":
-        vort = compute_vorticity(velocity)
+        vort = compute_vorticity(velocity, dx=dx, dy=dy, dz=dz)
         return np.sqrt(
             vort[:, :, :, 0] ** 2 + vort[:, :, :, 1] ** 2 + vort[:, :, :, 2] ** 2
         )
     elif field_type.startswith("ω"):
-        vort = compute_vorticity(velocity)
+        vort = compute_vorticity(velocity, dx=dx, dy=dy, dz=dz)
         if field_type == "ωx":
             return vort[:, :, :, 0]
         elif field_type == "ωy":
@@ -50,11 +51,11 @@ def _compute_field(velocity, field_type: str):
         else:
             return vort[:, :, :, 2]
     elif field_type == "Q_S^S":
-        return compute_qs_s(velocity)
+        return compute_qs_s(velocity, dx=dx, dy=dy, dz=dz)
     elif field_type == "Q Invariant":
-        return compute_q_invariant(velocity)
+        return compute_q_invariant(velocity, dx=dx, dy=dy, dz=dz)
     elif field_type == "R Invariant":
-        return compute_r_invariant(velocity)
+        return compute_r_invariant(velocity, dx=dx, dy=dy, dz=dz)
     else:
         return velocity[:, :, :, 0]
 
@@ -115,6 +116,43 @@ def render_main_view(state: dict) -> None:
             key="field_type",
         )
 
+        # Grid spacing for gradient-based fields (LBM vs NS)
+        data_dir_path = Path(data_dir).resolve() if data_dir else None
+        if data_dir_path and data_dir_path.exists():
+            spacing_options = get_grid_spacing_options(data_dir_path)
+            with st.sidebar.expander("🔧 Advanced (grid spacing)", expanded=False):
+                choice_labels = list(spacing_options.keys())
+                default_idx = 0  # LBM first, NS second
+                spacing_choice = st.radio(
+                    "Grid spacing source",
+                    choice_labels,
+                    index=min(default_idx, len(choice_labels) - 1),
+                    help="LBM: dx=1 (lattice units). NS: dx=L/nx from simulation.json.",
+                    key="vol3d_spacing_choice",
+                )
+                dx_selected, dy_selected, dz_selected = spacing_options[spacing_choice]
+                st.caption("Used for vorticity, Q_S^S, Q, R (gradient-based fields).")
+                manual_dx = st.number_input(
+                    "Or override dx (=dy=dz)",
+                    value=dx_selected,
+                    min_value=1e-6,
+                    step=0.001,
+                    format="%.6f",
+                    help="Optional: custom dx to override selection above.",
+                    key="vol3d_dx_override",
+                )
+                use_override = not any(
+                    abs(manual_dx - v[0]) < 1e-9 for v in spacing_options.values()
+                )
+                dx, dy, dz = (
+                    (manual_dx, manual_dx, manual_dx)
+                    if use_override
+                    else (dx_selected, dy_selected, dz_selected)
+                )
+                st.caption(f"Using dx = {dx:.6f}")
+        else:
+            dx, dy, dz = 1.0, 1.0, 1.0
+
         st.sidebar.markdown("---")
         st.sidebar.subheader("⚡ Performance")
         downsample_step = st.sidebar.slider(
@@ -126,9 +164,9 @@ def render_main_view(state: dict) -> None:
 
         if field_type in ("Q_S^S", "Q Invariant", "R Invariant"):
             with st.spinner(f"Computing {field_type}..."):
-                field = _compute_field(velocity, field_type)
+                field = _compute_field(velocity, field_type, dx=dx, dy=dy, dz=dz)
         else:
-            field = _compute_field(velocity, field_type)
+            field = _compute_field(velocity, field_type, dx=dx, dy=dy, dz=dz)
 
         field_ds = downsample3d(field, downsample_step)
         nx_d, ny_d, nz_d = field_ds.shape
@@ -148,21 +186,29 @@ def render_main_view(state: dict) -> None:
 
         st.sidebar.markdown("---")
         st.sidebar.subheader("🎛️ Rendering Controls")
-        if vmax <= vmin:
-            vmax = vmin + 1.0 if vmin >= 0 else vmin - 1.0
+        # Keep actual data range for colormap; expand only for sliders when range is tiny
+        plot_vmin, plot_vmax = float(vmin), float(vmax)
+        slider_vmin, slider_vmax = plot_vmin, plot_vmax
+        data_span = vmax - vmin
+        min_span = 0.1
+        if data_span < min_span or not np.isfinite(data_span):
+            center = (vmin + vmax) / 2 if np.isfinite(vmin + vmax) else 0.0
+            slider_vmin = center - min_span / 2
+            slider_vmax = center + min_span / 2
         cmax = st.sidebar.slider(
             "Color Max (Contrast)",
-            float(vmin), float(vmax),
-            float(vmax) * 0.6,
+            float(slider_vmin), float(slider_vmax),
+            float(np.clip(plot_vmax * 0.6, slider_vmin, slider_vmax)),
             help="Lower values reveal turbulent structures by clipping low-energy regions",
             key="color_max",
         )
+        step = max((slider_vmax - slider_vmin) / 200, 1e-6)
         vrange = st.sidebar.slider(
             "Value range",
-            min_value=float(vmin),
-            max_value=float(vmax),
-            value=(float(vmin), float(cmax)),
-            step=(vmax - vmin) / 200 if vmax > vmin else 1.0,
+            min_value=float(slider_vmin),
+            max_value=float(slider_vmax),
+            value=(float(slider_vmin), float(cmax)),
+            step=step,
             key="vrange",
         )
 
@@ -196,6 +242,30 @@ def render_main_view(state: dict) -> None:
                     key="log_qss_threshold",
                 )
                 iso_value = 10.0 ** log_iso
+            elif field_type in ("Q Invariant", "R Invariant"):
+                # Q and R span many orders of magnitude; use log-scale threshold like Q_S^S
+                f_valid = field_ds[np.isfinite(field_ds)]
+                f_abs = np.abs(f_valid)
+                f_abs = f_abs[f_abs > 1e-30]
+                if f_abs.size > 0:
+                    abs_max = float(np.nanmax(f_abs))
+                    abs_max = max(abs_max, 1e-30)
+                    log_min = -12.0
+                    log_max = float(np.log10(abs_max))
+                    default_log = np.log10(0.5 * abs_max)
+                    default_log = np.clip(default_log, log_min, log_max)
+                    st.sidebar.markdown(f"**{field_type} Threshold (log10 scale; actual = 10^slider)**")
+                    log_iso = st.sidebar.slider(
+                        f"log10(|{field_type}| threshold)",
+                        min_value=log_min,
+                        max_value=log_max,
+                        value=float(default_log),
+                        step=0.05,
+                        key=f"log_{field_type.replace(' ', '_')}_threshold",
+                    )
+                    iso_value = 10.0 ** log_iso
+                else:
+                    iso_value = 0.0
             else:
                 iso_min, iso_max = float(vrange[0]), float(vrange[1])
                 if iso_max <= iso_min:
@@ -263,10 +333,12 @@ def render_main_view(state: dict) -> None:
             key="camera_preset",
         )
 
+        # Clamp cmax to data range so colormap shows structure for small-valued fields (Q, R)
+        plot_cmax = float(np.clip(cmax, plot_vmin, plot_vmax))
         fig = _build_3d_plot(
             xg=xg, yg=yg, zg=zg,
             field_clip=field_clip,
-            vmin=vmin, vmax=vmax, cmax=cmax, cmap=cmap,
+            vmin=plot_vmin, vmax=plot_vmax, cmax=plot_cmax, cmap=cmap,
             field_type=field_type,
             show_volume=show_volume,
             vol_opacity=vol_opacity,
@@ -617,52 +689,8 @@ def _build_3d_plot(
 
 
 def render_theory_section() -> None:
-    """Render the Theory & Equations expander."""
+    """Render the Theory & Equations expander. Uses shared content/volume_viewer_theory_content."""
+    from content.volume_viewer_theory_content import get_volume_viewer_theory_markdown
+
     with st.expander("📚 Theory & Equations", expanded=False):
-        st.markdown("### Velocity Fields")
-        st.markdown("**Velocity magnitude:**")
-        st.latex(r"|\mathbf{u}| = \sqrt{u_x^2 + u_y^2 + u_z^2}")
-
-        st.markdown("### Vorticity")
-        st.markdown("**Vorticity vector:**")
-        st.latex(r"\boldsymbol{\omega} = \nabla \times \mathbf{u}")
-        st.markdown("**Components:**")
-        st.latex(
-            r"\omega_x = \frac{\partial u_z}{\partial y} - \frac{\partial u_y}{\partial z}, "
-            r"\quad \omega_y = \frac{\partial u_x}{\partial z} - \frac{\partial u_z}{\partial x}, "
-            r"\quad \omega_z = \frac{\partial u_y}{\partial x} - \frac{\partial u_x}{\partial y}"
-        )
-        st.markdown("**Vorticity magnitude:**")
-        st.latex(r"|\boldsymbol{\omega}| = \sqrt{\omega_x^2 + \omega_y^2 + \omega_z^2}")
-
-        st.markdown("### Q_S^S Method for Vortex Visualization")
-        st.markdown("**Main equation:**")
-        st.latex(r"Q_S^S = \left[(Q_W^3 + Q_S^3) + (\Sigma^2 - R_s^2)\right]^{1/3}")
-        st.markdown("**Component equations:**")
-        st.markdown("**Rotation Rate Strength:**")
-        st.latex(r"Q_W = \frac{1}{2}\Omega_{ij}\Omega_{ij}")
-        st.markdown("**Deformation Rate Strength:**")
-        st.latex(r"Q_S = -\frac{1}{2}S_{ij}S_{ij}")
-        st.markdown("**Enstrophy Production Term:**")
-        st.latex(r"\Sigma = \omega_i S_{ij} \omega_j")
-        st.markdown("**Strain Rate Production:**")
-        st.latex(r"R_s = -\frac{1}{3}S_{ij}S_{jk}S_{ki}")
-        st.markdown("**Tensor definitions:**")
-        st.markdown("- $\\Omega_{ij}$: Rotation tensor (antisymmetric part of velocity gradient)")
-        st.markdown("- $S_{ij}$: Deformation tensor (symmetric part of velocity gradient)")
-        st.markdown("- $\\omega_i$: Vorticity vector")
-        st.markdown("**Isosurface Thresholds (Paper values):**")
-        st.markdown("- $32^3$ resolution: Threshold = 2.5")
-        st.markdown("- $64^3$ resolution: Threshold = 3.5")
-        st.markdown("- $128^3$ resolution: Threshold = 5.0")
-        st.markdown("- $256^3$ resolution: Threshold = 6.5")
-
-        st.markdown("### Velocity Gradient Tensor Invariants")
-        st.markdown("**Second Invariant Q:**")
-        st.latex(r"Q = -\frac{1}{2}A_{ij}A_{ij} = \frac{1}{4}(\omega_i\omega_i - 2S_{ij}S_{ij})")
-        st.markdown("**Third Invariant R:**")
-        st.latex(
-            r"R = -\frac{1}{3}A_{ij}A_{jk}A_{ki} = "
-            r"-\frac{1}{3}\left(S_{ij}S_{jk}S_{ki} + \frac{3}{4}\omega_i\omega_j S_{ij}\right)"
-        )
-        st.markdown("where $A_{ij} = \\partial u_i/\\partial x_j$ is the velocity gradient tensor.")
+        st.markdown(get_volume_viewer_theory_markdown())

@@ -41,11 +41,14 @@ def read_structure_function_file(filepath: str) -> Dict:
             elif fsize == expected_f32:
                 dtype = np.float32
                 bytes_per_val = 4
+            elif abs(fsize - expected_f32) <= 8:
+                # Tolerate minor size mismatch (format variation); use float32
+                dtype = np.float32
+                bytes_per_val = 4
             else:
                 dtype = np.float32
                 bytes_per_val = 4
-                if fsize != expected_f32:
-                    warnings.warn(f"Structure function file size mismatch. Expected {expected_f32} (float32) or {expected_f64} (float64), got {fsize}. Using float32.")
+                warnings.warn(f"Structure function file size mismatch. Expected {expected_f32} (float32) or {expected_f64} (float64), got {fsize}. Using float32.")
             
             r = np.frombuffer(f.read(max_dr * bytes_per_val), dtype=dtype)
             S_p = {}

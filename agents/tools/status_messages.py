@@ -96,6 +96,42 @@ def get_tool_status_before(tool_name: str, args: Dict[str, Any]) -> str:
         return _msg("Fetching Spectral Isotropy Theory & Equations...")
     if tool == "get_energy_spectra_theory":
         return _msg("Fetching Energy Spectra Theory & Equations...")
+    if tool == "compute_flatness":
+        return _msg("Computing flatness factors...")
+    if tool == "plot_flatness":
+        return _msg("Creating flatness plot...")
+    if tool == "get_flatness_summary":
+        return _msg("Creating flatness summary table...")
+    if tool == "get_flatness_theory":
+        return _msg("Fetching Flatness Theory & Equations...")
+    if tool == "compute_structure_functions":
+        return _msg("Computing structure functions...")
+    if tool == "plot_structure_functions":
+        return _msg("Creating structure functions plot...")
+    if tool == "get_structure_functions_theory":
+        return _msg("Fetching Structure Functions Theory & Equations...")
+    if tool == "plot_turbulence_stats":
+        return _msg("Creating turbulence stats plot...")
+    if tool == "get_turbulence_stats_summary":
+        return _msg("Creating turbulence stats summary table...")
+    if tool == "plot_volume_3d":
+        return _msg("Creating 3D volume visualization...")
+    if tool == "get_volume_viewer_theory":
+        return _msg("Fetching 3D Volume Viewer Theory & Equations...")
+    if tool == "plot_pdf":
+        return _msg("Creating PDF plot...")
+    if tool == "preview_report":
+        return _msg("Compiling report preview...")
+    if tool == "add_report_section":
+        return _msg("Adding section to report...")
+    if tool == "remove_report_section":
+        return _msg("Removing section from report...")
+    if tool == "reorder_report_section":
+        return _msg("Reordering report sections...")
+    if tool == "edit_report_section":
+        return _msg("Editing report section...")
+    if tool == "generate_report":
+        return _msg("Generating report...")
     if tool == "export_figure":
         return _msg("Exporting figure...")
     if tool == "execute_code":

@@ -16,7 +16,7 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
                             get_plot_style_func=None, apply_plot_style_func=None,
                             get_palette_func=None, resolve_line_style_func=None,
                             export_panel_func=None, capture_button_func=None,
-                            dx=1.0, dy=1.0, dz=1.0):
+                            dx=1.0, dy=1.0, dz=1.0, nu=0.004):
     """Render the Dissipation Rate PDF tab content"""
     import glob
     from pathlib import Path
@@ -57,51 +57,6 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
             all_hdf5_files.extend(dir_hdf5)
     
     all_files = all_vti_files + all_hdf5_files
-    
-    # Physical parameters (show first, always visible)
-    st.sidebar.header("⚙️ Physical Parameters")
-    
-    # Try simulation.input (LBM) first, then simulation.json (NS)
-    param_file = None
-    nu_from_file = None
-    param_source = None
-    for candidate in (data_dir / "simulation.input", data_dir / "simulation.json"):
-        if candidate.exists():
-            try:
-                params = read_parameters(str(candidate))
-                if 'nu' in params:
-                    nu_from_file = params['nu']
-                    param_file = candidate
-                    param_source = candidate.name
-                    break
-            except Exception as e:
-                st.sidebar.warning(f"Error reading {candidate.name}: {e}")
-    
-    # Set default value: use file value if available, otherwise use a reasonable default
-    default_nu = nu_from_file if nu_from_file is not None else 0.004
-    
-    # Show status message
-    if nu_from_file is not None:
-        st.sidebar.info(f"📄 Viscosity from {param_source}: {nu_from_file:.6f}")
-    else:
-        st.sidebar.warning("Viscosity not found in simulation.input or simulation.json. Please enter manually or check parameter file.")
-    
-    nu_help = "Kinematic viscosity used in dissipation calculation: ε = 2ν S_ij S_ij"
-    if nu_from_file is not None:
-        nu_help += f" (loaded from {param_source}, can be overridden)"
-    else:
-        nu_help += " (enter manually)"
-    
-    # User can always override manually
-    nu = st.sidebar.number_input(
-        "ν (Kinematic Viscosity)",
-        value=default_nu,
-        min_value=0.0001,
-        step=0.0001,
-        format="%.6f",
-        help=nu_help,
-        key="dissipation_nu_input"
-    )
 
     if not all_files:
         st.error("No velocity files found. Expected: `*.vti`, `*.h5`, or `*.hdf5`")
@@ -110,14 +65,22 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
     # Create mapping from filename to full path (handle files from different directories)
     filename_to_path = {Path(f).name: f for f in all_files}
     
-    # File selection
+    # File selection (shared with Autonomous Lab agent workflow)
     st.sidebar.header("📁 File Selection")
     st.sidebar.caption(f"Found {len(all_files)} velocity files")
-    
+    file_options = [Path(f).name for f in all_files]
+    default_files = [Path(f).name for f in all_files[:min(3, len(all_files))]]
+    if "dissipation_file_select" in st.session_state:
+        valid = [f for f in st.session_state["dissipation_file_select"] if f in file_options]
+        if valid != st.session_state["dissipation_file_select"]:
+            st.session_state["dissipation_file_select"] = valid if valid else default_files
+    session_selection = st.session_state.get("dissipation_file_select")
+    default_selection = [f for f in (session_selection or default_files) if f in file_options] or default_files
+
     selected_files = st.sidebar.multiselect(
         "Dissipation PDF files:",
-        options=[Path(f).name for f in all_files],
-        default=[Path(f).name for f in all_files[:min(3, len(all_files))]],
+        options=file_options,
+        default=default_selection,
         help="Select files for Dissipation Rate PDF plot",
         key="dissipation_file_select"
     )
@@ -126,12 +89,19 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
         st.warning("Please select at least one file.")
         return
     
-    # Plot parameters
+    # Plot parameters (shared with Autonomous Lab agent workflow)
     st.sidebar.header("Plot Parameters")
-    pdf_bins = st.sidebar.slider("PDF bins", 50, 500, 100, 10, key="dissipation_pdf_bins")
+    if "dissipation_pdf_bins" in st.session_state and not (50 <= st.session_state["dissipation_pdf_bins"] <= 500):
+        st.session_state["dissipation_pdf_bins"] = 100
+
+    pdf_bins = st.sidebar.slider(
+        "PDF bins", 50, 500,
+        value=st.session_state.get("dissipation_pdf_bins", 100),
+        step=10, key="dissipation_pdf_bins"
+    )
     normalize_pdf = st.sidebar.checkbox(
         "Normalize by mean (ε/⟨ε⟩)",
-        value=False,
+        value=st.session_state.get("dissipation_normalize", False),
         help="Normalize dissipation by mean value for comparison with literature",
         key="dissipation_normalize"
     )
@@ -158,14 +128,17 @@ def render_dissipation_tab(data_dir_or_dirs, load_velocity_file_func,
                 metadata = vti_data.get('metadata', {})
                 file_nu = metadata.get('nu', metadata.get('viscosity', None))
                 if file_nu is None:
-                    # Try parameter file (simulation.input or simulation.json)
-                    if param_file is not None and param_file.exists():
-                        try:
-                            params = read_parameters(str(param_file))
-                            file_nu = params.get('nu', nu)
-                        except Exception:
-                            file_nu = nu
-                    else:
+                    # Try parameter file (simulation.input or simulation.json) in file's directory
+                    file_dir = Path(filepath).parent
+                    for candidate in (file_dir / "simulation.input", file_dir / "simulation.json"):
+                        if candidate.exists():
+                            try:
+                                params = read_parameters(str(candidate))
+                                file_nu = params.get('nu', nu)
+                                break
+                            except Exception:
+                                pass
+                    if file_nu is None:
                         file_nu = nu
                 
                 # Compute PDF

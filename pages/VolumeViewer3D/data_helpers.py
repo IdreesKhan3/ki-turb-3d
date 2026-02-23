@@ -19,20 +19,22 @@ def cached_read_vti(filepath: str):
 
 
 @st.cache_data(show_spinner=True)
-def cached_read_hdf5(filepath: str, _cache_version: str = "v2"):
+def cached_read_hdf5(filepath: str, fortran_order: bool = True, _cache_version: str = "v2"):
     """Cached HDF5 file reading for performance.
+    fortran_order: If True, apply transpose for Fortran-written HDF5.
     _cache_version: Internal parameter to invalidate cache when reader is updated.
     """
     abs_path = str(Path(filepath).resolve())
-    return read_hdf5_file(abs_path)
+    return read_hdf5_file(abs_path, fortran_order=fortran_order)
 
 
 def load_velocity_file(filepath: str):
     """Load velocity data from either VTI or HDF5 file."""
     abs_filepath = str(Path(filepath).resolve())
     filepath_lower = abs_filepath.lower()
+    fortran_order = st.session_state.get('hdf5_fortran_order', True)
     if filepath_lower.endswith((".h5", ".hdf5")):
-        return cached_read_hdf5(abs_filepath)
+        return cached_read_hdf5(abs_filepath, fortran_order=fortran_order)
     elif filepath_lower.endswith(".vti"):
         return cached_read_vti(abs_filepath)
     else:

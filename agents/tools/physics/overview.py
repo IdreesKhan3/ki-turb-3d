@@ -162,8 +162,10 @@ def _compute_overview_data(data_dirs: List[Path], project_root: Path) -> List[Di
 
         if files.get("velocity_h5"):
             try:
+                import streamlit as st
                 from data_readers.hdf5_reader import read_hdf5_file
-                data = read_hdf5_file(str(files["velocity_h5"][0]))
+                fortran_order = st.session_state.get("hdf5_fortran_order", True)
+                data = read_hdf5_file(str(files["velocity_h5"][0]), fortran_order=fortran_order)
                 vel = data["velocity"]  # (z, y, x, 3)
                 if vel.size > 128**3:
                     z_mid = vel.shape[0] // 2
@@ -320,6 +322,8 @@ def execute_tool(
     if not sim_data_list:
         return "Error: Could not process any directory."
 
+    from pages.AutonomousLab.session_sync import update_data_directory_in_context
+    update_data_directory_in_context(session_context, Path(dirs[0]).resolve())
     markdown = _format_overview_markdown(sim_data_list, project_root)
     return {
         "status": "success",

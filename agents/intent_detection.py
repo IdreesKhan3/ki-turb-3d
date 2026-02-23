@@ -14,6 +14,8 @@ import re
 from typing import Any, Dict, Optional
 
 from .page_schema import (
+    INTENT_APP_SETTINGS_HDF5_FORTRAN,
+    INTENT_APP_SETTINGS_HDF5_DEFAULT,
     INTENT_OVERVIEW,
     INTENT_OVERVIEW_THEORY,
     INTENT_COMPONENT_SPECTRA,
@@ -27,12 +29,24 @@ from .page_schema import (
     INTENT_ENERGY_SPECTRA,
     INTENT_ENERGY_SPECTRA_THEORY,
     INTENT_FLATNESS,
+    INTENT_FLATNESS_THEORY,
     INTENT_LUMLEY_TRIANGLE,
     INTENT_PDF,
     INTENT_SPECTRAL_ISOTROPY,
     INTENT_SPECTRAL_ISOTROPY_SUMMARY,
     INTENT_SPECTRAL_ISOTROPY_THEORY,
     INTENT_STRUCTURE_FUNCTIONS,
+    INTENT_STRUCTURE_FUNCTIONS_THEORY,
+    INTENT_OTHER_TURBULENCE_STATS,
+    INTENT_OTHER_TURBULENCE_STATS_SUMMARY,
+    INTENT_VOLUME_VIEWER_3D,
+    INTENT_VOLUME_VIEWER_3D_THEORY,
+    INTENT_REPORT_ADD_SECTION,
+    INTENT_REPORT_REMOVE,
+    INTENT_REPORT_REORDER,
+    INTENT_REPORT_EDIT,
+    INTENT_REPORT_GENERATE,
+    INTENT_REPORT_PREVIEW,
     INTENT_THEORY_D3Q19_LATTICE,
     INTENT_THEORY_EQUATIONS_FULL,
     INTENT_THEORY_LBM_FORMULATION,
@@ -62,7 +76,19 @@ __all__ = [
     "INTENT_COMPONENT_SPECTRA",
     "INTENT_ENERGY_SPECTRA",
     "INTENT_FLATNESS",
+    "INTENT_FLATNESS_THEORY",
     "INTENT_STRUCTURE_FUNCTIONS",
+    "INTENT_OTHER_TURBULENCE_STATS",
+    "INTENT_OTHER_TURBULENCE_STATS_SUMMARY",
+    "INTENT_VOLUME_VIEWER_3D",
+    "INTENT_VOLUME_VIEWER_3D_THEORY",
+    "INTENT_REPORT_ADD_SECTION",
+    "INTENT_REPORT_REMOVE",
+    "INTENT_REPORT_REORDER",
+    "INTENT_REPORT_EDIT",
+    "INTENT_REPORT_GENERATE",
+    "INTENT_APP_SETTINGS_HDF5_FORTRAN",
+    "INTENT_APP_SETTINGS_HDF5_DEFAULT",
     "INTENT_PDF",
     "INTENT_UNKNOWN",
     "get_analysis_intent",
@@ -76,6 +102,26 @@ def _has_spectrum_keywords(t: str) -> bool:
         or "evolution" in t  # "time evolution", "evolution spectra" -> energy spectra
     )
 
+
+
+# =============================================================================
+# APP SETTINGS — HDF5 format (fortran vs default)
+# =============================================================================
+
+def _check_app_settings_hdf5(t: str) -> Optional[str]:
+    """Check app settings: HDF5 format (fortran vs default). Skip when user also asks to load data."""
+    if "hdf5" not in t and "h5" not in t:
+        return None
+    # If user asks to load data + format, orchestrator handles via prompt (two delegations)
+    if "load" in t and ("data" in t or "directory" in t or "dns" in t or "les" in t or "examples" in t):
+        return None
+    # Fortran: fortran, transpose
+    if any(x in t for x in ["fortran", "transpose", "openacc", "fortran-written"]):
+        return INTENT_APP_SETTINGS_HDF5_FORTRAN
+    # Default: default, no transpose, python, standard
+    if any(x in t for x in ["default", "no transpose", "python", "standard layout", "standard hdf5"]):
+        return INTENT_APP_SETTINGS_HDF5_DEFAULT
+    return None
 
 
 # =============================================================================
@@ -317,9 +363,16 @@ def _check_p06_energy_spectra(t: str, has_spectrum: bool) -> Optional[str]:
 
 def _check_p07_flatness(t: str) -> Optional[str]:
     """Check Page 07 (Flatness) intents. Returns intent or None."""
-    if "flatness" in t:
-        return INTENT_FLATNESS
-    return None
+    if "flatness" not in t:
+        return None
+    # Theory/equations — must check before generic flatness
+    if ("theory" in t or "equations" in t) and "flatness" in t:
+        return INTENT_FLATNESS_THEORY
+    if "flatness theory" in t or "flatness equations" in t or "theory for flatness" in t:
+        return INTENT_FLATNESS_THEORY
+    if "f(r) theory" in t or "kurtosis theory" in t:
+        return INTENT_FLATNESS_THEORY
+    return INTENT_FLATNESS
 
 
 # =============================================================================
@@ -328,24 +381,173 @@ def _check_p07_flatness(t: str) -> Optional[str]:
 
 def _check_p08_structure_functions(t: str) -> Optional[str]:
     """Check Page 08 (Structure Functions) intents. Returns intent or None."""
-    if "structure function" in t:
-        return INTENT_STRUCTURE_FUNCTIONS
-    return None
+    if "structure function" not in t:
+        return None
+    if ("theory" in t or "equations" in t) and "structure" in t:
+        return INTENT_STRUCTURE_FUNCTIONS_THEORY
+    if "structure functions theory" in t or "theory for structure functions" in t:
+        return INTENT_STRUCTURE_FUNCTIONS_THEORY
+    if "she-leveque" in t or "she leveque" in t or "scaling exponent" in t:
+        if "theory" in t or "equations" in t:
+            return INTENT_STRUCTURE_FUNCTIONS_THEORY
+    return INTENT_STRUCTURE_FUNCTIONS
 
 
 # =============================================================================
-# PAGE 09 — PDFs (turbulence_stats*.csv)
+# PAGE 09 — PDFs (*.vti, *.h5, *.hdf5 — velocity-based PDFs)
 # =============================================================================
 
 def _check_p09_pdf(t: str) -> Optional[str]:
-    """Check Page 09 (PDFs) intents. Returns intent or None."""
-    if "pdf" in t and ("turbulence" in t or "velocity" in t or "dissipation" in t):
+    """Check Page 09 (PDFs) intents. Returns intent or None.
+    PDFs page = probability density functions (turbulence). Exclude document/file PDF operations.
+    """
+    turb = ("vorticity", "enstrophy", "dissipation", "velocity", "joint pdf", "r-q", "probability density")
+    has_turb = any(k in t for k in turb)
+    # Exclude: document/file PDF operations (not probability density functions)
+    if "pdf report" in t or "export report" in t:
+        return None  # report generator
+    if ("compile" in t or "latex" in t) and "pdf" in t:
+        return None  # compile LaTeX to PDF
+    if ("export figure" in t or "save figure" in t or "save as pdf" in t or "export to pdf" in t) and not has_turb:
+        return None  # export_figure(format=pdf), not PDFs page
+    if ("run " in t or "shell " in t or "command " in t) and "pdf" in t and not has_turb:
+        return None  # shell command producing PDF (e.g. pdflatex), not PDFs page
+    # PDFs page: velocity-based probability density functions
+    pdf_triggers = (
+        "pdfs page" in t or "pdf page" in t
+        or ("pdf" in t and (
+            "vorticity" in t or "enstrophy" in t or "dissipation" in t
+            or "velocity" in t or "velocity magnitude" in t
+            or "joint pdf" in t or "r-q" in t or "q-r" in t
+            or "vti" in t or "hdf5" in t or "h5" in t
+            or "turbulence" in t or "probability density" in t
+        ))
+    )
+    if pdf_triggers:
         return INTENT_PDF
     return None
 
 
 # =============================================================================
-# MAIN: get_analysis_intent — order: P04 -> P05 -> P06 -> P07+ -> P06 fallback
+# PAGE 10 — OTHER TURBULENCE STATS (turbulence_stats*.csv, eps_real_validation*.csv)
+# =============================================================================
+
+def _check_p10_other_turbulence_stats(t: str) -> Optional[str]:
+    """Check Page 10 (Other Turbulence Stats) intents. Returns intent or None."""
+    # Exclude: spectral isotropy, real isotropy, PDFs (handled by P04, P05, P09)
+    if "spectral isotropy" in t or "ic(k)" in t:
+        return None
+    if "real isotropy" in t or "lumley" in t or "energy fraction" in t:
+        return None
+    if "pdf" in t and "turbulence" in t:
+        return None  # P09
+    # Summary/table — check before generic plot
+    if ("summary" in t or "table" in t or "latest values" in t) and (
+        "turbulence stats" in t or "other stats" in t or "turbulence stats page" in t
+    ):
+        return INTENT_OTHER_TURBULENCE_STATS_SUMMARY
+    if "turbulence stats" in t and ("summary" in t or "table" in t):
+        return INTENT_OTHER_TURBULENCE_STATS_SUMMARY
+    # Plot or generic other turbulence stats
+    if "other stats" in t or "other turbulence stats" in t or "turbulence stats page" in t:
+        return INTENT_OTHER_TURBULENCE_STATS
+    if "turbulence stats" in t and ("plot" in t or "show" in t or "custom plot" in t):
+        return INTENT_OTHER_TURBULENCE_STATS
+    if "energy balance" in t or "eps validation" in t:
+        return INTENT_OTHER_TURBULENCE_STATS
+    # "time series" alone is ambiguous; prefer when combined with turbulence
+    if "time series" in t and "turbulence" in t:
+        return INTENT_OTHER_TURBULENCE_STATS
+    return None
+
+
+# =============================================================================
+# PAGE 12 — REPORT GENERATOR (add to report, generate report)
+# =============================================================================
+
+def _check_p12_report_generator(t: str) -> Optional[str]:
+    """Check Page 12 (Report Generator) intents. Returns intent or None."""
+    # Preview compiled report — full HTML with figures, tables, text (check before structure)
+    if any(x in t for x in ["show me the report", "show report in chat", "preview report",
+                            "let me see the report", "display report", "show the compiled report",
+                            "compiled report", "complete compiled report", "full report",
+                            "show report", "see the report", "current report",
+                            "how it looks", "how the report looks", "report with figures",
+                            "report with tables", "report with all"]):
+        return INTENT_REPORT_PREVIEW
+    # "What's in my report", "report structure", "list sections" -> preview (full report has TOC)
+    if any(x in t for x in ["what's in my report", "whats in my report", "show report structure",
+                            "list report sections", "report outline", "report structure",
+                            "what sections", "section list"]):
+        return INTENT_REPORT_PREVIEW
+    if "report" in t and ("what" in t or "outline" in t or "structure" in t or "list" in t):
+        return INTENT_REPORT_PREVIEW
+    # Generate/export report — check before add (more specific)
+    if any(x in t for x in ["generate report", "export report", "create pdf report", "create html report",
+                            "save report", "build report", "write report", "produce report"]):
+        return INTENT_REPORT_GENERATE
+    if "report" in t and ("generate" in t or "export" in t or "create" in t or "pdf" in t or "html" in t):
+        return INTENT_REPORT_GENERATE
+    # Remove/delete section
+    if any(x in t for x in ["delete section", "remove section", "remove the", "delete the"]):
+        return INTENT_REPORT_REMOVE
+    if "section" in t and ("delete" in t or "remove" in t):
+        return INTENT_REPORT_REMOVE
+    # Move/reorder section
+    if any(x in t for x in ["move section", "reorder section", "move the", "reorder the", "swap section"]):
+        return INTENT_REPORT_REORDER
+    if "section" in t and ("move" in t or "reorder" in t or "swap" in t or "up" in t or "down" in t):
+        return INTENT_REPORT_REORDER
+    # Edit section
+    if any(x in t for x in ["edit section", "change section", "update section", "modify section"]):
+        return INTENT_REPORT_EDIT
+    if "section" in t and ("edit" in t or "change" in t or "update" in t or "modify" in t):
+        return INTENT_REPORT_EDIT
+    # Add/capture to report
+    if any(x in t for x in ["add to report", "capture to report", "add this to report", "include in report",
+                            "add figure to report", "add plot to report", "capture for report", "add table"]):
+        return INTENT_REPORT_ADD_SECTION
+    if "report" in t and ("add" in t or "capture" in t or "include" in t):
+        return INTENT_REPORT_ADD_SECTION
+    if "report builder" in t or "report page" in t:
+        # Generic report page — prefer add if context suggests (e.g. "add to report builder")
+        if "add" in t or "capture" in t:
+            return INTENT_REPORT_ADD_SECTION
+        return INTENT_REPORT_GENERATE  # Default to generate for "report page"
+    return None
+
+
+# =============================================================================
+# PAGE 11 — 3D VOLUME VIEWER (*.vti, *.h5, *.hdf5)
+# =============================================================================
+
+def _check_p11_volume_viewer_3d(t: str) -> Optional[str]:
+    """Check Page 11 (3D Volume Viewer) intents. Returns intent or None."""
+    # Theory first
+    if ("theory" in t or "equations" in t) and (
+        "volume viewer" in t or "3d volume" in t or "vorticity" in t and "equation" in t
+        or "q invariant" in t or "q_s^s" in t or "r invariant" in t
+    ):
+        return INTENT_VOLUME_VIEWER_3D_THEORY
+    if "volume viewer theory" in t or "3d volume equations" in t:
+        return INTENT_VOLUME_VIEWER_3D_THEORY
+    # Plot
+    if "3d volume" in t or "volume viewer" in t or "volume visualization" in t:
+        return INTENT_VOLUME_VIEWER_3D
+    if "velocity field 3d" in t or "vti visualization" in t:
+        return INTENT_VOLUME_VIEWER_3D
+    if "vti" in t and ("plot" in t or "3d" in t or "volume" in t or "visualize" in t or "show" in t):
+        return INTENT_VOLUME_VIEWER_3D
+    if "vorticity 3d" in t or "isosurface" in t and "velocity" in t:
+        return INTENT_VOLUME_VIEWER_3D
+    if "q invariant" in t or "r invariant" in t or "q_s^s" in t:
+        if "plot" in t or "visualize" in t or "show" in t:
+            return INTENT_VOLUME_VIEWER_3D
+    return None
+
+
+# =============================================================================
+# MAIN: get_analysis_intent — order: P04 -> P05 -> P06 -> P07+ -> P10 -> P11 -> fallback
 # =============================================================================
 
 def get_analysis_intent(user_input: str) -> Optional[str]:
@@ -362,6 +564,11 @@ def get_analysis_intent(user_input: str) -> Optional[str]:
 
     t = user_input.strip().lower()
     has_spectrum = _has_spectrum_keywords(t)
+
+    # App settings — HDF5 format (check early)
+    intent = _check_app_settings_hdf5(t)
+    if intent is not None:
+        return intent
 
     # Page 01 — Overview
     intent = _check_p01_overview(t)
@@ -400,6 +607,21 @@ def get_analysis_intent(user_input: str) -> Optional[str]:
 
     # Page 09 — PDFs
     intent = _check_p09_pdf(t)
+    if intent is not None:
+        return intent
+
+    # Page 10 — Other Turbulence Stats
+    intent = _check_p10_other_turbulence_stats(t)
+    if intent is not None:
+        return intent
+
+    # Page 11 — 3D Volume Viewer
+    intent = _check_p11_volume_viewer_3d(t)
+    if intent is not None:
+        return intent
+
+    # Page 12 — Report Generator
+    intent = _check_p12_report_generator(t)
     if intent is not None:
         return intent
 

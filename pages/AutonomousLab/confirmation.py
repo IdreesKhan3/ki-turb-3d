@@ -2,6 +2,10 @@
 Tool confirmation UI for Autonomous Lab.
 Shows Accept/Reject buttons with advanced diff preview when the agent requests
 file modifications (modify_file, write_file, create_file).
+
+FLOW: User Accept/Reject -> execute tool (if approved) -> resume agent loop ->
+      sync_context_to_session() -> append assistant message to chat.
+      Sync mappings live in session_sync.py (sectionized by page).
 """
 
 import streamlit as st
@@ -205,8 +209,10 @@ def handle_tool_confirmation_resume(
 
     st.session_state.lab_pending_tool = None
     st.session_state.lab_tool_confirmation_choice = None
-    if session_context.get("plot_styles"):
-        st.session_state.plot_styles.update(session_context["plot_styles"])
+
+    # --- Sync agent results to session (see session_sync.py for page-order mappings) ---
+    from pages.AutonomousLab.session_sync import sync_context_to_session
+    sync_context_to_session(session_context)
 
     text_content = response_data.get("text", response_data) if isinstance(response_data, dict) else response_data
     artifact = response_data.get("artifact") if isinstance(response_data, dict) else None

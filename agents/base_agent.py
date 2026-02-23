@@ -52,7 +52,7 @@ class LLMAgent:
         self,
         user_input: str,
         context: str = "",
-        max_tool_rounds: int = 10,
+        max_tool_rounds: int = 15,
         session_context: Optional[Dict[str, Any]] = None,
         resume_state: Optional[Dict[str, Any]] = None,
         stream_callback: Optional[Callable[[str], None]] = None,
@@ -135,7 +135,7 @@ class LLMAgent:
                         tool_result_callback(display)
 
                 # Check for artifact (e.g. plotly figure, markdown table, markdown content, downloadable file)
-                if isinstance(result, dict) and result.get("artifact_type") in ("plotly_figure", "markdown_table", "markdown", "downloadable_file"):
+                if isinstance(result, dict) and result.get("artifact_type") in ("plotly_figure", "markdown_table", "markdown", "downloadable_file", "report_html"):
                     last_artifact = result
                     return self._wrap_response(result.get("message", "Done."), last_artifact)
                 tool_output_for_llm = str(result)

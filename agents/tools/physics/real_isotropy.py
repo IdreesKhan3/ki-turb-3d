@@ -24,8 +24,14 @@ from core_physics import (
 
 from .._shared import get_from_cache, resolve_data_dir_and_find_files, save_to_cache
 from ._meta import get_artifact_source_meta
+from pages.AutonomousLab.session_sync import update_data_directory_in_context
 
 from content.real_isotropy_theory_content import get_real_isotropy_theory_markdown
+
+
+def _write_back_data_dir(session_context: Dict[str, Any], csv_path: Path) -> None:
+    """Write data directory to session_context so manual pages sync after agent run."""
+    update_data_directory_in_context(session_context, csv_path.parent)
 
 
 CACHE_KEY_REAL_ISOTROPY = "current_real_isotropy_data"
@@ -295,6 +301,7 @@ def execute_tool(
         b = anisotropy_tensor(R)
         inv = invariants(b)
         score = float(np.clip(1.0 - np.mean(inv["anis_index"]), 0, 1))
+        _write_back_data_dir(session_context, p)
         return json.dumps({"isotropy": score})
 
     if name == "plot_real_isotropy":
@@ -319,6 +326,7 @@ def execute_tool(
             stationary_iter=stationary_iter, stationary_t=stationary_t,
         )
         frac_x, frac_y, frac_z = turb["frac_x"], turb["frac_y"], turb["frac_z"]
+        _write_back_data_dir(session_context, p)
         save_to_cache(session_context, CACHE_KEY_REAL_ISOTROPY, {"iter_norm": iter_norm.tolist(), "frac_x": frac_x.tolist(), "frac_y": frac_y.tolist(), "frac_z": frac_z.tolist()})
 
         style_updates = args.get("style_updates") or {}
@@ -415,6 +423,7 @@ def execute_tool(
         axis_labels = agent_axis or axis_labels_lumley
 
         fig = create_lumley_triangle_figure(xi, eta, style_config, axis_labels=axis_labels, apply_style=True)
+        _write_back_data_dir(session_context, p)
         session_context["last_figure"] = fig
         return {
             "status": "success",
@@ -489,6 +498,7 @@ def execute_tool(
             apply_style=True,
             tol_list=tol_list,
         )
+        _write_back_data_dir(session_context, p)
         session_context["last_figure"] = fig
         return {
             "status": "success",
@@ -565,6 +575,7 @@ def execute_tool(
             tol_list=tol_list,
             apply_style=True,
         )
+        _write_back_data_dir(session_context, p)
         session_context["last_figure"] = fig
         return {
             "status": "success",
@@ -648,6 +659,7 @@ def execute_tool(
             stationary_t=stationary_line_x,
             apply_style=True,
         )
+        _write_back_data_dir(session_context, p)
         session_context["last_figure"] = fig
         return {
             "status": "success",
@@ -682,6 +694,9 @@ def execute_tool(
         lines = ["| " + " | ".join(headers) + " |", "|" + "|".join(["---"] * len(headers)) + "|"]
         lines.append("| " + " | ".join(str(summary_row[h]) for h in headers) + " |")
         table_md = "\n".join(lines)
+        _write_back_data_dir(session_context, p)
+        # Store for add_report_section when table_data not provided
+        session_context["last_real_isotropy_summary_rows"] = [summary_row]
         return {
             "status": "success",
             "message": f"Real isotropy summary:\n\n{table_md}",
@@ -755,6 +770,7 @@ def execute_tool(
             conv_windows=conv_windows,
             apply_style=True,
         )
+        _write_back_data_dir(session_context, p)
         session_context["last_figure"] = fig
         return {
             "status": "success",

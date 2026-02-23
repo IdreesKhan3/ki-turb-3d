@@ -1,165 +1,150 @@
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from typing import Any, Dict, List, Optional, Tuple
+"""
+Shared flatness visualization — single source of truth for flatness factor F(r) plots.
+
+Used by:
+  1. Manual page (07_Flatness.py)
+  2. AI agents (plot_flatness tool)
+
+Pure Python plotting logic — no Streamlit dependency.
+Supports: multi-sim, per-sim line styles, error bands/bars, Gaussian reference (F=3).
+"""
 
 import numpy as np
+import plotly.graph_objects as go
+from plotly.colors import hex_to_rgb
+
+from utils.plot_style import (
+    apply_axis_limits,
+    apply_figure_size,
+    apply_plot_style as apply_plot_style_base,
+    resolve_line_style,
+    _get_palette,
+)
+
+
+def _default_labelify(name: str) -> str:
+    return name.replace("_", " ").title()
+
+
+def _to_rgb(color) -> tuple:
+    """Convert color to RGB tuple for rgba fill."""
+    if isinstance(color, str) and color.startswith("#"):
+        try:
+            return hex_to_rgb(color)
+        except (ValueError, TypeError):
+            return (0, 0, 0)
+    if isinstance(color, (list, tuple)) and len(color) >= 3:
+        return (int(color[0]), int(color[1]), int(color[2]))
+    return (0, 0, 0)
+
 
 def create_flatness_figure(
-    sim_items: List[Tuple[str, Dict[str, Any]]],
-    style_config: Dict[str, Any],
-    show_std_band: bool = True,
-    show_error_bars: bool = False,
-    axis_labels: Optional[Dict[str, str]] = None,
-    simulation_legend_names: Optional[Dict[str, str]] = None,
-    apply_style: bool = True,
-) -> Optional[go.Figure]:
-    """Creates a Plotly figure for flatness factor F(r) vs r."""
+    datasets,
+    ps,
+    *,
+    show_std=True,
+    show_error_bars=True,
+    show_reference=True,
+    axis_labels=None,
+    legend_names=None,
+    apply_style=True,
+):
+    """
+    Create flatness factor F(r) vs r figure with multi-sim support.
 
-    if not sim_items:
-        return None
+    datasets: List of dicts with keys: sim_prefix, r (or x), F_mean (or y), F_std (or y_std)
+    ps: Plot style dict (from get_plot_style or session)
+    axis_labels: {"x": "...", "y": "..."}
+    legend_names: {sim_prefix: display_name}
+    """
+    axis_labels = axis_labels or {"x": "r", "y": "Longitudinal flatness F<sub>L</sub>(r)"}
+    legend_names = legend_names or {}
+    colors = _get_palette(ps)
 
     fig = go.Figure()
-
-    axis_labels = axis_labels or {"x": "r", "y": "F(r)"}
-    simulation_legend_names = simulation_legend_names or {}
-
-    for i, (sim_prefix, data) in enumerate(sim_items):
-        r = np.array(data["r"])
-        F_mean = np.array(data["F_mean"])
-        F_std = np.array(data["F_std"])
+    for idx, d in enumerate(datasets):
+        sim_prefix = d.get("sim_prefix", f"sim_{idx}")
+        r_raw = d.get("r") if d.get("r") is not None else d.get("x")
+        r = np.asarray(r_raw if r_raw is not None else [], dtype=float)
+        F_raw = d.get("F_mean") if d.get("F_mean") is not None else d.get("y")
+        F_mean = np.asarray(F_raw if F_raw is not None else [], dtype=float)
+        F_std_raw = d.get("F_std") if d.get("F_std") is not None else d.get("y_std")
+        F_std = None
+        if F_std_raw is not None:
+            F_std = np.asarray(F_std_raw, dtype=float)
 
         if r.size == 0 or F_mean.size == 0:
             continue
 
-        sim_display_name = simulation_legend_names.get(sim_prefix, sim_prefix)
-
-        # Mean curve
-        fig.add_trace(
-            go.Scatter(
-                x=r,
-                y=F_mean,
-                mode="lines",
-                name=sim_display_name,
-                line=dict(width=style_config.get("line_width", 2.2), color=style_config.get("custom_colors", [])[i] if style_config.get("palette") == "Custom" and len(style_config.get("custom_colors", [])) > i else None),
-                hovertemplate=f"<b>{{name}}</b><br>r: %{{x:.2e}}<br>F(r): %{{y:.4f}}<extra></extra>",
-            )
+        color, lw, dash, marker, msize, override_on = resolve_line_style(
+            sim_prefix,
+            idx,
+            colors,
+            ps,
+            style_key="per_sim_style_flatness",
+            include_marker=True,
+            default_marker="square",
         )
+        label = legend_names.get(sim_prefix, _default_labelify(sim_prefix))
 
-        # Uncertainty band
-        if show_std_band and F_std.size > 0:
-            F_upper = F_mean + F_std
-            F_lower = F_mean - F_std
+        mode = "lines+markers" if (override_on and marker and msize > 0) else "lines"
+        trace_kwargs = dict(
+            x=r,
+            y=F_mean,
+            mode=mode,
+            name=label,
+            line=dict(color=color, width=lw, dash=dash),
+            hovertemplate="r=%{x:.3g}<br>F(r)=%{y:.3g}<extra></extra>",
+        )
+        if override_on and marker and msize > 0:
+            trace_kwargs["marker"] = dict(size=msize, symbol=marker, line=dict(width=1, color=color))
+        if show_error_bars and F_std is not None:
+            trace_kwargs["error_y"] = dict(
+                type="data",
+                array=F_std,
+                visible=True,
+                thickness=1,
+                color=color,
+            )
+        fig.add_trace(go.Scatter(**trace_kwargs))
+
+        if show_std and F_std is not None:
+            rgb = _to_rgb(color)
+            fill_rgba = f"rgba({rgb[0]},{rgb[1]},{rgb[2]},{ps.get('std_alpha', 0.18)})"
             fig.add_trace(
                 go.Scatter(
                     x=np.concatenate([r, r[::-1]]),
-                    y=np.concatenate([F_upper, F_lower[::-1]]),
+                    y=np.concatenate([F_mean - F_std, (F_mean + F_std)[::-1]]),
                     fill="toself",
-                    fillcolor=style_config.get("custom_colors", [])[i] if style_config.get("palette") == "Custom" and len(style_config.get("custom_colors", [])) > i else None,
-                    opacity=0.2,
+                    fillcolor=fill_rgba,
                     line=dict(width=0),
-                    name=f"{sim_display_name} Std Dev",
                     showlegend=False,
-                    hovertemplate=f"<b>{{name}}</b><br>r: %{{x:.2e}}<br>F(r) Upper: %{{y:.4f}}<extra></extra>",
+                    hoverinfo="skip",
                 )
             )
 
-        # Error bars
-        if show_error_bars and F_std.size > 0:
-            fig.add_trace(
-                go.Scatter(
-                    x=r,
-                    y=F_mean,
-                    mode="markers",
-                    name=f"{sim_display_name} Error Bars",
-                    error_y=dict(type="data", array=F_std, visible=True),
-                    marker=dict(size=style_config.get("marker_size", 6), color=style_config.get("custom_colors", [])[i] if style_config.get("palette") == "Custom" and len(style_config.get("custom_colors", [])) > i else None),
-                    showlegend=False,
-                    hovertemplate=f"<b>{{name}}</b><br>r: %{{x:.2e}}<br>F(r): %{{y:.4f}}<br>Std: %{{customdata[0]:.4f}}<extra></extra>",
-                    customdata=F_std[:, np.newaxis],
-                )
-            )
+    if show_reference and len(fig.data) > 0:
+        fig.add_hline(
+            y=3,
+            line_dash=ps.get("reference_dash", "dot"),
+            line_color=ps.get("reference_color", "#000000"),
+            line_width=ps.get("reference_width", 1.5),
+            annotation_text="Gaussian (F=3)",
+            annotation_position="right",
+        )
+
+    layout_kwargs = dict(
+        xaxis_title=axis_labels.get("x", "r"),
+        yaxis_title=axis_labels.get("y", "Longitudinal flatness F<sub>L</sub>(r)"),
+        xaxis_type=ps.get("x_axis_type", "log"),
+        yaxis_type=ps.get("y_axis_type", "linear"),
+        legend_title="Simulation",
+        height=500,
+    )
+    layout_kwargs = apply_axis_limits(layout_kwargs, ps)
+    layout_kwargs = apply_figure_size(layout_kwargs, ps)
+    fig.update_layout(**layout_kwargs)
 
     if apply_style:
-        # Apply general style settings
-        fig.update_layout(
-            title_text=style_config.get("plot_title", "Flatness Factor F(r)") if style_config.get("show_plot_title", True) else None,
-            title_font_size=style_config.get("title_size", 18),
-            font_family=style_config.get("font_family", "Arial"),
-            font_size=style_config.get("font_size", 12),
-            font_color=style_config.get("font_color", "#333"),
-            plot_bgcolor=style_config.get("plot_bgcolor", "white"),
-            paper_bgcolor=style_config.get("paper_bgcolor", "white"),
-            showlegend=style_config.get("show_legend", True),
-            legend_font_size=style_config.get("legend_size", 12),
-            margin=dict(
-                l=style_config.get("margin_left", 60),
-                r=style_config.get("margin_right", 20),
-                t=style_config.get("margin_top", 40),
-                b=style_config.get("margin_bottom", 50),
-            ),
-            width=style_config.get("figure_width", 800) if style_config.get("enable_custom_size", False) else None,
-            height=style_config.get("figure_height", 600) if style_config.get("enable_custom_size", False) else None,
-        )
-
-        # Apply axis settings
-        fig.update_xaxes(
-            title_text=axis_labels.get("x", "r"),
-            type=style_config.get("x_axis_type", "log"),
-            tickformat=style_config.get("x_tick_format"),
-            showgrid=style_config.get("grid_on_x", True) and style_config.get("show_grid", True),
-            gridwidth=style_config.get("grid_w", 1),
-            gridcolor=style_config.get("grid_color", "#eee"),
-            griddash=style_config.get("grid_dash", "solid"),
-            showline=style_config.get("show_axis_lines", True),
-            linewidth=style_config.get("axis_line_width", 1),
-            linecolor=style_config.get("axis_line_color", "#333"),
-            mirror=style_config.get("mirror_axes", False),
-            ticks=style_config.get("ticks_outside", True) and "outside" or "",
-            ticklen=style_config.get("tick_len", 5),
-            tickwidth=style_config.get("tick_w", 1),
-            tickcolor=style_config.get("tick_color", "#333"),
-            range=[np.log10(style_config["x_min"]), np.log10(style_config["x_max"])] if style_config.get("enable_x_limits", False) else None,
-            title_font_size=style_config.get("axis_title_size", 14),
-            tickfont_size=style_config.get("tick_font_size", 10),
-        )
-        fig.update_yaxes(
-            title_text=axis_labels.get("y", "F(r)"),
-            type=style_config.get("y_axis_type", "linear"),
-            tickformat=style_config.get("y_tick_format"),
-            showgrid=style_config.get("grid_on_y", True) and style_config.get("show_grid", True),
-            gridwidth=style_config.get("grid_w", 1),
-            gridcolor=style_config.get("grid_color", "#eee"),
-            griddash=style_config.get("grid_dash", "solid"),
-            showline=style_config.get("show_axis_lines", True),
-            linewidth=style_config.get("axis_line_width", 1),
-            linecolor=style_config.get("axis_line_color", "#333"),
-            mirror=style_config.get("mirror_axes", False),
-            ticks=style_config.get("ticks_outside", True) and "outside" or "",
-            ticklen=style_config.get("tick_len", 5),
-            tickwidth=style_config.get("tick_w", 1),
-            tickcolor=style_config.get("tick_color", "#333"),
-            range=[style_config["y_min"], style_config["y_max"]] if style_config.get("enable_y_limits", False) else None,
-            title_font_size=style_config.get("axis_title_size", 14),
-            tickfont_size=style_config.get("tick_font_size", 10),
-        )
-
-        # Minor grid
-        if style_config.get("show_minor_grid", False):
-            fig.update_xaxes(
-                minor_showgrid=True,
-                minor_gridwidth=style_config.get("minor_grid_w", 0.5),
-                minor_gridcolor=style_config.get("minor_grid_color", "#ddd"),
-                minor_griddash=style_config.get("minor_grid_dash", "dot"),
-            )
-            fig.update_yaxes(
-                minor_showgrid=True,
-                minor_gridwidth=style_config.get("minor_grid_w", 0.5),
-                minor_gridcolor=style_config.get("minor_grid_color", "#ddd"),
-                minor_griddash=style_config.get("minor_grid_dash", "dot"),
-            )
-
-        # Apply template if specified
-        if style_config.get("template"): # e.g., 'plotly_dark'
-            fig.update_layout(template=style_config["template"])
-
+        fig = apply_plot_style_base(fig, ps)
     return fig

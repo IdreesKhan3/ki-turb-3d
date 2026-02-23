@@ -77,6 +77,16 @@ Plan:
 2. Analyst: compute_spectral_isotropy
 3. Visualizer: plot_spectral_isotropy or plot_component_spectra or get_spectral_isotropy_summary (ONE output only—do not repeat)
 
+User: "Plot turbulence stats from DNS/512" or "other stats table" or "turbulence stats summary"
+Plan:
+1. Steward: find turbulence_stats*.csv or eps_real_validation*.csv in the directory
+2. Visualizer: plot_turbulence_stats or get_turbulence_stats_summary (ONE output only—do not repeat)
+
+User: "Plot 3D volume from DNS/512" or "volume viewer" or "show vorticity 3d" or "volume viewer theory"
+Plan:
+1. Steward: find *.vti or *.h5 or *.hdf5 in the directory (skip for theory)
+2. Visualizer: plot_volume_3d or get_volume_viewer_theory (ONE output only—do not repeat)
+
 User: "Plot spectra, then Lumley, then summary table, then explain the physics of all, then save the second figure"
 Plan:
 1. Find spectrum*.dat -> analyst compute_spectra -> visualizer plot_spectrum
@@ -90,7 +100,36 @@ Plan:
 1. Delegate to analyst: generate_content (content_type=paper, output_format=latex), then write_file to save (e.g. exports/paper.tex)
 2. Delegate to analyst: compile_latex(filepath=exports/paper.tex) to produce PDF
 
-Remember: Infer from the user's words. Include every item they asked for; add nothing they did not ask for."""
+REPORT BUILDER (plot + add to report + show in chat): When user says "plot X, generate a report with it, show the report in chat" or "add this to report and show compiled report", use the Report Builder flow. Do NOT use analyst generate_content or write_file—that produces LaTeX files for download. The Report Builder shows HTML in chat.
+
+SINGLE-PLOT REPORT:
+User: "Plot the fourth subplot of real isotropy from DNS/512, generate a report that adds and explains it, then show the compiled report in chat"
+Plan:
+1. Steward: find eps_real_validation*.csv or turbulence_validation*.csv in examples/DNS/512
+2. Visualizer: plot the fourth subplot (cross-correlations / plot_cross_correlations)
+3. Visualizer: add_report_section (plot + detailed caption + text explanation)
+4. Visualizer: preview_report — show the compiled report (HTML) in chat
+
+MULTI-PLOT REPORT (generalized): When user asks for multiple plots + report with sections/subsections and detailed captions:
+User: "Plot fourth subplot of real isotropy and time evolution spectrum from spectra page, from DNS/512, generate a report with detailed captions and sections explaining both figures, then show the compiled report in chat"
+Plan:
+1. Steward: find eps_real_validation*.csv or turbulence_validation*.csv in examples/DNS/512
+2. Steward: find spectrum*.dat in examples/DNS/512
+3. Visualizer: plot fourth subplot (cross-correlations / plot_cross_correlations) from real isotropy
+4. Visualizer: add_report_section (plot, title, detailed caption) — add first figure
+5. Analyst: compute_spectra(mode=evolution) for spectrum*.dat
+6. Visualizer: plot_spectrum(mode=evolution, data_reference=current_spectra_evolution)
+7. Visualizer: add_report_section (plot, title, detailed caption) — add second figure
+8. Visualizer: add_report_section (section_type=text) with full prose explaining both figures—write the actual explanation, not placeholders
+9. Visualizer: preview_report — show the compiled report (HTML) in chat
+
+CRITICAL: One add_report_section(plot) per figure—no more. To reference figures in explanations, use add_report_section(text) with content like "Figure 1 shows...". Never add the same figure twice. preview_report runs ONCE at the end.
+
+MULTI-ITEM REPORTS (any pages): When user asks for a report with multiple items (figures from different pages, tables, theory equations, explanations), create ONE step per item. Pattern: for each figure → (steward find files if needed, analyst compute if needed, visualizer plot, visualizer add_report_section). For each table → (steward find files if needed, visualizer get_summary or equivalent, visualizer add_report_section with table_data). For theory/equations → (visualizer get_theory or equivalent, visualizer add_report_section with content). For explanations → (visualizer add_report_section section_type=text covering ALL figures, tables, and equations). End with preview_report. Do NOT collapse multiple items into one step. Do NOT skip any item the user listed.
+
+Remember: Infer from the user's words. Include every item they asked for; add nothing they did not ask for.
+
+END-TO-END COMPLETENESS: For multi-item requests (e.g. "plot A, then B, then C"), ensure the plan covers ALL items. The execution loop will run until every step is done. Do not create plans that skip steps or assume partial completion."""
 
     def plan(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> str:
         """

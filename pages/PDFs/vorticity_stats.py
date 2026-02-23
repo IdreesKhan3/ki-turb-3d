@@ -70,37 +70,57 @@ def render_vorticity_stats_tab(data_dir_or_dirs, load_velocity_file_func,
     # Create mapping from filename to full path (handle files from different directories)
     filename_to_path = {Path(f).name: f for f in all_files}
     
-    # File selection - independent for each plot
+    # File selection (shared with Autonomous Lab agent workflow)
     st.sidebar.header("📁 File Selection")
     st.sidebar.caption(f"Found {len(all_files)} velocity files")
-    
-    # Separate file selection for each plot
+    file_options = [Path(f).name for f in all_files]
+    default_files = [Path(f).name for f in all_files[:min(2, len(all_files))]]
+
+    def resolve_default_selection(session_value, fallback):
+        valid = [f for f in (session_value or fallback) if f in file_options]
+        return valid if valid else fallback
+
+    for key, fallback in [
+        ("vorticity_file_select", default_files),
+        ("enstrophy_file_select", default_files),
+    ]:
+        if key in st.session_state:
+            valid = [f for f in st.session_state[key] if f in file_options]
+            if valid != st.session_state[key]:
+                st.session_state[key] = valid if valid else fallback
+
     selected_files_vort = st.sidebar.multiselect(
         "Vorticity PDF files:",
-        options=[Path(f).name for f in all_files],
-        default=[Path(f).name for f in all_files[:min(2, len(all_files))]],
+        options=file_options,
+        default=resolve_default_selection(st.session_state.get("vorticity_file_select"), default_files),
         help="Select files for Vorticity Magnitude PDF plot (left)",
         key="vorticity_file_select"
     )
-    
     selected_files_enst = st.sidebar.multiselect(
         "Enstrophy PDF files:",
-        options=[Path(f).name for f in all_files],
-        default=[Path(f).name for f in all_files[:min(2, len(all_files))]],
+        options=file_options,
+        default=resolve_default_selection(st.session_state.get("enstrophy_file_select"), default_files),
         help="Select files for Enstrophy PDF plot (right)",
         key="enstrophy_file_select"
     )
-    
+
     if not selected_files_vort and not selected_files_enst:
         st.warning("Please select at least one file for either plot.")
         return
-    
-    # Plot parameters
+
+    # Plot parameters (shared with Autonomous Lab agent workflow)
     st.sidebar.header("Plot Parameters")
-    pdf_bins = st.sidebar.slider("PDF bins", 50, 500, 100, 10, key="vorticity_pdf_bins")
+    if "vorticity_pdf_bins" in st.session_state and not (50 <= st.session_state["vorticity_pdf_bins"] <= 500):
+        st.session_state["vorticity_pdf_bins"] = 100
+
+    pdf_bins = st.sidebar.slider(
+        "PDF bins", 50, 500,
+        value=st.session_state.get("vorticity_pdf_bins", 100),
+        step=10, key="vorticity_pdf_bins"
+    )
     normalize_pdf = st.sidebar.checkbox(
         "Normalize PDFs",
-        value=False,
+        value=st.session_state.get("vorticity_normalize", False),
         help="Normalize: |ω| by RMS, Ω by mean",
         key="vorticity_normalize"
     )

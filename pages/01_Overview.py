@@ -36,7 +36,7 @@ def read_parameters_cached(filepath: str, mtime: float):
     return read_parameters(filepath)
 
 @st.cache_data
-def compute_compressibility_from_slice(filepath: str, mtime: float, max_size: int = 128):
+def compute_compressibility_from_slice(filepath: str, mtime: float, max_size: int = 128, fortran_order: bool = True):
     """
     Compute compressibility metrics from a subsampled slice of velocity field (.h5 only).
     Reads only a slice from disk (memory-efficient for large files).
@@ -46,6 +46,7 @@ def compute_compressibility_from_slice(filepath: str, mtime: float, max_size: in
         filepath: Path to .h5 velocity file
         mtime: File modification time (for cache invalidation)
         max_size: Maximum size for subsampling (default 128^3)
+        fortran_order: If True, apply transpose for Fortran-written HDF5.
     
     Returns:
         Dictionary with compressibility metrics or None if error
@@ -109,23 +110,29 @@ def compute_compressibility_from_slice(filepath: str, mtime: float, max_size: in
                 
                 # Read slice directly from disk
                 if orig_shape[0] == 3:
-                    # Format: (3, nx, ny, nz) - read slice in z (last dimension)
+                    # Format: (3, n, m, l) Fortran or (3, nx, ny, nz) Python
                     velocity_slice = velocity_ds[:, ::x_step, ::y_step, z_mid:z_mid+1]
-                    # Transpose to (z, y, x, 3) format
-                    velocity_slice = np.transpose(velocity_slice, (3, 2, 1, 0))
+                    if fortran_order:
+                        velocity_slice = np.transpose(velocity_slice, (3, 2, 1, 0))  # -> (l,m,n,3)
+                    else:
+                        velocity_slice = np.transpose(velocity_slice, (1, 2, 3, 0))  # -> (nx,ny,nz,3)
                 else:
-                    # Format: (nx, ny, nz, 3) - read slice in z (third dimension)
+                    # Format: (nx, ny, nz, 3)
                     velocity_slice = velocity_ds[::x_step, ::y_step, z_mid:z_mid+1, :]
-                    # Transpose to (z, y, x, 3) format to match expected format
-                    velocity_slice = np.transpose(velocity_slice, (2, 1, 0, 3))
+                    if fortran_order:
+                        velocity_slice = np.transpose(velocity_slice, (2, 1, 0, 3))
             else:
                 # Small enough - read full array but still transpose if needed
                 if orig_shape[0] == 3:
                     velocity_slice = np.array(velocity_ds)
-                    velocity_slice = np.transpose(velocity_slice, (3, 2, 1, 0))
+                    if fortran_order:
+                        velocity_slice = np.transpose(velocity_slice, (3, 2, 1, 0))  # -> (l,m,n,3)
+                    else:
+                        velocity_slice = np.transpose(velocity_slice, (1, 2, 3, 0))  # -> (nx,ny,nz,3)
                 else:
                     velocity_slice = np.array(velocity_ds)
-                    velocity_slice = np.transpose(velocity_slice, (2, 1, 0, 3))
+                    if fortran_order:
+                        velocity_slice = np.transpose(velocity_slice, (2, 1, 0, 3))
             
             # Compute compressibility on slice
             return compute_compressibility_h5(velocity_slice)
@@ -358,7 +365,8 @@ def main():
             filepath = str(files['velocity_h5'][0])
             try:
                 mtime = Path(filepath).stat().st_mtime
-                compressibility_metrics = compute_compressibility_from_slice(filepath, mtime)
+                fortran_order = st.session_state.get('hdf5_fortran_order', True)
+                compressibility_metrics = compute_compressibility_from_slice(filepath, mtime, fortran_order=fortran_order)
             except Exception:
                 compressibility_metrics = None
         
