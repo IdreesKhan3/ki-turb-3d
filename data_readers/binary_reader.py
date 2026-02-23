@@ -1,11 +1,8 @@
 """
 Binary file reader for structure functions and other binary data
 Reads structure_funcs*_t*.bin files and tau_analysis_*.bin files
-Auto-detects float32 vs float64 from file size.
 """
 
-import os
-import warnings
 import numpy as np
 import struct
 from typing import Dict
@@ -14,12 +11,18 @@ from typing import Dict
 def read_structure_function_file(filepath: str) -> Dict:
     """
     Read binary structure function file (structure_funcs*_t*.bin)
+    
     Format: Header (nx, ny, nz, max_dr, norders, u_rms, dx) + data
-    Auto-detects float32 vs float64 from file size.
+    
+    Args:
+        filepath: Path to binary file
+        
+    Returns:
+        Dictionary with structure function data
     """
     try:
         with open(filepath, 'rb') as f:
-            # Read header (6 ints + 2 floats = 32 bytes)
+            # Read header
             nx = struct.unpack('i', f.read(4))[0]
             ny = struct.unpack('i', f.read(4))[0]
             nz = struct.unpack('i', f.read(4))[0]
@@ -28,32 +31,13 @@ def read_structure_function_file(filepath: str) -> Dict:
             u_rms = struct.unpack('f', f.read(4))[0]
             dx = struct.unpack('f', f.read(4))[0]
             
-            # Auto-detect float32 vs float64 from file size
-            header_size = 32
-            data_size = max_dr * 4 + norders * max_dr * 4  # float32
-            expected_f32 = header_size + data_size
-            data_size_f64 = max_dr * 8 + norders * max_dr * 8
-            expected_f64 = header_size + data_size_f64
-            fsize = os.path.getsize(filepath)
-            if fsize == expected_f64:
-                dtype = np.float64
-                bytes_per_val = 8
-            elif fsize == expected_f32:
-                dtype = np.float32
-                bytes_per_val = 4
-            elif abs(fsize - expected_f32) <= 8:
-                # Tolerate minor size mismatch (format variation); use float32
-                dtype = np.float32
-                bytes_per_val = 4
-            else:
-                dtype = np.float32
-                bytes_per_val = 4
-                warnings.warn(f"Structure function file size mismatch. Expected {expected_f32} (float32) or {expected_f64} (float64), got {fsize}. Using float32.")
+            # Read r values
+            r = np.frombuffer(f.read(max_dr * 4), dtype=np.float32)
             
-            r = np.frombuffer(f.read(max_dr * bytes_per_val), dtype=dtype)
+            # Read S_p for each order
             S_p = {}
             for p in range(1, norders + 1):
-                S_p[p] = np.frombuffer(f.read(max_dr * bytes_per_val), dtype=dtype)
+                S_p[p] = np.frombuffer(f.read(max_dr * 4), dtype=np.float32)
             
             # Find minimum length
             min_len = min(len(r), *(len(v) for v in S_p.values()))
@@ -72,20 +56,27 @@ def read_structure_function_file(filepath: str) -> Dict:
 def read_tau_analysis_file(filepath: str, nx: int, ny: int, nz: int) -> float:
     """
     Read tau_analysis_*.bin file and return average effective relaxation time τ_e.
-    Auto-detects float32 vs float64 from file size.
+    
+    File format: L * M * N * 2 * 4 bytes (float32)
+    - Data written in Fortran order: (k, j, i, component)
+    - Each grid point: [tau_offset, normalized_offset]
+    - tau_offset = τ_e - 0.5, where τ_e = 1.0 / s9_field
+    
+    Args:
+        filepath: Path to tau_analysis_*.bin file
+        nx, ny, nz: Grid dimensions (L, M, N)
+        
+    Returns:
+        Average effective relaxation time: τ_e = mean(tau_offset) + 0.5
     """
     try:
-        expected_f32 = nx * ny * nz * 2 * 4
-        expected_f64 = nx * ny * nz * 2 * 8
+        import os
+        expected_bytes = nx * ny * nz * 2 * 4
         fsize = os.path.getsize(filepath)
-        if fsize == expected_f64:
-            dtype = np.float64
-        elif fsize == expected_f32:
-            dtype = np.float32
-        else:
-            raise ValueError(f"{filepath}: expected {expected_f32} (float32) or {expected_f64} (float64) bytes, got {fsize}")
+        if fsize != expected_bytes:
+            raise ValueError(f"{filepath}: expected {expected_bytes} bytes, got {fsize}")
         
-        data = np.fromfile(filepath, dtype=dtype)
+        data = np.fromfile(filepath, dtype=np.float32)
         arr = data.reshape(nz, ny, nx, 2)  # Fortran order: (k, j, i, component)
         tau_offset_3d = arr[..., 0]  # Extract tau_offset channel
         tau_e_3d = tau_offset_3d + 0.5

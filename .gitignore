@@ -130,6 +130,26 @@ docs/.doctrees/
 *.backup
 *.old
 
+# Large binary files - use Git LFS for examples/
+
+
+# Fortran source and simulation output directories
+SRC/
+RUN/
+no_chatboat_app/
+
+# User-specific data directories (not example data)
+user/DNS/
+user/LES/
+
+# HDF5 library (local installation)
+hdf5_lib/
+
+# Ollama local installation and models
+local_tools/ollama/
+*.ollama
+.ollama/
+
 # Alternative: Keep directory structure but ignore contents
 # SRC/*
 # !SRC/.gitkeep
