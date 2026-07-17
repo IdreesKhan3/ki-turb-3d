@@ -1,0 +1,9 @@
+# Required KI-TURB agent runtime (tested together)
+langchain==1.3.13
+langgraph==1.2.9
+langgraph-checkpoint-sqlite==3.1.0
+langchain-ollama==1.1.0
+# Install only when Gemini is used:
+langchain-google-genai>=4.2,<5.0
+# Install only when DeepSeek is used:
+langchain-deepseek>=0.1.4

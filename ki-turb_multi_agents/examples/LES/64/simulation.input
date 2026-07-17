@@ -1,0 +1,14 @@
+&input_params
+nx = 64
+ny = 64
+nz = 64
+!tau= 0.6
+nu = .0013760
+u0 = 0.043
+num_time_steps = 100000
+vtk_interval = 1000000000
+data_interval = 1000
+iti_signal = 100
+SmogC = 0.16 
+tag = 'data4'
+/

@@ -1,0 +1,14 @@
+&input_params
+nx = 512
+ny = 512
+nz = 512
+!tau= 0.6
+nu = .00220160
+u0 = 0.043
+num_time_steps = 1000000
+vtk_interval = 1000000000
+data_interval = 1000
+iti_signal = 100
+tag = 'data3'
+FILTER_CHOICE = 1  ! 1 Gaussian, 2 B0x
+/

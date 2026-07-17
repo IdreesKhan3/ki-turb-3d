@@ -1,0 +1,26 @@
+tasks:
+  - id: plan_new_page
+    request: "Inspect how pages work and make a plan to add a new analysis page for custom metrics"
+    capability: app_pages
+    plan_only: true
+    require_files:
+      - agents/page_schema.py
+      - agents/intent_detection.py
+    forbid_files:
+      - agents/langgraph/hit_graph.py
+
+  - id: plan_new_plot
+    request: "Make a plan to add a new plotting functionality for a custom figure tool"
+    capability: plotting
+    plan_only: true
+    require_files:
+      - agents/runtime/tool_registry.py
+      - agents/page_schema.py
+
+  - id: plan_backend_stub
+    request: "Inspect Palabos backend in the repo and plan what files to modify for CFDBackend parity"
+    capability: solvers
+    plan_only: true
+    require_files:
+      - integrations/base.py
+      - integrations/palabos_backend.py

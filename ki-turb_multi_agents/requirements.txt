@@ -1,0 +1,26 @@
+streamlit>=1.28.0
+numpy>=1.24.0
+tabulate>=0.9.0
+pandas>=2.0.0
+plotly>=5.17.0
+matplotlib>=3.7.0
+scipy>=1.11.0
+pydantic>=2.0.0  # For typed runtime models and structured CFD/simulation schemas
+kaleido>=0.2.1
+weasyprint>=60.0  # For PDF report generation
+pyvista>=0.42.0  # For 3D volume visualization (optional, for advanced VTI viewing)
+h5py>=3.9.0  # For HDF5 file support
+requests>=2.31.0  # For Ollama API calls
+google-generativeai>=0.3.0  # For Google Gemini (optional)
+beautifulsoup4>=4.12.0  # For web scraping and HTML parsing (web search / browse_web)
+# Optional stronger web search (set one of these env vars):
+#   TAVILY_API_KEY, BRAVE_SEARCH_API_KEY, SERPAPI_API_KEY
+# Free path uses DuckDuckGo Lite + Wikipedia + arXiv (no key).
+
+markdown>=3.5.0  # For report HTML generation (preserves LaTeX-rendered img tags)
+st-chat-input-multimodal>=1.0.0  # For voice and multimodal input (optional)
+PyMuPDF>=1.23.0  # For PDF text extraction (read_document)
+python-docx>=1.0.0  # For Word .docx extraction (read_document)
+openpyxl>=3.1.0  # For Excel .xlsx extraction (read_document)
+xlrd2>=1.3.0  # For Excel .xls (legacy) extraction (read_document)
+

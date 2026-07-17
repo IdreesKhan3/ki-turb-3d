@@ -1,0 +1,7 @@
+# Git LFS for large example / volume datasets (see examples/DATA_ORGANIZATION.md)
+*.vti filter=lfs diff=lfs merge=lfs -text
+*.h5 filter=lfs diff=lfs merge=lfs -text
+*.hdf5 filter=lfs diff=lfs merge=lfs -text
+*.bin filter=lfs diff=lfs merge=lfs -text
+# Large Plotly/export HTML reports in example trees
+ki-turb_multi_agents/examples/**/*.html filter=lfs diff=lfs merge=lfs -text

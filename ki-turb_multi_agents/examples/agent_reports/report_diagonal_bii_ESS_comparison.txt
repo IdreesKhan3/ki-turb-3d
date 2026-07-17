@@ -1,0 +1,10 @@
+
+I need a report with two figures and their theory.
+
+First, plot the diagonal anisotropy components (b₁₁, b₂₂, b₃₃) from the real isotropy page using DNS/512, add it to the report with a caption, and include the theory section for that plot.
+
+Second, compare Extended Self-Similarity between DNS/256 and DNS/512: compute structure functions from both simulations starting at snapshot 50, plot the ESS curves with the inset, add the figure to the report with a caption, and include the structure functions theory.
+
+Then add a short interpretation of both figures with proper citations, and finish with a references section.
+
+Preview the report when done.

@@ -1,0 +1,45 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+
+title: "KI-TURB 3D: Turbulence Analysis and Visualization Suite"
+
+version: 3.0.0
+date-released: 2026-07-16
+
+authors:
+  - given-names: "Muhammad Idrees"
+    family-names: "Khan"
+    orcid: "https://orcid.org/0009-0003-0046-821X"
+    affiliation: "University of Rome 'Tor Vergata'"
+  - given-names: "Huadong"
+    family-names: "Yao"
+    affiliation: "Professor, Marine Technology, Mechanics and Maritime Sciences"
+
+keywords:
+  - turbulence
+  - lattice Boltzmann method
+  - direct numerical simulation
+  - large eddy simulation
+  - computational fluid dynamics
+  - homogeneous isotropic turbulence
+  - OpenLB
+  - multi-agent systems
+  - turbulence analysis
+  - data visualization
+  - streamlit
+
+license: MIT
+
+repository-code: "https://github.com/IdreesKhan3/ki-turb-3d"
+url: "https://github.com/IdreesKhan3/ki-turb-3d"
+
+abstract: >
+  KI-TURB 3D is a Streamlit scientific suite for analysis and visualization of
+  turbulence data from Lattice Boltzmann Method (LBM) and Navier–Stokes simulations,
+  including DNS and LES of homogeneous isotropic turbulence (HIT). Version 3 provides
+  Manual analysis pages (01–13) and an Autonomous Lab multi-agent system (Orchestrator,
+  Steward, Simulation, Analyst, Visualizer, Reviewer, Engineer) that can drive the same
+  analyses and OpenLB HIT build/compile/run/fetch/postprocess workflows, with human
+  confirmation for destructive or expensive actions. Supported LBM formulations include
+  MRT, BGK/SRT, TRT and related HIT collision models exposed by the OpenLB integration.

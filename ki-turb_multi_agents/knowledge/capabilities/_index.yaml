@@ -1,0 +1,46 @@
+capabilities:
+  app_pages:
+    path: app_pages
+    triggers:
+      - "page"
+      - "pages"
+      - "streamlit"
+      - "page_schema"
+      - "add page"
+      - "remove page"
+      - "analysis page"
+  plotting:
+    path: plotting
+    triggers:
+      - "plot"
+      - "plotting"
+      - "figure"
+      - "visualizer"
+      - "chart"
+      - "plot tool"
+  solvers:
+    path: solvers
+    triggers:
+      - "solver"
+      - "openlb"
+      - "palabos"
+      - "openfoam"
+      - "ansys"
+      - "backend"
+      - "cfd backend"
+  viz_external:
+    path: viz_external
+    triggers:
+      - "vtk"
+      - "paraview"
+      - "external viz"
+      - "external visualization"
+  hpc:
+    path: hpc
+    triggers:
+      - "hpc"
+      - "gpu"
+      - "slurm"
+      - "remote runner"
+      - "cluster"
+      - "batch job"
