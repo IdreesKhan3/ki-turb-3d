@@ -305,7 +305,15 @@ Cite the **exact released version** you used.
 
 ## License
 
-MIT License — see `LICENSE`.
+MIT License — see `LICENSE` (KI-TURB application code under `ki-turb_multi_agents/`).
+
+## Third-party solvers
+
+- **OpenLB** (`cfd_solvers/openLB/`) is the OpenLB lattice Boltzmann library
+  (GNU GPL). Copyright remains with the OpenLB authors.
+  See [openlb.net](https://www.openlb.net) / the OpenLB project.
+- Your HIT solver app under `cfd_solvers/SolverApps/kiTurbHIT3D/` is part of this
+  repository and follows the project license unless noted otherwise in that folder.
 
 ## Acknowledgments
 
